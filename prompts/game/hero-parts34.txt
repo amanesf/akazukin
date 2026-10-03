@@ -1,15 +1,14 @@
-Character sprite sheet for cutout animation of the girl in 1枚目 = image 1, which shows her from the front, the side and the back.
+Character sprite sheet for cutout animation of the girl in 1枚目 = image 1, which shows her from the front, the side and the back. This sheet shows the girl alone, without the back cannon unit.
 
 Left part of the sheet: the complete girl standing in a three-quarter view facing left, her body turned about 30 degrees toward the viewer from the side view, so her face and the front of her blouse are partly visible. Relaxed standing pose: arms hang a little away from her body, the near hand closed in a loose fist as if holding a handle, the far hand relaxed and open, feet apart with the near foot a half step forward. Her hands are empty and her back shows only cloth and fur.
 
-Right part of the sheet: the same girl taken apart into 8 separate parts, each matching the complete figure exactly in angle, scale, colors and shapes, with wide gray space between the parts:
+Right part of the sheet: the same girl taken apart into 7 separate parts, each matching the complete figure exactly in angle, scale, colors and shapes, with wide gray space between the parts:
 1. Head with the hood, the wolf ears and the black braids, plus her neck down to the collar.
 2. The gray fur hood cape with red flower lining that covers her shoulders and back, on its own.
 3. Body: blouse, red ribbon tie, belts with the two small wolf heads, the gray wolf tail and the long dark-red skirt with lace hem, from the collar to the hem, with the blouse complete at the shoulders where the arms attach.
 4. Near arm: puffed white sleeve from a rounded shoulder cap to the frilled cuff, the hand in a loose fist.
 5. Far arm: the same sleeve, the hand open.
 6. Near leg and 7. far leg: each from the top of the thigh in black tights down to the red lace-up heeled boot.
-8. The back cannon pod from 2枚目 = image 2 (black lacquer with gold vines, brass trim, two brass barrels pointing down, brass shoulder mount at the top), seen at the same angle as on her back.
 
 Same face, blue eyes, closed-mouth smile, clothes, colors, art style and line weight as image 1. One flat light gray background, the floor the same gray. Even soft lighting, clean outlines, cel shading, every part complete and whole.
 Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), everything fully in frame.
