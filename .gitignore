@@ -1,3 +1,4 @@
 node_modules/
 dist/
 shots/
+assets/game/raw/*_response_raw.json
