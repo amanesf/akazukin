@@ -4,8 +4,8 @@
  * あわせて状態（銭・家の耐久・波・討伐数）を書き出す。
  *
  * 使い方: node scripts/capture.js [--at 5,20,40] [--speed 4] [--play 1] [--out shots]
- *   --play 1 : 素朴な自動操作。先頭の狼の手前をタップ（弓）、5匹以上いれば長押しで主砲を2段まで溜めて撃つ、
- *              銭があれば番犬、合間は決まった順に強化を買って次の波へ。上手い人より弱い（タップが遅い）
+ *   --play 1 : 素朴な自動操作。構えは「近」、体力が3割を切ったら「遠」。無双乱舞は溜まったら押す。
+ *              銭があれば番犬、昼は決まった順に技と強化を買って次の晩へ
  * 先に app で npm run build すること。
  */
 import { chromium } from 'playwright';
@@ -47,24 +47,18 @@ await page.waitForFunction(() => document.body.classList.contains('ready'), null
 
 const state = () => page.evaluate(() => {
   const s = window.akazukin.sim;
-  return { phase: s.phase, levels: Object.values(s.levels).join(''), clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
+  return { phase: s.phase, levels: Object.values(s.levels).join(''), heroHp: Math.round(s.hero.hp), best: s.bestCombo, clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
 });
 const autoplay = () => page.evaluate(() => {
   const s = window.akazukin.sim;
   if (s.phase === 'shop') {
-    for (const id of ['bowCount', 'bowPower', 'chargeSpeed', 'blastSize', 'knifeReach']) while (s.buy(id));
     if (s.houseHp < 400) s.buy('repair');
+    for (const id of ['combo', 'kaiten', 'shiki', 'tosshin', 'power', 'vigor', 'ame', 'hougeki']) while (s.buy(id));
     s.nextWave();
     return;
   }
-  const lead = s.wolves.reduce((a, w) => (!a || w.x < a.x ? w : a), null);
-  if (s.pressing) {
-    if (lead) s.drag(lead.x);
-    if (s.chargeStage() >= 1 || !lead) s.release();
-  } else if (lead) {
-    if (s.wolves.length >= 5 && s.recover <= 0 && lead.x >= 340) s.press(lead.x);
-    else { s.press(lead.x - 25); s.release(); } // 矢は遅れて落ちるので少し手前
-  }
+  s.setStance(s.hero.hp < s.maxHp * 0.3 ? 'far' : 'near');
+  s.musou();
   for (const k of ['tosa', 'akita', 'shiba']) if (s.sendDog(k)) break;
 });
 

@@ -49,14 +49,14 @@ body {
 .house i { display: block; height: 100%; background: #60d070; }
 .wave { color: var(--dim); font-variant-numeric: tabular-nums; }
 
-.battle, .shop { display: grid; gap: 10px; min-height: 0; }
-.battle { grid-template-rows: 1fr auto; }
-.shop { grid-template-rows: 1fr auto; }
+.battle, .shop { display: grid; gap: 10px; min-height: 0; grid-template-rows: 1fr auto; }
 .battle[hidden], .shop[hidden] { display: none; }
 .dogs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.hint { margin: 0; text-align: center; font-size: 13px; color: var(--dim); }
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 92px; }
+.stance { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stance button.on { background: #5a2830; border-color: var(--red); }
 .ups { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 8px; }
-.up { font-size: 15px; padding: 4px; }
+.up { font-size: 14px; padding: 4px; }
 .up small { font-size: 11px; }
 .up em { font-style: normal; font-size: 12px; color: var(--brass); }
 
@@ -86,7 +86,7 @@ button::after {
   background: rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
-.next { min-height: 64px; background: #4a1c22; border-color: var(--red); font-size: 20px; }
+.next { min-height: 60px; background: #4a1c22; border-color: var(--red); font-size: 20px; }
 
 #overlay {
   position: fixed;
@@ -106,3 +106,77 @@ button::after {
 #overlay p { margin: 0; color: var(--dim); }
 #overlay ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--dim); line-height: 1.8; }
 #overlay button { padding: 12px 40px; background: var(--red); border-color: var(--red); }
+
+/* 無双ゲージ：ボタンの下から溜まる。満タンで光る */
+.musou { font-size: 20px; }
+.musou::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--fill, 0) * 100%);
+  background: linear-gradient(0deg, #b3202a, #e08030);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.musou:disabled { opacity: 1; color: var(--dim); }
+.musou.ready { border-color: #ffd040; color: #fff; animation: glow 0.6s ease-in-out infinite alternate; }
+@keyframes glow { from { box-shadow: 0 0 0 rgba(255, 208, 64, 0); } to { box-shadow: 0 0 18px rgba(255, 208, 64, 0.8); } }
+
+/* 戦場の上に重ねるもの：コンボ数・吹き出し・カットイン */
+#combo {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  font: italic 900 34px/1 system-ui, sans-serif;
+  color: #ffd040;
+  -webkit-text-stroke: 1.5px #000;
+  pointer-events: none;
+}
+#combo small { font-size: 16px; margin-left: 4px; color: #fff; }
+#combo.pop { animation: pop 0.12s ease-out; }
+@keyframes pop { from { transform: scale(1.35); } to { transform: scale(1); } }
+#bubble {
+  position: absolute;
+  transform: translate(-20%, -100%);
+  max-width: 62%;
+  padding: 6px 10px;
+  background: #fff;
+  color: #1a1218;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#bubble::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  bottom: -7px;
+  border: 7px solid transparent;
+  border-top-color: #fff;
+  border-bottom: 0;
+}
+#bubble[hidden], #combo[hidden], #cutin[hidden] { display: none; }
+#cutin {
+  position: absolute;
+  inset: 30% -10% auto -10%;
+  height: 26%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(90deg, transparent, #b3202a 15%, #b3202a 85%, transparent);
+  transform: skewY(-6deg);
+  font: italic 900 38px/1 system-ui, sans-serif;
+  letter-spacing: 0.2em;
+  color: #fff;
+  -webkit-text-stroke: 1.5px #000;
+  pointer-events: none;
+  animation: cutin 0.9s ease-out forwards;
+}
+@keyframes cutin {
+  0% { transform: skewY(-6deg) translateX(100%); }
+  20% { transform: skewY(-6deg) translateX(0); }
+  80% { transform: skewY(-6deg) translateX(0); opacity: 1; }
+  100% { transform: skewY(-6deg) translateX(-100%); opacity: 0; }
+}

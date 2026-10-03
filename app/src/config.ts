@@ -16,39 +16,72 @@ export const COIN_START = 100;
 export const COIN_PER_SEC = 14;
 export const FIRST_WAVE_DELAY = 2; // 最初の波までの間（秒）。2波目からは「次の波」ボタンで始める
 
-// 武器：近＝ナイフ（自動）／弓＝戦場のタップ／主砲＝戦場の長押し（タメ）（2026-10-03・アマネさん）
-export const KNIFE = { reach: 150, damage: 14, interval: 0.45 };
-export const TAP_MAX = 0.25; // これより早く指を離せばタップ＝弓。長く押せばタメ
-
-// 弓は放物線で、タップした所に落ちる。落ちた所の近くの狼1匹に当たる（外れもある）
-export const BOW = { damage: 15, interval: 0.15, hitRadius: 30, flightBase: 0.3, flightPerUnit: 0.0005, minX: 110, fan: 24 };
-
-// 主砲：押した時間で段が上がる（at は押し始めからの秒）。段に届かずに離すと撃たない。
-// タメているあいだは弓が射てない——それが主砲の代償なので、撃ったあとの待ちは短くした
-export interface ChargeStage { at: number; shells: number; damage: number; splash: number }
-export const CHARGE = {
-  stages: [
-    { at: 0.8, shells: 2, damage: 25, splash: 60 },
-    { at: 1.6, shells: 4, damage: 30, splash: 75 },
-    { at: 2.5, shells: 6, damage: 40, splash: 95 },
-  ] as ChargeStage[],
-  minRange: 320, // 上45度までしか起きないので、近すぎる所は撃てない
-  flight: 0.9,
-  spread: 40,
-  recover: 1.0, // 撃ったあと、次のタメに入れるまで
+// ── 主人公（無双風・2026-10-03・アマネさん）──
+// 戦場を動き回り、攻撃は自動。プレイヤーは構え（近／遠）を切り替え、ゲージが溜まったら無双乱舞
+export const HERO = {
+  hp: 220,
+  size: 26,
+  speed: 190,
+  farX: 110, // 遠の構えで下がる位置
+  reviveTime: 4, // 倒れたら家の前で立ち上がるまで
+  hitStunTime: 0.25,
 };
 
-// 強化：波の合間に銭で買う（2026-10-03・アマネさん）。costs の長さが段の数
-export type UpgradeId = 'bowPower' | 'bowCount' | 'chargeSpeed' | 'blastSize' | 'knifeReach' | 'repair';
+// 狼の体の動き：弾く（横の勢い）・打ち上げる（上の勢い）・叩き落とす（下へ叩きつけて跳ねる）
+export const BODY = {
+  gravity: 1400,
+  friction: 6, // 横の勢いの減り方
+  bounce: 260, // 叩き落とされて跳ね返る勢い
+  slamSplash: 70, // 叩きつけた所のまわりの狼にも当たる
+  slamSplashDamage: 15,
+};
+
+// 技。kind は使う構え。hits はその技が当てる時刻（秒）
+export type MoveId = 'slash' | 'launch' | 'air' | 'slam' | 'shiki' | 'kaiten' | 'tosshin' | 'bow' | 'ame' | 'hougeki';
+export interface MoveSpec {
+  name: string;
+  dur: number;
+  reach: number; // 前へ届く距離（主人公の体の端から）
+  damage: number;
+  kb?: number; // 弾く勢い
+  lift?: number; // 打ち上げる勢い
+  slam?: boolean;
+  area?: number; // 範囲（主人公のまわり）
+  shake?: number;
+  stop?: number; // ヒットストップ（秒）
+}
+export const MOVES: Record<MoveId, MoveSpec> = {
+  slash: { name: '斬り', dur: 0.2, reach: 34, damage: 10, kb: 40, stop: 0.03 },
+  launch: { name: '斬り上げ', dur: 0.28, reach: 34, damage: 12, lift: 620, stop: 0.05, shake: 2 },
+  air: { name: '追い打ち', dur: 0.2, reach: 40, damage: 9, lift: 260, stop: 0.03 },
+  slam: { name: '叩き落とし', dur: 0.32, reach: 44, damage: 22, slam: true, stop: 0.09, shake: 6 },
+  shiki: { name: '至近の主砲', dur: 0.45, reach: 60, damage: 40, kb: 650, area: 110, stop: 0.12, shake: 10 },
+  kaiten: { name: '回転斬り', dur: 0.4, reach: 0, damage: 16, kb: 260, area: 90, stop: 0.05, shake: 4 },
+  tosshin: { name: '突進斬り', dur: 0.3, reach: 40, damage: 18, kb: 320, stop: 0.06, shake: 4 },
+  bow: { name: '弓', dur: 0.42, reach: 0, damage: 13 },
+  ame: { name: '矢の雨', dur: 0.6, reach: 0, damage: 11 },
+  hougeki: { name: '主砲の撃ち込み', dur: 0.7, reach: 0, damage: 32, area: 75, shake: 5 },
+};
+export const BOW_FLIGHT = { base: 0.3, perUnit: 0.0005, hitRadius: 26 };
+export const MOVE_CD = { kaiten: 3, tosshin: 2.5, ame: 5, hougeki: 7 };
+export const MUSOU = { time: 3, tick: 0.15, damage: 22, reach: 130, final: 90, finalArea: 380, gain: { hit: 1.6, hurt: 0.6 } };
+export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る
+
+// ── 昼に買うもの（2026-10-03・アマネさん：武器は合間に銭で強くする。技とコンボ数も増やしていく）──
+export type UpgradeId = 'kaiten' | 'tosshin' | 'shiki' | 'ame' | 'hougeki' | 'combo' | 'vigor' | 'power' | 'repair';
 export const UPGRADES: Record<UpgradeId, { name: string; note: string; costs: number[] }> = {
-  bowPower: { name: '弓・威力', note: '1本 +5', costs: [80, 160, 300] },
-  bowCount: { name: '弓・本数', note: '1回に +1本', costs: [150, 400] },
-  chargeSpeed: { name: '主砲・タメ', note: 'タメ 2割速く', costs: [100, 220, 400] },
-  blastSize: { name: '主砲・範囲', note: '爆発 2割広く', costs: [120, 280] },
-  knifeReach: { name: 'ナイフ', note: '間合い +50', costs: [60, 150] },
+  combo: { name: 'コンボ数', note: '連撃 +1', costs: [100, 200, 350] },
+  kaiten: { name: '回転斬り', note: '近・囲まれたら', costs: [120] },
+  tosshin: { name: '突進斬り', note: '近・離れた敵へ', costs: [100] },
+  shiki: { name: '至近の主砲', note: '近・連撃の締め', costs: [220] },
+  ame: { name: '矢の雨', note: '遠・群れへ', costs: [150] },
+  hougeki: { name: '主砲の撃ち込み', note: '遠・群れへ', costs: [200] },
+  power: { name: '威力', note: '全部 +2割', costs: [120, 250] },
+  vigor: { name: '体力', note: '+60', costs: [80, 160] },
   repair: { name: '家の修繕', note: '耐久 +150', costs: [80] }, // 何度でも買える
 };
-export const UP = { bowPower: 5, chargeSpeed: 0.8, blastSize: 1.2, knifeReach: 50, repair: 150 };
+export const UP = { combo: 1, power: 0.2, vigor: 60, repair: 150 };
+export const COMBO_BASE = 4; // 斬り・斬り・斬り上げ・叩き落とし
 
 export const AIM_MIN = 160;
 export const AIM_MAX = FIELD_LENGTH - 20;
@@ -79,17 +112,21 @@ export interface WolfSpec {
   speed: number;
   size: number;
   bounty: number;
-  arrowResist: number; // 弓の効きにくさ（0〜1）
+  arrowResist: number; // 弓・主砲の効きにくさ（0〜1）。鎧狼は近づいて斬れ
+  heavy?: number; // 弾かれ・打ち上げられにくさ（0〜1）
 }
 export const WOLVES: Record<WolfKind, WolfSpec> = {
   pup: { name: '子狼', hp: 30, damage: 5, interval: 0.6, speed: 70, size: 20, bounty: 6, arrowResist: 0 },
   wolf: { name: '狼', hp: 90, damage: 11, interval: 0.8, speed: 48, size: 30, bounty: 14, arrowResist: 0 },
-  armored: { name: '鎧狼', hp: 300, damage: 20, interval: 1.0, speed: 28, size: 38, bounty: 40, arrowResist: 0.6 },
+  armored: { name: '鎧狼', hp: 300, damage: 20, interval: 1.0, speed: 28, size: 38, bounty: 40, arrowResist: 0.6, heavy: 0.4 },
   // 遠吠え：近くの狼を速くする（後ろに居座る。主砲で落とす相手）
   howler: { name: '遠吠え', hp: 120, damage: 6, interval: 1.0, speed: 30, size: 30, bounty: 30, arrowResist: 0.3 },
-  alpha: { name: '大狼', hp: 1800, damage: 45, interval: 1.2, speed: 18, size: 64, bounty: 300, arrowResist: 0.4 },
+  alpha: { name: '大狼', hp: 1800, damage: 45, interval: 1.2, speed: 18, size: 64, bounty: 300, arrowResist: 0.4, heavy: 0.8 },
 };
 export const HOWL = { radius: 220, speedMul: 1.5, holdX: 620 };
+// 狼の攻め方（特性ごと）：遠吠えは遠くから衝撃波、子狼は飛びかかる
+export const SHOCKWAVE = { range: 460, interval: 3.2, speed: 260, damage: 12 };
+export const POUNCE = { range: 130, interval: 2.5, lift: 380, speed: 320, damage: 8 };
 
 // 1波＝1晩。波の合間は昼。99日生き残れば完全クリア＝狼絶滅（2026-10-03・アマネさん）。
 // 試作は WAVES の数（6晩）で終わる。99晩ぶんの組み方は plan.md §5

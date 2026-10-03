@@ -1,7 +1,7 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は番犬、昼（波の合間）は強化と「夜を迎える」に入れ替わる。
+// 夜（戦闘中）は番犬・構え・無双乱舞、昼（波の合間）は強化と「夜を迎える」に入れ替わる。
 import { DAYS_TO_CLEAR, DOGS, HOUSE_HP, UPGRADES, WAVES, type DogKind, type UpgradeId } from './config';
-import type { Sim } from './sim';
+import type { Sim, Stance } from './sim';
 
 export class Panel {
   private coins: HTMLElement;
@@ -9,7 +9,8 @@ export class Panel {
   private wave: HTMLElement;
   private battle: HTMLElement;
   private shop: HTMLElement;
-  private next: HTMLButtonElement;
+  private musou: HTMLButtonElement;
+  private stances: [Stance, HTMLButtonElement][] = [];
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [UpgradeId, HTMLButtonElement, HTMLElement][] = [];
   private sim: () => Sim;
@@ -24,7 +25,13 @@ export class Panel {
       </div>
       <div class="battle">
         <div class="dogs"></div>
-        <p class="hint">タップで弓／長押しで主砲（離すと撃つ）</p>
+        <div class="acts">
+          <div class="stance">
+            <button data-s="near">近<small>踏み込む</small></button>
+            <button data-s="far">遠<small>下がる</small></button>
+          </div>
+          <button class="musou">無双乱舞<small></small></button>
+        </div>
       </div>
       <div class="shop" hidden>
         <div class="ups"></div>
@@ -37,8 +44,14 @@ export class Panel {
     this.wave = q('.wave');
     this.battle = q('.battle');
     this.shop = q('.shop');
-    this.next = q('.next');
-    this.next.addEventListener('click', () => this.sim().nextWave());
+    this.musou = q('.musou');
+    this.musou.addEventListener('pointerdown', () => this.sim().musou());
+    q('.next').addEventListener('click', () => this.sim().nextWave());
+    host.querySelectorAll<HTMLButtonElement>('.stance button').forEach((b) => {
+      const s = b.dataset.s as Stance;
+      b.addEventListener('pointerdown', () => this.sim().setStance(s));
+      this.stances.push([s, b]);
+    });
     for (const kind of Object.keys(DOGS) as DogKind[]) {
       const b = document.createElement('button');
       b.className = 'dog';
@@ -71,10 +84,15 @@ export class Panel {
         const cost = s.upgradeCost(id);
         const max = UPGRADES[id].costs.length;
         b.disabled = !s.canBuy(id);
-        price.textContent = cost === undefined ? '最大' : id === 'repair' ? `${cost}銭` : `${cost}銭・${s.levels[id]}/${max}`;
+        price.textContent = cost === undefined ? (max === 1 ? '習得済み' : '最大') : id === 'repair' ? `${cost}銭` : max === 1 ? `${cost}銭` : `${cost}銭・${s.levels[id]}/${max}`;
       }
       return;
     }
+    for (const [st, b] of this.stances) b.classList.toggle('on', s.stance === st);
+    this.musou.disabled = !s.canMusou();
+    this.musou.classList.toggle('ready', s.canMusou());
+    this.musou.style.setProperty('--fill', String(s.gauge / 100));
+    this.musou.querySelector('small')!.textContent = s.hero.musou > 0 ? '乱舞中' : s.gauge >= 100 ? '押せ！' : `${Math.floor(s.gauge)}%`;
     for (const [kind, b] of this.dogs) {
       b.disabled = !s.canDog(kind);
       b.style.setProperty('--cd', String(s.dogCd[kind] / DOGS[kind].cooldown));
