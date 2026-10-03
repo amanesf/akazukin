@@ -1,0 +1,5 @@
+Redraw 1枚目 = image 1 as it is: the same girl, same three-quarter angle facing left, same position, size, face, hood, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, legs, boots, art style and plain light gray background.
+
+Change only her arms: this version of her has no arms, for a cutout animation body layer. Where her arms were, draw what is behind them: the side of the white blouse below the fur cape, the side of the skirt, and the wolf tail, all complete and continuous. The fur cape still hangs over her shoulders exactly as in image 1, and the blouse sleeves' openings are hidden under the cape.
+
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), the same framing as image 1.
