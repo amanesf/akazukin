@@ -5,7 +5,7 @@
  *
  * 使い方: node scripts/capture.js [--at 5,20,40] [--speed 4] [--play 1] [--out shots]
  *   --play 1 : 素朴な自動操作。構えは「近」、体力が3割を切ったら「遠」。無双乱舞は溜まったら押す。
- *              銭があれば番犬、昼は決まった順に技と強化を買って次の晩へ
+ *              銭があれば番犬、昼は近接→体力→近接→遠隔の順に1段ずつ買って次の晩へ
  * 先に app で npm run build すること。
  */
 import { chromium } from 'playwright';
@@ -52,8 +52,7 @@ const state = () => page.evaluate(() => {
 const autoplay = () => page.evaluate(() => {
   const s = window.akazukin.sim;
   if (s.phase === 'shop') {
-    if (s.houseHp < 400) s.buy('repair');
-    for (const id of ['combo', 'kaiten', 'shiki', 'tosshin', 'power', 'vigor', 'ame', 'hougeki']) while (s.buy(id));
+    for (const t of ['near', 'body', 'near', 'far']) s.buy(t);
     s.nextWave();
     return;
   }

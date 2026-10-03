@@ -1,6 +1,6 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は番犬・構え・無双乱舞、昼（波の合間）は強化と「夜を迎える」に入れ替わる。
-import { DAYS_TO_CLEAR, DOGS, HOUSE_HP, UPGRADES, WAVES, type DogKind, type UpgradeId } from './config';
+// 夜（戦闘中）は番犬・構え・無双乱舞、昼（波の合間）は体力・近接・遠隔の強化と「夜を迎える」に入れ替わる。
+import { DAWN_REPAIR, DAYS_TO_CLEAR, DOGS, HOUSE_HP, TRACKS, WAVES, type DogKind, type Track } from './config';
 import type { Sim, Stance } from './sim';
 
 export class Panel {
@@ -12,7 +12,7 @@ export class Panel {
   private musou: HTMLButtonElement;
   private stances: [Stance, HTMLButtonElement][] = [];
   private dogs: [DogKind, HTMLButtonElement][] = [];
-  private ups: [UpgradeId, HTMLButtonElement, HTMLElement][] = [];
+  private ups: [Track, HTMLButtonElement][] = [];
   private sim: () => Sim;
 
   constructor(host: HTMLElement, sim: () => Sim) {
@@ -34,6 +34,7 @@ export class Panel {
         </div>
       </div>
       <div class="shop" hidden>
+        <p class="dawn">夜が明けた。家が ${DAWN_REPAIR} 直った</p>
         <div class="ups"></div>
         <button class="next">夜を迎える</button>
       </div>
@@ -60,13 +61,13 @@ export class Panel {
       q('.dogs').appendChild(b);
       this.dogs.push([kind, b]);
     }
-    for (const id of Object.keys(UPGRADES) as UpgradeId[]) {
+    for (const t of Object.keys(TRACKS) as Track[]) {
       const b = document.createElement('button');
       b.className = 'up';
-      b.innerHTML = `${UPGRADES[id].name}<small>${UPGRADES[id].note}</small><em></em>`;
-      b.addEventListener('click', () => this.sim().buy(id));
+      b.innerHTML = `<b>${TRACKS[t].name}</b><span class="lv"></span><small></small><em></em>`;
+      b.addEventListener('click', () => this.sim().buy(t));
       q('.ups').appendChild(b);
-      this.ups.push([id, b, b.querySelector('em')!]);
+      this.ups.push([t, b]);
     }
   }
 
@@ -80,11 +81,13 @@ export class Panel {
     this.battle.hidden = shop;
     this.shop.hidden = !shop;
     if (shop) {
-      for (const [id, b, price] of this.ups) {
-        const cost = s.upgradeCost(id);
-        const max = UPGRADES[id].costs.length;
-        b.disabled = !s.canBuy(id);
-        price.textContent = cost === undefined ? (max === 1 ? '習得済み' : '最大') : id === 'repair' ? `${cost}銭` : max === 1 ? `${cost}銭` : `${cost}銭・${s.levels[id]}/${max}`;
+      for (const [t, b] of this.ups) {
+        const cost = s.trackCost(t);
+        const next = s.nextPerk(t);
+        b.disabled = !s.canBuy(t);
+        b.querySelector('.lv')!.textContent = `Lv ${s.levels[t]}`;
+        b.querySelector('small')!.textContent = next ? `次：${next.note}` : 'これ以上は上がらない';
+        b.querySelector('em')!.textContent = cost === undefined ? '最大' : `${cost}銭`;
       }
       return;
     }

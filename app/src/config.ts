@@ -6,7 +6,7 @@ export const HOUSE_X = 40; // 狼はここまで来ると家を齧る
 export const GIRL_X = 70; // 赤ずきんは左に固定
 export const DOG_SPAWN_X = 90;
 // 番犬の持ち場。ここより先へは出ない（裂け目で待ち伏せさせない。撮影で、出てきた端から狩られて簡単すぎた）
-export const DOG_HOLD_X = 560;
+export const DOG_HOLD_X = 470; // 主人公（中央まで）の少し後ろで守る
 export const WOLF_SPAWN_X = FIELD_LENGTH - 10;
 
 export const STEP = 1 / 60; // 固定ステップ
@@ -23,6 +23,7 @@ export const HERO = {
   size: 26,
   speed: 190,
   farX: 110, // 遠の構えで下がる位置
+  maxX: FIELD_LENGTH * 0.5, // 主人公は画面の中央まで（2026-10-03・アマネさん「端っこに行くとさみしい」）
   reviveTime: 4, // 倒れたら家の前で立ち上がるまで
   hitStunTime: 0.25,
 };
@@ -67,20 +68,54 @@ export const MOVE_CD = { kaiten: 3, tosshin: 2.5, ame: 5, hougeki: 7 };
 export const MUSOU = { time: 3, tick: 0.15, damage: 22, reach: 130, final: 90, finalArea: 380, gain: { hit: 1.6, hurt: 0.6 } };
 export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る
 
-// ── 昼に買うもの（2026-10-03・アマネさん：武器は合間に銭で強くする。技とコンボ数も増やしていく）──
-export type UpgradeId = 'kaiten' | 'tosshin' | 'shiki' | 'ame' | 'hougeki' | 'combo' | 'vigor' | 'power' | 'repair';
-export const UPGRADES: Record<UpgradeId, { name: string; note: string; costs: number[] }> = {
-  combo: { name: 'コンボ数', note: '連撃 +1', costs: [100, 200, 350] },
-  kaiten: { name: '回転斬り', note: '近・囲まれたら', costs: [120] },
-  tosshin: { name: '突進斬り', note: '近・離れた敵へ', costs: [100] },
-  shiki: { name: '至近の主砲', note: '近・連撃の締め', costs: [220] },
-  ame: { name: '矢の雨', note: '遠・群れへ', costs: [150] },
-  hougeki: { name: '主砲の撃ち込み', note: '遠・群れへ', costs: [200] },
-  power: { name: '威力', note: '全部 +2割', costs: [120, 250] },
-  vigor: { name: '体力', note: '+60', costs: [80, 160] },
-  repair: { name: '家の修繕', note: '耐久 +150', costs: [80] }, // 何度でも買える
+// ── 昼に買うもの：体力・近接・遠隔の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」
+// 「技選択までボタン増えると多くてしんどい」）。技は近接・遠隔の段を上げると自然に覚える ──
+export type Track = 'body' | 'near' | 'far';
+export type SkillId = 'kaiten' | 'tosshin' | 'shiki' | 'ame' | 'hougeki';
+export interface Perk {
+  note: string; // 昼のボタンに出す「次は何が起きるか」
+  hp?: number;
+  combo?: number;
+  learn?: SkillId;
+  power?: number; // その系統の威力 +割合
+  rate?: number; // 弓の速さ +割合
+}
+export const TRACK_COSTS = [80, 140, 220, 320, 450, 600];
+export const TRACKS: Record<Track, { name: string; perks: Perk[] }> = {
+  body: {
+    name: '体力',
+    perks: [
+      { note: '体力 +50', hp: 50 },
+      { note: '体力 +50', hp: 50 },
+      { note: '体力 +60', hp: 60 },
+      { note: '体力 +60', hp: 60 },
+      { note: '体力 +80', hp: 80 },
+    ],
+  },
+  near: {
+    name: '近接',
+    perks: [
+      { note: 'コンボ +1', combo: 1 },
+      { note: '突進斬りを覚える', learn: 'tosshin' },
+      { note: '近接の威力 +2割', power: 0.2 },
+      { note: '回転斬りを覚える', learn: 'kaiten' },
+      { note: 'コンボ +1', combo: 1 },
+      { note: '締めが至近の主砲に', learn: 'shiki' },
+    ],
+  },
+  far: {
+    name: '遠隔',
+    perks: [
+      { note: '遠隔の威力 +2割', power: 0.2 },
+      { note: '矢の雨を覚える', learn: 'ame' },
+      { note: '弓が3割速く', rate: 0.3 },
+      { note: '主砲の撃ち込みを覚える', learn: 'hougeki' },
+      { note: '遠隔の威力 +3割', power: 0.3 },
+    ],
+  },
 };
-export const UP = { combo: 1, power: 0.2, vigor: 60, repair: 150 };
+export const DAWN_REPAIR = 100; // 夜が明けると家が直る（家の修繕を買う代わり。案）
+
 export const COMBO_BASE = 4; // 斬り・斬り・斬り上げ・叩き落とし
 
 export const AIM_MIN = 160;

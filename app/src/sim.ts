@@ -3,8 +3,8 @@
 import {
   BODY, BOW_FLIGHT, COIN_PER_SEC, COIN_START, COMBO_BASE, COMBO_RESET, DOG_HOLD_X, DOG_SPAWN_X, DOGS,
   FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, MOVE_CD, MOVES, MUSOU, POUNCE, SHOCKWAVE, STEP,
-  UP, UPGRADES, WAVES, WOLF_SPAWN_X, WOLVES,
-  type DogKind, type MoveId, type UpgradeId, type WolfKind,
+  DAWN_REPAIR, TRACK_COSTS, TRACKS, WAVES, WOLF_SPAWN_X, WOLVES,
+  type DogKind, type MoveId, type Perk, type SkillId, type Track, type WolfKind,
 } from './config';
 
 export interface Unit {
@@ -93,9 +93,7 @@ export class Sim {
 
   cds: Record<'kaiten' | 'tosshin' | 'ame' | 'hougeki', number> = { kaiten: 0, tosshin: 0, ame: 0, hougeki: 0 };
   dogCd: Record<DogKind, number> = { shiba: 0, akita: 0, tosa: 0 };
-  levels: Record<UpgradeId, number> = {
-    kaiten: 0, tosshin: 0, shiki: 0, ame: 0, hougeki: 0, combo: 0, vigor: 0, power: 0, repair: 0,
-  };
+  levels: Record<Track, number> = { body: 0, near: 0, far: 0 };
 
   private spawners: Spawner[] = [];
   private nextId = 1;
@@ -105,17 +103,27 @@ export class Sim {
     this.seed = seed;
   }
 
+  // 3本の段から、いま効いているものを数える
+  private perks(t: Track): Perk[] {
+    return TRACKS[t].perks.slice(0, this.levels[t]);
+  }
+  private sum(t: Track, key: 'hp' | 'combo' | 'power' | 'rate') {
+    return this.perks(t).reduce((n, p) => n + (p[key] ?? 0), 0);
+  }
   get maxHp() {
-    return HERO.hp + UP.vigor * this.levels.vigor;
+    return HERO.hp + this.sum('body', 'hp');
   }
   get comboLen() {
-    return COMBO_BASE + UP.combo * this.levels.combo;
+    return COMBO_BASE + this.sum('near', 'combo');
   }
-  private get power() {
-    return 1 + UP.power * this.levels.power;
+  private get nearPower() {
+    return 1 + this.sum('near', 'power');
   }
-  knows(id: UpgradeId) {
-    return this.levels[id] > 0;
+  private get farPower() {
+    return 1 + this.sum('far', 'power');
+  }
+  knows(id: SkillId) {
+    return [...this.perks('near'), ...this.perks('far')].some((p) => p.learn === id);
   }
 
   // ── 入力 ──
@@ -151,23 +159,24 @@ export class Sim {
     return true;
   }
 
-  // ── 昼に買う ──
-  upgradeCost(id: UpgradeId): number | undefined {
-    const costs = UPGRADES[id].costs;
-    return id === 'repair' ? costs[0] : costs[this.levels[id]];
+  // ── 昼に買う：体力・近接・遠隔のどれかを1段上げる ──
+  trackCost(t: Track): number | undefined {
+    return this.levels[t] < TRACKS[t].perks.length ? TRACK_COSTS[this.levels[t]] : undefined;
   }
 
-  canBuy(id: UpgradeId) {
-    const cost = this.upgradeCost(id);
-    if (this.phase !== 'shop' || cost === undefined || this.coins < cost) return false;
-    return id !== 'repair' || this.houseHp < HOUSE_HP;
+  nextPerk(t: Track): Perk | undefined {
+    return TRACKS[t].perks[this.levels[t]];
   }
 
-  buy(id: UpgradeId) {
-    if (!this.canBuy(id)) return false;
-    this.coins -= this.upgradeCost(id)!;
-    this.levels[id]++;
-    if (id === 'repair') this.houseHp = Math.min(HOUSE_HP, this.houseHp + UP.repair);
+  canBuy(t: Track) {
+    const cost = this.trackCost(t);
+    return this.phase === 'shop' && cost !== undefined && this.coins >= cost;
+  }
+
+  buy(t: Track) {
+    if (!this.canBuy(t)) return false;
+    this.coins -= this.trackCost(t)!;
+    this.levels[t]++;
     return true;
   }
 
@@ -262,6 +271,7 @@ export class Sim {
     if (this.wave >= WAVES.length) this.result = 'won';
     else {
       this.phase = 'shop';
+      this.houseHp = Math.min(HOUSE_HP, this.houseHp + DAWN_REPAIR);
       this.events.push('dawn');
     }
   }
@@ -432,6 +442,8 @@ export class Sim {
     const h = this.hero;
     if (!target) return this.walk(dt, Math.max(h.x, GIRL_X + 40));
     h.facing = target.x >= h.x ? 1 : -1;
+    // 中央より先へは出ない。狼が来るまで中央で待つ
+    if (target.x - (target.size + HERO.size) / 2 > HERO.maxX + MOVES.slash.reach) return this.walk(dt, HERO.maxX);
     const around = this.wolves.filter((w) => w.z <= 0 && Math.abs(w.x - h.x) <= MOVES.kaiten.area!).length;
     if (this.knows('kaiten') && this.cds.kaiten <= 0 && around >= 3) return this.startMove('kaiten', 0);
     const gap = Math.abs(target.x - h.x) - (target.size + HERO.size) / 2;
@@ -465,7 +477,7 @@ export class Sim {
 
   private walk(dt: number, to: number) {
     const h = this.hero;
-    const d = to - h.x;
+    const d = Math.min(to, HERO.maxX) - h.x; // 中央より先へは歩かない
     if (Math.abs(d) < 1) return;
     h.facing = d > 0 ? 1 : -1;
     h.x += Math.sign(d) * Math.min(Math.abs(d), HERO.speed * dt);
@@ -486,9 +498,9 @@ export class Sim {
     const id = h.move!;
     const m = MOVES[id];
     const before = h.moveT;
-    h.moveT += dt;
+    h.moveT += dt * (id === 'bow' ? 1 + this.sum('far', 'rate') : 1);
     const at = m.dur * 0.5;
-    if (id === 'tosshin' && h.moveT < at) h.x += (h.dashTo - h.x) * Math.min(1, dt * 18);
+    if (id === 'tosshin' && h.moveT < at) h.x = Math.min(HERO.maxX, h.x + (h.dashTo - h.x) * Math.min(1, dt * 18));
     if (before < at && h.moveT >= at) this.strike(id);
     if (h.moveT >= m.dur) h.move = null;
   }
@@ -496,7 +508,8 @@ export class Sim {
   private strike(id: MoveId) {
     const h = this.hero;
     const m = MOVES[id];
-    const dmg = m.damage * this.power;
+    const far = id === 'bow' || id === 'ame' || id === 'hougeki';
+    const dmg = m.damage * (far ? this.farPower : this.nearPower);
     if (id === 'bow') {
       const t = this.wolves.find((w) => w.id === h.moveTarget) ?? this.nearest(this.wolves, h.x);
       // 矢は遅れて落ちるので、狼の進む先を狙う
@@ -550,13 +563,13 @@ export class Sim {
     if (h.musouTick <= 0) {
       h.musouTick = MUSOU.tick;
       // 次の狼へ一足で跳び、まわりをまとめて斬る
-      const t = this.nearest(this.wolves.filter((w) => Math.abs(w.x - h.x) <= 360), h.x);
+      const t = this.nearest(this.wolves.filter((w) => Math.abs(w.x - h.x) <= 360 && w.x <= HERO.maxX + 140), h.x);
       if (t) {
         h.facing = t.x >= h.x ? 1 : -1;
-        h.x = Math.max(GIRL_X, t.x - h.facing * 20);
+        h.x = Math.min(HERO.maxX + 60, Math.max(GIRL_X, t.x - h.facing * 20)); // 乱舞のときだけ少し先まで
       }
       for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) <= MUSOU.reach) this.hit(w, MUSOU.damage * this.power, { lift: 240, stop: 0.02, kb: 60 * Math.sign(w.x - h.x || 1) });
+        if (Math.abs(w.x - h.x) <= MUSOU.reach) this.hit(w, MUSOU.damage * this.nearPower, { lift: 240, stop: 0.02, kb: 60 * Math.sign(w.x - h.x || 1) });
       }
       this.fx.push({ kind: 'spin', x: h.x, lane: 0.5, t: 0, r: MUSOU.reach });
       this.shake = Math.max(this.shake, 4);
@@ -564,7 +577,7 @@ export class Sim {
     if (h.musou <= 0) {
       // 締め：主砲の全弾
       for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) <= MUSOU.finalArea) this.hit(w, MUSOU.final * this.power, { kb: 500 * Math.sign(w.x - h.x || 1), stop: 0 });
+        if (Math.abs(w.x - h.x) <= MUSOU.finalArea) this.hit(w, MUSOU.final * this.nearPower, { kb: 500 * Math.sign(w.x - h.x || 1), stop: 0 });
       }
       this.fx.push({ kind: 'blast', x: h.x + 120, lane: 0.5, t: 0, r: MUSOU.finalArea * 0.6 });
       this.hitStop = 0.2;
