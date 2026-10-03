@@ -59,8 +59,8 @@ export class View {
     this.app.stage.addChild(this.world);
     this.world.addChild(this.g);
     // 赤ずきんの絵。読み込めなければ灰色の箱のまま遊べる
-    // 切り絵はまだ作りかけ（完璧にきれいになるまで出さない）。?rig=1 のときだけ使う
-    if (new URLSearchParams(location.search).get('rig')) {
+    // 2026-10-04 アマネさんの OK で既定に。?rig=0 で灰色の箱に戻せる（見比べ用）
+    if (new URLSearchParams(location.search).get('rig') !== '0') {
       this.rig.load().then(() => this.world.addChildAt(this.rig.root, 1)).catch((e) => console.warn('hero rig', e));
     }
     for (let i = 0; i < 40; i++) {

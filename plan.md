@@ -168,7 +168,7 @@ cd app && npm ci && npm run dev
 (cd app && npm run build)
 node scripts/capture.js --at 30,60,100 --speed 4 --play 1   # 実機サイズの静止画と状態（--seed で乱数）
 node scripts/balance.mjs --seeds 1,2 [--dogs 0]             # 描画なしで99晩を回して、何日目で負けるか
-node scripts/poses.mjs 出力先                                # 主人公の各ポーズを止めて3倍で撮る（?rig=1）
+node scripts/poses.mjs 出力先                                # 主人公の各ポーズを止めて3倍で撮る
 ```
 
 `?auto=1` で題字を飛ばす、`?speed=4` で早回し、`?seed=` で乱数を変える。

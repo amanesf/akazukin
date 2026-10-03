@@ -1,5 +1,5 @@
 /*
- * 主人公の絵の各ポーズを、試作の時間を止めて撮る（?rig=1）。3倍の解像度で、主人公のまわりだけを切り出す。
+ * 主人公の絵の各ポーズを、試作の時間を止めて撮る。3倍の解像度で、主人公のまわりだけを切り出す。
  * 使い方: (cd app && npm run build) && node scripts/poses.mjs 出力先
  */
 import { chromium } from 'playwright';
@@ -13,7 +13,7 @@ await new Promise(r=>srv.listen(0,r));
 const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});
 const p=await b.newPage({viewport:{width:390,height:844},deviceScaleFactor:3});
 p.on('pageerror',e=>console.log('E',e.message)); p.on('console',m=>{if(m.type()==='warning'||m.type()==='error')console.log('c',m.text())});
-await p.goto('http://127.0.0.1:'+srv.address().port+'/akazukin/?auto=1&rig=1');
+await p.goto('http://127.0.0.1:'+srv.address().port+'/akazukin/?auto=1');
 await p.waitForFunction(()=>document.body.classList.contains('ready'));
 await p.waitForTimeout(2500);
 // 世界を止めて、主人公の状態を直接指定する
