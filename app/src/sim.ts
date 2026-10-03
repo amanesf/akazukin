@@ -1,8 +1,8 @@
 // 戦いの中身。描画を知らない。固定ステップで進め、同じ入力なら同じ結果になる。
 import {
-  AIM_MAX, AIM_MIN, BOW, CANNON, COIN_PER_SEC, COIN_START, DOG_HOLD_X, DOG_SPAWN_X, DOGS, GIRL_X, HOUSE_HP,
-  HOUSE_X, HOWL, KNIFE, STEP, WAVE_GAP, WAVES, WOLF_SPAWN_X, WOLVES,
-  type DogKind, type WolfKind,
+  AIM_MAX, AIM_MIN, BOW, CHARGE, COIN_PER_SEC, COIN_START, DOG_HOLD_X, DOG_SPAWN_X, DOGS, FIRST_WAVE_DELAY,
+  GIRL_X, HOUSE_HP, HOUSE_X, HOWL, KNIFE, STEP, TAP_MAX, UP, UPGRADES, WAVES, WOLF_SPAWN_X, WOLVES,
+  type DogKind, type UpgradeId, type WolfKind,
 } from './config';
 
 export interface Unit {
@@ -17,11 +17,13 @@ export interface Unit {
 }
 export interface Wolf extends Unit { kind: WolfKind; hasted: boolean }
 export interface Dog extends Unit { kind: DogKind }
-export interface Arrow { fromX: number; toX: number; t: number; flight: number; lane: number }
-export interface Shell { fromX: number; toX: number; t: number; lane: number }
-export interface Fx { kind: 'blast' | 'poof' | 'slash' | 'miss'; x: number; lane: number; t: number }
+export interface Arrow { fromX: number; toX: number; t: number; flight: number; lane: number; damage: number }
+export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; splash: number }
+export interface Fx { kind: 'blast' | 'poof' | 'slash' | 'miss'; x: number; lane: number; t: number; r?: number }
 
 export type Result = 'playing' | 'won' | 'lost';
+// lead：最初の波の前／wave：戦闘中／shop：波の合間（強化を買い、「次の波」で進む）
+export type Phase = 'lead' | 'wave' | 'shop';
 
 interface Spawner { kind: WolfKind; left: number; interval: number; next: number }
 
@@ -31,8 +33,8 @@ export class Sim {
   houseHp = HOUSE_HP;
   aimX = 600;
   wave = 0; // 0 始まり。WAVES.length に達したら全滅させた
-  waveGap = 2; // 次のウェーブまでの残り（最初は短め）
-  inWave = false;
+  lead = FIRST_WAVE_DELAY;
+  phase: Phase = 'lead';
   result: Result = 'playing';
   kills = 0;
 
@@ -43,9 +45,11 @@ export class Sim {
   fx: Fx[] = [];
 
   bowCd = 0;
-  bowHeld = false; // 戦場を押しているあいだ、照準へ弓を射続ける
   knifeCd = 0;
-  cannonCd = 0;
+  pressing = false; // 戦場を押している
+  pressT = 0; // 押している秒数
+  recover = 0; // 主砲を撃ったあとの待ち
+  levels: Record<UpgradeId, number> = { bowPower: 0, bowCount: 0, chargeSpeed: 0, blastSize: 0, knifeReach: 0, repair: 0 };
   dogCd: Record<DogKind, number> = { shiba: 0, akita: 0, tosa: 0 };
 
   private spawners: Spawner[] = [];
@@ -61,22 +65,108 @@ export class Sim {
     this.aimX = Math.min(AIM_MAX, Math.max(AIM_MIN, x));
   }
 
-  canCannon() {
-    return this.result === 'playing' && this.cannonCd <= 0 && this.aimX >= CANNON.minRange;
+  // 戦場を押す・ずらす・離す。短く離せば弓、長く押して離せば主砲
+  press(x: number) {
+    this.setAim(x);
+    this.pressing = true;
+    this.pressT = 0;
   }
 
-  fireCannon() {
-    if (!this.canCannon()) return false;
-    for (let i = 0; i < CANNON.shells; i++) {
-      const off = (i - (CANNON.shells - 1) / 2) * (CANNON.spread / 1.5) + (this.rand() - 0.5) * CANNON.spread;
-      this.shells.push({ fromX: GIRL_X, toX: this.aimX + off, t: -i * 0.08, lane: this.rand() });
+  drag(x: number) {
+    if (this.pressing) this.setAim(x);
+  }
+
+  release() {
+    if (!this.pressing) return;
+    const st = this.chargeStage(); // 押している状態のまま数える
+    this.pressing = false;
+    if (this.pressT < TAP_MAX) this.shootBow();
+    else if (st >= 0 && this.cannonInRange()) this.fireCannon(st);
+    this.pressT = 0;
+  }
+
+  // タメの段（-1 はまだ届いていない）と、次の段までの進み具合
+  chargeStage() {
+    if (!this.charging()) return -1;
+    let st = -1;
+    CHARGE.stages.forEach((_, i) => { if (this.pressT >= this.chargeAt(i)) st = i; });
+    return st;
+  }
+
+  chargeProgress() {
+    const st = this.chargeStage();
+    if (st >= CHARGE.stages.length - 1) return 1;
+    const from = st < 0 ? TAP_MAX : this.chargeAt(st);
+    return Math.min(1, (this.pressT - from) / (this.chargeAt(st + 1) - from));
+  }
+
+  charging() {
+    return this.pressing && this.pressT >= TAP_MAX && this.recover <= 0;
+  }
+
+  cannonInRange() {
+    return this.aimX >= CHARGE.minRange;
+  }
+
+  chargeAt(i: number) {
+    return TAP_MAX + (CHARGE.stages[i].at - TAP_MAX) * UP.chargeSpeed ** this.levels.chargeSpeed;
+  }
+
+  private shootBow() {
+    if (this.bowCd > 0 || this.aimX < BOW.minX) return;
+    const n = 1 + this.levels.bowCount;
+    const damage = BOW.damage + UP.bowPower * this.levels.bowPower;
+    for (let i = 0; i < n; i++) {
+      const toX = this.aimX + (i - (n - 1) / 2) * BOW.fan;
+      const flight = BOW.flightBase + (toX - GIRL_X) * BOW.flightPerUnit;
+      this.arrows.push({ fromX: GIRL_X, toX, t: 0, flight, lane: 0.5, damage });
     }
-    this.cannonCd = CANNON.cooldown;
+    this.bowCd = BOW.interval;
+  }
+
+  private fireCannon(stage: number) {
+    const c = CHARGE.stages[stage];
+    const splash = c.splash * UP.blastSize ** this.levels.blastSize;
+    for (let i = 0; i < c.shells; i++) {
+      const off = (i - (c.shells - 1) / 2) * (CHARGE.spread / 1.5) + (this.rand() - 0.5) * CHARGE.spread;
+      this.shells.push({ fromX: GIRL_X, toX: this.aimX + off, t: -i * 0.08, lane: this.rand(), damage: c.damage, splash });
+    }
+    this.recover = CHARGE.recover;
+  }
+
+  // ── 強化（波の合間だけ） ──
+  upgradeCost(id: UpgradeId): number | undefined {
+    const costs = UPGRADES[id].costs;
+    return id === 'repair' ? costs[0] : costs[this.levels[id]];
+  }
+
+  canBuy(id: UpgradeId) {
+    const cost = this.upgradeCost(id);
+    if (this.phase !== 'shop' || cost === undefined || this.coins < cost) return false;
+    return id !== 'repair' || this.houseHp < HOUSE_HP;
+  }
+
+  buy(id: UpgradeId) {
+    if (!this.canBuy(id)) return false;
+    this.coins -= this.upgradeCost(id)!;
+    this.levels[id]++;
+    if (id === 'repair') this.houseHp = Math.min(HOUSE_HP, this.houseHp + UP.repair);
     return true;
   }
 
+  nextWave() {
+    if (this.phase !== 'shop' || this.result !== 'playing') return false;
+    this.startWave();
+    return true;
+  }
+
+  private startWave() {
+    this.spawners = WAVES[this.wave].map(([kind, count, interval, delay]) => ({ kind, left: count, interval, next: delay }));
+    this.phase = 'wave';
+  }
+
   canDog(kind: DogKind) {
-    return this.result === 'playing' && this.dogCd[kind] <= 0 && this.coins >= DOGS[kind].cost;
+    return this.result === 'playing' && this.phase === 'wave' && this.dogCd[kind] <= 0 && this.coins >= DOGS[kind].cost;
   }
 
   sendDog(kind: DogKind) {
@@ -104,10 +194,16 @@ export class Sim {
     this.fx = this.fx.filter((f) => f.t < 0.6);
     if (this.result !== 'playing') return;
     this.clock += dt;
-    this.coins += COIN_PER_SEC * dt;
     this.bowCd -= dt;
+    this.recover = Math.max(0, this.recover - dt);
+    if (this.pressing) this.pressT += dt;
+    if (this.phase !== 'wave') {
+      // 合間は時が止まる（待てば銭が貯まる、にはしない）
+      if (this.phase === 'lead' && (this.lead -= dt) <= 0) this.startWave();
+      return;
+    }
+    this.coins += COIN_PER_SEC * dt;
     this.knifeCd -= dt;
-    this.cannonCd = Math.max(0, this.cannonCd - dt);
     for (const k of Object.keys(this.dogCd) as DogKind[]) this.dogCd[k] = Math.max(0, this.dogCd[k] - dt);
 
     this.runWaves(dt);
@@ -117,6 +213,7 @@ export class Sim {
     this.flyArrows(dt);
     this.flyShells(dt);
     this.reap();
+    this.endWave();
 
     if (this.houseHp <= 0) {
       this.houseHp = 0;
@@ -125,13 +222,6 @@ export class Sim {
   }
 
   private runWaves(dt: number) {
-    if (this.wave >= WAVES.length) return;
-    if (!this.inWave) {
-      this.waveGap -= dt;
-      if (this.waveGap > 0) return;
-      this.spawners = WAVES[this.wave].map(([kind, count, interval, delay]) => ({ kind, left: count, interval, next: delay }));
-      this.inWave = true;
-    }
     for (const s of this.spawners) {
       s.next -= dt;
       while (s.left > 0 && s.next <= 0) {
@@ -142,12 +232,16 @@ export class Sim {
       }
     }
     this.spawners = this.spawners.filter((s) => s.left > 0);
-    if (this.spawners.length === 0 && this.wolves.length === 0) {
-      this.inWave = false;
-      this.waveGap = WAVE_GAP;
-      this.wave++;
-      if (this.wave >= WAVES.length) this.result = 'won'; // 狼絶滅
-    }
+  }
+
+  // 波を全滅させたら合間へ。最後の波なら狼絶滅
+  private endWave() {
+    if (this.spawners.length > 0 || this.wolves.length > 0) return;
+    this.wave++;
+    this.arrows = [];
+    this.shells = [];
+    if (this.wave >= WAVES.length) this.result = 'won';
+    else this.phase = 'shop';
   }
 
   private moveWolves(dt: number) {
@@ -189,20 +283,16 @@ export class Sim {
     }
   }
 
-  // 赤ずきん：近くはナイフで自動。弓は戦場を押しているあいだ照準へ射る
+  // 赤ずきん：近くはナイフで自動（弓と主砲は入力から）
   private girl() {
     if (this.knifeCd <= 0) {
-      const near = this.nearest(this.wolves.filter((w) => w.x - GIRL_X <= KNIFE.reach), GIRL_X);
+      const reach = KNIFE.reach + UP.knifeReach * this.levels.knifeReach;
+      const near = this.nearest(this.wolves.filter((w) => w.x - GIRL_X <= reach), GIRL_X);
       if (near) {
         this.hurt(near, KNIFE.damage);
         this.fx.push({ kind: 'slash', x: near.x, lane: near.lane, t: 0 });
         this.knifeCd = KNIFE.interval;
       }
-    }
-    if (this.bowHeld && this.bowCd <= 0 && this.aimX >= BOW.minX) {
-      const dist = this.aimX - GIRL_X;
-      this.arrows.push({ fromX: GIRL_X, toX: this.aimX, t: 0, flight: BOW.flightBase + dist * BOW.flightPerUnit, lane: 0.5 });
-      this.bowCd = BOW.interval;
     }
   }
 
@@ -212,7 +302,7 @@ export class Sim {
       if (a.t < 1) return true;
       const near = this.wolves.filter((w) => Math.abs(w.x - a.toX) <= BOW.hitRadius + w.size / 2);
       const t = this.nearest(near, a.toX);
-      if (t) this.hurt(t, BOW.damage * (1 - WOLVES[t.kind].arrowResist));
+      if (t) this.hurt(t, a.damage * (1 - WOLVES[t.kind].arrowResist));
       else this.fx.push({ kind: 'miss', x: a.toX, lane: a.lane, t: 0 });
       return false;
     });
@@ -220,10 +310,10 @@ export class Sim {
 
   private flyShells(dt: number) {
     this.shells = this.shells.filter((s) => {
-      s.t += dt / CANNON.flight;
+      s.t += dt / CHARGE.flight;
       if (s.t < 1) return true;
-      for (const w of this.wolves) if (Math.abs(w.x - s.toX) <= CANNON.splash + w.size / 2) this.hurt(w, CANNON.damage);
-      this.fx.push({ kind: 'blast', x: s.toX, lane: s.lane, t: 0 });
+      for (const w of this.wolves) if (Math.abs(w.x - s.toX) <= s.splash + w.size / 2) this.hurt(w, s.damage);
+      this.fx.push({ kind: 'blast', x: s.toX, lane: s.lane, t: 0, r: s.splash });
       return false;
     });
   }

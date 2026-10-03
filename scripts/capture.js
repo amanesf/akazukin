@@ -4,7 +4,8 @@
  * あわせて状態（銭・家の耐久・波・討伐数）を書き出す。
  *
  * 使い方: node scripts/capture.js [--at 5,20,40] [--speed 4] [--play 1] [--out shots]
- *   --play 1 : 素朴な自動操作（先頭の狼へ弓を射続ける・銭があれば番犬・主砲は撃てるとき撃つ）
+ *   --play 1 : 素朴な自動操作。先頭の狼の手前をタップ（弓）、5匹以上いれば長押しで主砲を2段まで溜めて撃つ、
+ *              銭があれば番犬、合間は決まった順に強化を買って次の波へ。上手い人より弱い（タップが遅い）
  * 先に app で npm run build すること。
  */
 import { chromium } from 'playwright';
@@ -46,16 +47,25 @@ await page.waitForFunction(() => document.body.classList.contains('ready'), null
 
 const state = () => page.evaluate(() => {
   const s = window.akazukin.sim;
-  return { clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
+  return { phase: s.phase, levels: Object.values(s.levels).join(''), clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
 });
 const autoplay = () => page.evaluate(() => {
   const s = window.akazukin.sim;
+  if (s.phase === 'shop') {
+    for (const id of ['bowCount', 'bowPower', 'chargeSpeed', 'blastSize', 'knifeReach']) while (s.buy(id));
+    if (s.houseHp < 400) s.buy('repair');
+    s.nextWave();
+    return;
+  }
   const lead = s.wolves.reduce((a, w) => (!a || w.x < a.x ? w : a), null);
-  // 矢は放物線で遅れて落ちるので、少し手前（狼の進む先）を狙う
-  if (lead) s.setAim(lead.x - 25);
-  s.bowHeld = !!lead;
+  if (s.pressing) {
+    if (lead) s.drag(lead.x);
+    if (s.chargeStage() >= 1 || !lead) s.release();
+  } else if (lead) {
+    if (s.wolves.length >= 5 && s.recover <= 0 && lead.x >= 340) s.press(lead.x);
+    else { s.press(lead.x - 25); s.release(); } // 矢は遅れて落ちるので少し手前
+  }
   for (const k of ['tosa', 'akita', 'shiba']) if (s.sendDog(k)) break;
-  s.fireCannon();
 });
 
 for (const [i, t] of AT.entries()) {

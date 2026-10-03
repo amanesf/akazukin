@@ -19,21 +19,18 @@ async function main() {
   await view.init(field);
   const panel = new Panel(document.getElementById('panel')!, () => sim);
 
-  // 戦場を押すと照準が動き、押しているあいだ弓をそこへ射続ける。主砲は下のボタンで照準へ
+  // 戦場をタップで弓、長押しで主砲のタメ（離すと撃つ）。押したまま指をずらすと狙いが動く
   const canvas = view.app.canvas;
-  const aimAt = (e: PointerEvent) => {
-    const r = canvas.getBoundingClientRect();
-    sim.setAim(view.toFieldX(e.clientX - r.left));
-  };
+  const fieldX = (e: PointerEvent) => view.toFieldX(e.clientX - canvas.getBoundingClientRect().left);
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
-    aimAt(e);
-    sim.bowHeld = true;
+    sim.press(fieldX(e));
   });
-  canvas.addEventListener('pointermove', (e) => {
-    if (sim.bowHeld) aimAt(e);
-  });
-  for (const ev of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(ev, () => (sim.bowHeld = false));
+  canvas.addEventListener('pointermove', (e) => sim.drag(fieldX(e)));
+  canvas.addEventListener('pointerup', () => sim.release());
+  canvas.addEventListener('pointercancel', () => (sim.pressing = false));
+  // 長押しでスマホの選択メニューが出ないように
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   let running = false;
   let shown = 'playing';
@@ -52,8 +49,8 @@ async function main() {
 
   show(
     `<h1>鋼桜奇譚<small>大正赤ずきん</small></h1>
-     <p>月の裂け目から狼が来る。おばあさんの家を守れ。</p>
-     <ul><li>戦場をタップ：そこへ弓を射る（押し続けると連射）</li><li>主砲ボタン：最後にタップした所へ一斉射</li><li>犬のボタン：番犬を出す</li></ul>`,
+     <p>月の裂け目から狼が来る。99日、おばあさんの家を守り抜け。</p>
+     <ul><li>戦場をタップ：そこへ弓を射る</li><li>戦場を長押し：主砲をタメる。離すと撃つ（長いほど多く）</li><li>犬のボタン：番犬を出す</li><li>夜ごとに狼が来る。昼のあいだに銭で武器を強くする</li></ul>`,
     'はじめる',
   );
   if (params.get('auto')) {
@@ -67,8 +64,8 @@ async function main() {
     panel.update();
     if (sim.result !== shown) {
       shown = sim.result;
-      if (sim.result === 'won') show(`<h1>狼絶滅</h1><p>${sim.kills} 匹を討った。</p>`, 'もう一度');
-      if (sim.result === 'lost') show(`<h1>家が落ちた</h1><p>${sim.wave + 1} 波目で力尽きた。</p>`, 'もう一度');
+      if (sim.result === 'won') show(`<h1>試作はここまで</h1><p>${sim.wave}晩を守り抜いた（${sim.kills} 匹）。<br>本番は99日目まで続く。</p>`, 'もう一度');
+      if (sim.result === 'lost') show(`<h1>家が落ちた</h1><p>${sim.wave + 1}日目の夜に力尽きた。</p>`, 'もう一度');
       running = false;
     }
   });

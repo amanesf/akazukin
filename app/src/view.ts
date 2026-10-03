@@ -1,10 +1,12 @@
 // 戦場の描画。いまは灰色の箱だけの仮の絵（plan.md §6：絵は生成した素材に差し替える）。
 import { Application, Graphics } from 'pixi.js';
-import { CANNON, FIELD_LENGTH, GIRL_X, HOUSE_X, WOLVES } from './config';
+import { CHARGE, FIELD_LENGTH, GIRL_X, HOUSE_X, WOLVES } from './config';
 import type { Sim, Unit } from './sim';
 
 const COLOR = {
   sky: 0x1a1218,
+  daySky: 0x6a8aa8, // 昼（合間）。絵が入るまでの仮の色
+  sun: 0xf0d890,
   moon: 0x8a2a2e,
   ground: 0x2c2422,
   groundLine: 0x4a3c36,
@@ -55,13 +57,15 @@ export class View {
     const Y = (lane: number) => ground + lane * depth;
     const u = this.h * 0.0032; // 体の大きさの倍率（横幅ではなく戦場の高さに合わせる）
 
-    // 空と月（月が裂けて狼が来る：決定済みのメインビジュアルの構図）
-    g.circle(this.w * 0.8, this.h * 0.2, this.h * 0.11).fill(COLOR.moon);
+    // 空。夜は赤い月（月が裂けて狼が来る：決定済みのメインビジュアルの構図）、昼（合間）は日
+    const day = sim.phase === 'shop';
+    g.rect(0, 0, this.w, this.h).fill(day ? COLOR.daySky : COLOR.sky);
+    g.circle(this.w * 0.8, this.h * 0.2, this.h * 0.11).fill(day ? COLOR.sun : COLOR.moon);
     g.rect(0, ground - 4, this.w, this.h - ground + 4).fill(COLOR.ground);
     g.rect(0, ground - 4, this.w, 2).fill(COLOR.groundLine);
 
     // 主砲の届かない近さ（上45度までしか起きない）
-    g.rect(X(0), ground - 4, X(CANNON.minRange) - X(0), depth + 8).fill({ color: COLOR.noCannon, alpha: 0.25 });
+    g.rect(X(0), ground - 4, X(CHARGE.minRange) - X(0), depth + 8).fill({ color: COLOR.noCannon, alpha: 0.25 });
 
     // おばあさんの家
     const hx = X(HOUSE_X);
@@ -74,6 +78,24 @@ export class View {
     const ax = X(sim.aimX);
     g.rect(ax - 1, this.h * 0.3, 2, ground + depth - this.h * 0.3).fill({ color: COLOR.aim, alpha: 0.35 });
     g.poly([ax - 9, this.h * 0.3 - 14, ax + 9, this.h * 0.3 - 14, ax, this.h * 0.3]).fill({ color: COLOR.aim, alpha: 0.8 });
+
+    // 主砲のタメ：照準の上に段の数だけ玉。届いた段は埋まり、次の段へは輪が伸びる。近すぎる所では灰色
+    if (sim.charging()) {
+      const st = sim.chargeStage();
+      const ok = sim.cannonInRange();
+      const col = ok ? COLOR.shell : 0x707070;
+      const n = CHARGE.stages.length;
+      const cy = this.h * 0.3 - 34;
+      for (let i = 0; i < n; i++) {
+        const cx = ax + (i - (n - 1) / 2) * 18;
+        g.circle(cx, cy, 6).stroke({ width: 2, color: col });
+        if (i <= st) g.circle(cx, cy, 5).fill(col);
+      }
+      if (st < n - 1) {
+        const p = sim.chargeProgress();
+        g.moveTo(ax, this.h * 0.3 - 27).arc(ax, this.h * 0.3 - 7, 20, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2).stroke({ width: 3, color: col });
+      }
+    }
 
     // 奥から手前へ
     type Item = { lane: number; draw: () => void };
@@ -99,7 +121,7 @@ export class View {
         g.rect(gx - b / 2, gy - b * 3, b, b * 3).fill(COLOR.girl);
         g.circle(gx, gy - b * 3.5, b * 0.55).fill(0x201818);
         // 背中の主砲（撃てるときは上45度に起きている）
-        const up = sim.canCannon();
+        const up = sim.recover <= 0;
         const r = b * 1.3;
         g.moveTo(gx - b * 0.2, gy - b * 2.6).lineTo(gx + (up ? r : -r * 0.8), gy - b * 2.6 - (up ? r : -r * 0.8)).stroke({ width: b * 0.3, color: 0x9a8a60 });
       },
@@ -131,7 +153,7 @@ export class View {
       const p = f.t / 0.6;
       const x = X(f.x);
       const y = Y(f.lane) - 14;
-      if (f.kind === 'blast') g.circle(x, y, CANNON.splash * k * (0.4 + p * 0.6)).fill({ color: COLOR.blast, alpha: 0.5 * (1 - p) });
+      if (f.kind === 'blast') g.circle(x, y, (f.r ?? 60) * k * (0.4 + p * 0.6)).fill({ color: COLOR.blast, alpha: 0.5 * (1 - p) });
       if (f.kind === 'poof') g.circle(x, y - p * 20, 8 + p * 16).fill({ color: 0xffffff, alpha: 0.5 * (1 - p) });
       if (f.kind === 'miss') g.moveTo(x - 4, y + 10).lineTo(x + 2, y).stroke({ width: 2, color: COLOR.arrow, alpha: 1 - p });
       if (f.kind === 'slash') g.moveTo(x - 12, y - 14).lineTo(x + 12, y + 8).stroke({ width: 2, color: 0xffffff, alpha: 1 - p });
