@@ -68,13 +68,15 @@ back = cv2.resize(back, (int(back.shape[1] * k), int(back.shape[0] * k)), interp
 frames['back'] = {'size': save('back', back), 'feet': feet(back)}
 
 # 拳（ナイフを差し込む所）と、ナイフの刃の向き（度。0＝真上、正＝時計回り＝前へ倒す）
-# 向きは、指が巻いている筒の向き（拳の穴の通る向き）に合わせる。腕の向きに沿わせると拳から刃が生えて見える（2026-10-04・アマネさん）
-# 3つ目の数は、握りを筒に沿って押し込む量（画素。負＝柄頭の側へ）。鍔が人差し指（逆手なら小指）にぴったり付く所
+# 向きは、指が巻いている筒の向き（拳の穴の通る向き）に合わせ、前腕にほぼ直角（手首で曲がるのは±20°まで）。
+# 腕の向きに沿わせると拳から刃が生えて見え、直角から大きく外すと手首が折れて見える（2026-10-04・アマネさん「傾きがイマイチ」）
+# 3つ目の数は、握りを筒に沿ってずらす量（画素。負＝柄頭の側へ）。鍔が人差し指（逆手なら小指）にぴったり付く所
 # 構え（idle）の座標は胴の枠（ref-p1）なので OX, OY を足す。元の解像度で試すには tools/grip-test.py
 fists = {
-    'idle': [([150 + OX, 122 + OY], 25, -35), ([478 + OX, 352 + OY], 10, -40)],
-    'up': [([195, 32], 80, -30), ([460, 498], -15, -30)],  # 振り上げた拳は手のひらがこちら向き：筒は横。小指の側から前へ（逆手）
-    'strike': [([632, 522], 20, -30), ([328, 434], 5, -30, 'front')],  # 突いた拳は下に筒の穴が見える：刃は上へ、柄頭が下から少し出る
+    # 前の手（上・前に出た拳）は順手で刃が上、後ろの手（下・胸の拳）は逆手で刃が下。後ろの手を順手にすると刃が自分の顔へ向く
+    'idle': [([150 + OX, 122 + OY], -35, -30), ([478 + OX, 352 + OY], 160, -3)],
+    'up': [([195, 32], 80, -30), ([460, 498], 160, -15)],  # 振り上げた拳は手のひらがこちら向き：筒は横。小指の側から前へ（逆手）
+    'strike': [([632, 522], 35, -30), ([328, 434], 175, -15, 'front')],  # 突いた拳は下に筒の穴が見える：刃は上へ、柄頭が下から少し出る
 }
 # 'front'：拳が胴の前にある（胴の裏に差すと刃ごと隠れる）。柄は拳が隠すことにして、鍔から先の刃だけを胴の前に描く
 for name, fs in fists.items():
@@ -86,7 +88,7 @@ for name, fs in fists.items():
         out.append({'at': grip, 'hand': at, 'deg': deg, **({'front': True} if front else {})})
     frames[name]['fists'] = out
 
-# ナイフと弓（装備の一覧から）。長さは主人公の背の高さに対する割合（ナイフは前腕より少し長い）
+# ナイフと弓（装備の一覧から。cams＝弓の握りから見た上下の滑車の位置。弓の絵の大きさの画素）。長さは主人公の背の高さに対する割合（ナイフは前腕より少し長い）
 p1h = height(p1)
 for name, frac, pivot in (('knife', 0.21, [0.5, 0.84]), ('bow', 0.55, [0.42, 0.5])):
     img = cv2.imread(f'assets/game/parts/gear/{name}.png', cv2.IMREAD_UNCHANGED)
@@ -96,6 +98,26 @@ for name, frac, pivot in (('knife', 0.21, [0.5, 0.84]), ('bow', 0.55, [0.42, 0.5
         rows = [y for y in range(img.shape[0] // 2, img.shape[0]) if (m := img[y, :, 3] > 128).any()
                 and (c := img[y][m][:, :3].mean(0))[2] > 1.8 * c[1] + 20]
         meta['guard'] = round(rows[0] / img.shape[0], 3)
+    if name == 'bow':
+        # 弦は試作で描く（引いた形・放した形）ので、絵の弦を消す：各行で、弓の腕より外の細い線（幅40画素まで。2本が重なる所がある）
+        h, w = img.shape[:2]
+        a = img[:, :, 3] > 40
+        for y in range(140, h - 140):
+            xs = np.flatnonzero(np.diff(np.r_[0, a[y].astype(np.int8), 0]))
+            runs = list(zip(xs[::2], xs[1::2]))
+            for x0, x1 in runs[1:]:
+                if x1 - x0 <= 40:
+                    img[y, x0:x1, 3] = 0
+        # 弦をかける滑車（上下の端の丸）の真ん中
+        def cam(y0, y1):
+            ys, xs = np.nonzero(img[y0:y1, w // 2:, 3] > 128)
+            return [xs.mean() + w // 2, ys.mean() + y0]
+        cams = [cam(0, 140), cam(h - 140, h)]
+        # 絵は弦が右。右向きの主人公が前の手で持つと弦は体の側（左）に来るので、左右反転する
+        img = cv2.flip(img, 1)
+        meta['pivot'] = pivot = [round(1 - pivot[0], 3), pivot[1]]
+        kk = frac * p1h / h
+        meta['cams'] = [[round((w - 1 - cx - pivot[0] * w) * kk, 1), round((cy - pivot[1] * h) * kk, 1)] for cx, cy in cams]
     kk = frac * p1h / img.shape[0]
     img = cv2.resize(img, (int(img.shape[1] * kk), int(img.shape[0] * kk)), interpolation=cv2.INTER_AREA)
     frames[name] = {'size': save(name, img), **meta}
