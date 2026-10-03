@@ -1,0 +1,8 @@
+Redraw 1枚目 = image 1 as it is: the same girl, pose, face, closed-mouth smile, clothes, bow, arrows, quiver, cannons, art style and plain pale background.
+
+Change only her back unit:
+- Keep the exact angular shape of each armor pod from image 1: faceted hard-edged armor plates, vents and panel lines, like 2枚目 = image 2.
+- Recolor the red armor plates to glossy black lacquer with gold maki-e vines; keep the brass parts brass. They stand apart from her red lacquer bow.
+- The top of each pod is closed with a flat angled armor plate. The only cannons are the two pairs of brass barrels pointing downward below the pods.
+- The sky above the pods and around her hood is the plain pale background.
+Her height 158cm. Camera 4m away at her chest height (アイレベル 1.1m), whole body in frame, the same framing as image 1.
