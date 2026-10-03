@@ -1,0 +1,9 @@
+1枚目 = image 1 is the design reference. Draw only her equipment as separate items on one flat light gray background, each item in side view facing right, with wide gray space between the items:
+
+1. The back cannon unit seen from her right side: one angular armor pod in glossy black lacquer with gold maki-e vines and brass trim, its two brass barrels pointing down, and the brass joint that mounts it on her shoulder.
+2. The red lacquer compound bow with gold vine patterns and brass pulley wheels at both tips, upright, with its string.
+3. The brass-trimmed quiver holding arrows with white feathers.
+4. A large hunting knife with a dark steel blade and a red cord-wrapped grip, blade pointing right.
+
+Same art style, line weight and colors as image 1. Even soft lighting, clean outlines, cel shading. Each item is drawn complete and whole.
+Item sizes match a girl of height 158cm. Camera 4m away at eye level (アイレベル 1.1m), every item fully in frame.
