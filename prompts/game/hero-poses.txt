@@ -1,0 +1,10 @@
+Sprite pose sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size and the same three-quarter angle facing left as in image 1, standing on the same baseline.
+
+In figures 1, 2 and 3 she is exactly as in image 1: same face, closed-mouth smile, hood, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, legs, boots, far arm hanging down, and the same stance. Only her near arm (the arm on the left side of image 1, with the closed fist) changes, the fist still closed:
+1. Wind-up: the arm raised high and back, the fist up behind her head, ready to strike forward.
+2. The arm stretched straight up above her head, the fist high.
+3. Follow-through: the arm swung down and forward, straight, the fist low in front of her at knee height, reaching to the left.
+4. Knocked down: she sits on the ground, one knee up, leaning back on one hand, eyes squeezed shut, same clothes.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.
