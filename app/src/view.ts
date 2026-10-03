@@ -2,6 +2,7 @@
 // 手応えの演出（ヒットストップは sim、ここでは画面の揺れ・ダメージ数字・斬撃の線）だけは先に入れる。
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { FIELD_LENGTH, HOUSE_X, WOLVES, type WolfKind } from './config';
+import { HeroRig } from './heroRig';
 import type { Sim, Unit } from './sim';
 
 const COLOR = {
@@ -50,12 +51,18 @@ export class View {
   private w = 0;
   private h = 0;
   heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
+  private rig = new HeroRig();
 
   async init(host: HTMLElement) {
     await this.app.init({ preference: 'webgl', resizeTo: host, background: COLOR.sky, antialias: true, resolution: Math.min(devicePixelRatio, 2), autoDensity: true });
     host.appendChild(this.app.canvas);
     this.app.stage.addChild(this.world);
     this.world.addChild(this.g);
+    // 赤ずきんの絵。読み込めなければ灰色の箱のまま遊べる
+    // 切り絵はまだ作りかけ（完璧にきれいになるまで出さない）。?rig=1 のときだけ使う
+    if (new URLSearchParams(location.search).get('rig')) {
+      this.rig.load().then(() => this.world.addChildAt(this.rig.root, 1)).catch((e) => console.warn('hero rig', e));
+    }
     for (let i = 0; i < 40; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 16, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
       t.anchor.set(0.5);
@@ -199,6 +206,16 @@ export class View {
     const b = 14 * u; // 体の幅
     let x = X(h.x);
     this.heroAt = { x, y: gy - b * 4.3 };
+    if (this.rig.ready) {
+      // 絵がある：切り絵を動かし、体力の棒だけ描く
+      this.rig.update(sim, x, gy, b * 4.4);
+      if (h.down > 0) return;
+      const hw = b * 2;
+      g.rect(x - hw / 2, gy - b * 4.8, hw, 4).fill(COLOR.hpBack);
+      g.rect(x - hw / 2, gy - b * 4.8, (hw * Math.max(0, h.hp)) / sim.maxHp, 4).fill(COLOR.heroHp);
+      this.heroAt = { x, y: gy - b * 4.9 };
+      return;
+    }
     if (h.down > 0) {
       // 倒れている：横になる
       g.rect(x - b * 1.5, gy - b * 0.8, b * 3, b * 0.8).fill({ color: COLOR.girl, alpha: 0.6 });
