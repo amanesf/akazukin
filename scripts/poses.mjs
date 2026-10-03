@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 const O=process.argv[2];
-const T={'.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'};
+const T={'.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.json':'application/json'};
 const srv=createServer(async(q,s)=>{let p=new URL(q.url,'http://x').pathname.replace(/^\/akazukin/,'');if(p==='/')p='/index.html';try{const b=await readFile(join(new URL('../app/dist/', import.meta.url).pathname,p));s.writeHead(200,{'content-type':T[extname(p)]||'text/html'});s.end(b)}catch{s.writeHead(404).end()}});
 await new Promise(r=>srv.listen(0,r));
 const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist']});

@@ -1,11 +1,11 @@
 // 赤ずきんの絵。ポーズの絵を技に合わせて差し替え、歩きだけ脚を切り絵で動かす（2026-10-03・アマネさん：
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
-import { Assets, Container, Sprite, type Texture } from 'pixi.js';
+import { Assets, Container, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Sim } from './sim';
 
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back';
-interface Fist { at: [number, number]; deg: number }
+interface Fist { at: [number, number]; hand: [number, number]; deg: number; front?: boolean } // at＝ナイフの握り、hand＝拳の真ん中
 interface FrameMeta {
   size: [number, number];
   feet: [number, number];
@@ -15,7 +15,7 @@ interface FrameMeta {
 interface Meta {
   scale: number;
   height: number;
-  frames: Record<FrameName, FrameMeta> & Record<'knife' | 'bow', { size: [number, number]; pivot: [number, number] }>;
+  frames: Record<FrameName, FrameMeta> & Record<'knife' | 'bow', { size: [number, number]; pivot: [number, number]; guard?: number }>;
 }
 
 const BASE = `${import.meta.env.BASE_URL}hero/`;
@@ -37,7 +37,7 @@ export class HeroRig {
   async load() {
     this.meta = await (await fetch(`${BASE}frames.json`)).json();
     const files = [...NAMES, 'legL', 'legR', 'knife', 'bow'];
-    const tex = (await Assets.load(files.map((n) => ({ alias: `hero-${n}`, src: `${BASE}${n}.png` })))) as Record<string, Texture>;
+    const tex = (await Assets.load(files.map((n) => ({ alias: `hero-${n}`, src: `${BASE}${n}.webp` })))) as Record<string, Texture>;
     const s = this.meta.scale;
     const sprite = (n: string) => {
       const sp = new Sprite(tex[`hero-${n}`]);
@@ -69,13 +69,21 @@ export class HeroRig {
         }
       }
       // 二刀流のナイフ（拳の後ろに差し込む。指が柄を隠す）。遠の構えでは突き出した手に弓
+      const front: Sprite[] = [];
       (m.fists ?? []).forEach((f, slot) => {
+        if (f.front) {
+          // 拳が胴の前：裏に差すと刃ごと隠れるので、鍔から先の刃だけを胴の前に描く（柄は拳が隠す）
+          const blade = this.blade();
+          blade.position.set(f.at[0], f.at[1]);
+          blade.rotation = f.deg * D;
+          front.push(blade);
+          return;
+        }
         const knife = gear('knife');
         const bow = gear('bow');
-        for (const g of [knife, bow]) {
-          g.position.set(f.at[0], f.at[1]);
-          c.addChild(g);
-        }
+        knife.position.set(f.at[0], f.at[1]);
+        bow.position.set(f.hand[0], f.hand[1]);
+        c.addChild(knife, bow);
         knife.rotation = f.deg * D;
         bow.visible = false;
         this.held.push({ frame: name, slot, knife, bow });
@@ -83,12 +91,24 @@ export class HeroRig {
       const body = sprite(name);
       c.addChild(body);
       this.sprites.push(body);
+      for (const b of front) c.addChild(b);
       c.visible = false;
       this.frames[name] = c;
       this.body.addChild(c);
     }
     this.root.addChild(this.body);
     this.ready = true;
+  }
+
+  // ナイフの鍔から先だけの絵。握る所（pivot）は同じなので、置き方は拳の後ろのナイフと同じ
+  private blade() {
+    const g = this.meta.frames.knife;
+    const t = Assets.get<Texture>('hero-knife');
+    const h = Math.round(t.height * (g.guard ?? 0.68));
+    const sp = new Sprite(new Texture({ source: t.source, frame: new Rectangle(t.frame.x, t.frame.y, t.width, h) }));
+    sp.anchor.set(g.pivot[0], (g.pivot[1] * t.height) / h);
+    sp.scale.set(g.size[0] / t.width);
+    return sp;
   }
 
   // 主人公の状態から絵と姿勢を決める。x, y は足もとの画面の座標、height は画面での背の高さ

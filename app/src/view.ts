@@ -210,10 +210,12 @@ export class View {
       // 絵がある：切り絵を動かし、体力の棒だけ描く
       this.rig.update(sim, x, gy, b * 4.4);
       if (h.down > 0) return;
+      // 頭上へ振り上げたナイフの先（跳んだときも）より上に置く。ポーズで上下させない
+      const top = gy - b * 5.7;
       const hw = b * 2;
-      g.rect(x - hw / 2, gy - b * 4.8, hw, 4).fill(COLOR.hpBack);
-      g.rect(x - hw / 2, gy - b * 4.8, (hw * Math.max(0, h.hp)) / sim.maxHp, 4).fill(COLOR.heroHp);
-      this.heroAt = { x, y: gy - b * 4.9 };
+      g.rect(x - hw / 2, top, hw, 4).fill(COLOR.hpBack);
+      g.rect(x - hw / 2, top, (hw * Math.max(0, h.hp)) / sim.maxHp, 4).fill(COLOR.heroHp);
+      this.heroAt = { x, y: top - b * 0.1 };
       return;
     }
     if (h.down > 0) {
