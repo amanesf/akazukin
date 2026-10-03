@@ -106,10 +106,18 @@ export class View {
     });
     items.sort((a, b) => a.lane - b.lane).forEach((i) => i.draw());
 
-    // 矢
+    // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
     for (const a of sim.arrows) {
-      const y = Y(a.lane) - 20;
-      g.moveTo(X(a.x) - 10, y).lineTo(X(a.x) + 4, y).stroke({ width: 2, color: COLOR.arrow });
+      const dx = (a.toX - a.fromX) * k;
+      const arc = dx * 0.35;
+      const y0 = Y(a.lane) - 14 * u;
+      const x = X(a.fromX) + dx * a.t;
+      const y = y0 - Math.sin(Math.PI * a.t) * arc + (14 * u - 10) * a.t;
+      const vx = dx;
+      const vy = -Math.cos(Math.PI * a.t) * Math.PI * arc;
+      const len = Math.hypot(vx, vy) || 1;
+      const L = 9 * u;
+      g.moveTo(x - (vx / len) * L, y - (vy / len) * L).lineTo(x, y).stroke({ width: 2.5, color: COLOR.arrow });
     }
     // 砲弾（放物線）
     for (const s of sim.shells) {
@@ -125,6 +133,7 @@ export class View {
       const y = Y(f.lane) - 14;
       if (f.kind === 'blast') g.circle(x, y, CANNON.splash * k * (0.4 + p * 0.6)).fill({ color: COLOR.blast, alpha: 0.5 * (1 - p) });
       if (f.kind === 'poof') g.circle(x, y - p * 20, 8 + p * 16).fill({ color: 0xffffff, alpha: 0.5 * (1 - p) });
+      if (f.kind === 'miss') g.moveTo(x - 4, y + 10).lineTo(x + 2, y).stroke({ width: 2, color: COLOR.arrow, alpha: 1 - p });
       if (f.kind === 'slash') g.moveTo(x - 12, y - 14).lineTo(x + 12, y + 8).stroke({ width: 2, color: 0xffffff, alpha: 1 - p });
     }
   }

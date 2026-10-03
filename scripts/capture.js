@@ -4,7 +4,7 @@
  * あわせて状態（銭・家の耐久・波・討伐数）を書き出す。
  *
  * 使い方: node scripts/capture.js [--at 5,20,40] [--speed 4] [--play 1] [--out shots]
- *   --play 1 : 素朴な自動操作（照準を先頭の狼へ・銭があれば番犬・主砲は撃てるとき撃つ）
+ *   --play 1 : 素朴な自動操作（先頭の狼へ弓を射続ける・銭があれば番犬・主砲は撃てるとき撃つ）
  * 先に app で npm run build すること。
  */
 import { chromium } from 'playwright';
@@ -51,7 +51,9 @@ const state = () => page.evaluate(() => {
 const autoplay = () => page.evaluate(() => {
   const s = window.akazukin.sim;
   const lead = s.wolves.reduce((a, w) => (!a || w.x < a.x ? w : a), null);
-  if (lead) s.setAim(lead.x + 60);
+  // 矢は放物線で遅れて落ちるので、少し手前（狼の進む先）を狙う
+  if (lead) s.setAim(lead.x - 25);
+  s.bowHeld = !!lead;
   for (const k of ['tosa', 'akita', 'shiba']) if (s.sendDog(k)) break;
   s.fireCannon();
 });

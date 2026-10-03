@@ -17,9 +17,9 @@ export interface Unit {
 }
 export interface Wolf extends Unit { kind: WolfKind; hasted: boolean }
 export interface Dog extends Unit { kind: DogKind }
-export interface Arrow { targetId: number; x: number; lane: number }
+export interface Arrow { fromX: number; toX: number; t: number; flight: number; lane: number }
 export interface Shell { fromX: number; toX: number; t: number; lane: number }
-export interface Fx { kind: 'blast' | 'poof' | 'slash'; x: number; lane: number; t: number }
+export interface Fx { kind: 'blast' | 'poof' | 'slash' | 'miss'; x: number; lane: number; t: number }
 
 export type Result = 'playing' | 'won' | 'lost';
 
@@ -43,6 +43,7 @@ export class Sim {
   fx: Fx[] = [];
 
   bowCd = 0;
+  bowHeld = false; // 戦場を押しているあいだ、照準へ弓を射続ける
   knifeCd = 0;
   cannonCd = 0;
   dogCd: Record<DogKind, number> = { shiba: 0, akita: 0, tosa: 0 };
@@ -188,7 +189,7 @@ export class Sim {
     }
   }
 
-  // 赤ずきん：近くはナイフ、中は弓。照準の近くの狼を優先する
+  // 赤ずきん：近くはナイフで自動。弓は戦場を押しているあいだ照準へ射る
   private girl() {
     if (this.knifeCd <= 0) {
       const near = this.nearest(this.wolves.filter((w) => w.x - GIRL_X <= KNIFE.reach), GIRL_X);
@@ -198,25 +199,21 @@ export class Sim {
         this.knifeCd = KNIFE.interval;
       }
     }
-    if (this.bowCd <= 0) {
-      const inRange = this.wolves.filter((w) => w.x - GIRL_X <= BOW.range && w.x - GIRL_X > KNIFE.reach * 0.5);
-      const aimed = inRange.filter((w) => Math.abs(w.x - this.aimX) <= BOW.aimRadius);
-      const target = this.nearest(aimed.length ? aimed : inRange, aimed.length ? this.aimX : GIRL_X);
-      if (target) {
-        this.arrows.push({ targetId: target.id, x: GIRL_X, lane: target.lane });
-        this.bowCd = BOW.interval;
-      }
+    if (this.bowHeld && this.bowCd <= 0 && this.aimX >= BOW.minX) {
+      const dist = this.aimX - GIRL_X;
+      this.arrows.push({ fromX: GIRL_X, toX: this.aimX, t: 0, flight: BOW.flightBase + dist * BOW.flightPerUnit, lane: 0.5 });
+      this.bowCd = BOW.interval;
     }
   }
 
   private flyArrows(dt: number) {
     this.arrows = this.arrows.filter((a) => {
-      const t = this.wolves.find((w) => w.id === a.targetId);
-      if (!t) return false;
-      a.x += BOW.speed * dt;
-      a.lane += (t.lane - a.lane) * 0.2;
-      if (a.x < t.x) return true;
-      this.hurt(t, BOW.damage * (1 - WOLVES[t.kind].arrowResist));
+      a.t += dt / a.flight;
+      if (a.t < 1) return true;
+      const near = this.wolves.filter((w) => Math.abs(w.x - a.toX) <= BOW.hitRadius + w.size / 2);
+      const t = this.nearest(near, a.toX);
+      if (t) this.hurt(t, BOW.damage * (1 - WOLVES[t.kind].arrowResist));
+      else this.fx.push({ kind: 'miss', x: a.toX, lane: a.lane, t: 0 });
       return false;
     });
   }

@@ -6,8 +6,7 @@ export class Panel {
   private coins: HTMLElement;
   private house: HTMLElement;
   private wave: HTMLElement;
-  private cannon: HTMLElement;
-  private cannonLabel: HTMLElement;
+  private cannon: HTMLButtonElement;
   private dogs: [DogKind, HTMLButtonElement][] = [];
 
   private sim: () => Sim;
@@ -21,13 +20,13 @@ export class Panel {
         <span class="wave"></span>
       </div>
       <div class="dogs"></div>
-      <div class="cannon">主砲<small></small></div>
+      <button class="cannon">主砲<small>照準へ一斉射</small></button>
     `;
     this.coins = host.querySelector('.coins')!;
     this.house = host.querySelector('.house i')!;
     this.wave = host.querySelector('.wave')!;
     this.cannon = host.querySelector('.cannon')!;
-    this.cannonLabel = this.cannon.querySelector('small')!;
+    this.cannon.addEventListener('pointerdown', () => this.sim().fireCannon());
     const dogs = host.querySelector('.dogs')!;
     for (const kind of Object.keys(DOGS) as DogKind[]) {
       const b = document.createElement('button');
@@ -44,10 +43,7 @@ export class Panel {
     this.coins.textContent = `${Math.floor(s.coins)} 銭`;
     this.house.style.width = `${(100 * s.houseHp) / HOUSE_HP}%`;
     this.wave.textContent = `${Math.min(s.wave + 1, WAVES.length)} / ${WAVES.length} 波`;
-    // 主砲は戦場のタップで撃つ。ここは装填の具合を見せるだけ
-    const ready = s.cannonCd <= 0;
-    this.cannon.classList.toggle('ready', ready);
-    this.cannonLabel.textContent = ready ? '装填完了・戦場をタップで一斉射' : '装填中';
+    this.cannon.disabled = !s.canCannon();
     this.cannon.style.setProperty('--cd', String(s.cannonCd / CANNON.cooldown));
     for (const [kind, b] of this.dogs) {
       b.disabled = !s.canDog(kind);

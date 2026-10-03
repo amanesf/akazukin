@@ -19,12 +19,21 @@ async function main() {
   await view.init(field);
   const panel = new Panel(document.getElementById('panel')!, () => sim);
 
-  // 戦場をタップすると照準が動き、主砲が撃てるならそこへ一斉射する
-  view.app.canvas.addEventListener('pointerdown', (e) => {
-    const r = view.app.canvas.getBoundingClientRect();
+  // 戦場を押すと照準が動き、押しているあいだ弓をそこへ射続ける。主砲は下のボタンで照準へ
+  const canvas = view.app.canvas;
+  const aimAt = (e: PointerEvent) => {
+    const r = canvas.getBoundingClientRect();
     sim.setAim(view.toFieldX(e.clientX - r.left));
-    sim.fireCannon();
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    aimAt(e);
+    sim.bowHeld = true;
   });
+  canvas.addEventListener('pointermove', (e) => {
+    if (sim.bowHeld) aimAt(e);
+  });
+  for (const ev of ['pointerup', 'pointercancel'] as const) canvas.addEventListener(ev, () => (sim.bowHeld = false));
 
   let running = false;
   let shown = 'playing';
@@ -44,7 +53,7 @@ async function main() {
   show(
     `<h1>鋼桜奇譚<small>大正赤ずきん</small></h1>
      <p>月の裂け目から狼が来る。おばあさんの家を守れ。</p>
-     <ul><li>戦場をタップ：照準を置く（弓が近くを狙う）。主砲が撃てるときは、そこへ一斉射</li><li>下のボタン：番犬を出す</li></ul>`,
+     <ul><li>戦場をタップ：そこへ弓を射る（押し続けると連射）</li><li>主砲ボタン：最後にタップした所へ一斉射</li><li>犬のボタン：番犬を出す</li></ul>`,
     'はじめる',
   );
   if (params.get('auto')) {

@@ -16,16 +16,17 @@ export const COIN_START = 100;
 export const COIN_PER_SEC = 14;
 export const WAVE_GAP = 5; // ウェーブの合間（秒）
 
-// 武器の距離の割り当て（案）：近＝ナイフ（自動）／中＝弓（照準の近くを自動で狙う）／遠＝主砲（ボタン）
+// 武器：近＝ナイフ（自動）／弓＝戦場のタップ（押し続けると連射）／主砲＝ボタン（照準へ）
 export const KNIFE = { reach: 150, damage: 14, interval: 0.45 };
-export const BOW = { range: 700, damage: 12, interval: 0.55, speed: 900, aimRadius: 140 };
+// 弓は放物線で、タップした所に落ちる。落ちた所の近くの狼1匹に当たる（外れもある）
+export const BOW = { damage: 15, interval: 0.4, hitRadius: 30, flightBase: 0.3, flightPerUnit: 0.0005, minX: 110 };
 export const CANNON = {
   minRange: 320, // 上45度までしか起きないので、近すぎる所は撃てない
   shells: 4,
-  damage: 45,
+  damage: 25, // 頻度を倍にしたかわりに落とした（2026-10-03・アマネさん）
   splash: 75,
   flight: 0.9,
-  cooldown: 9,
+  cooldown: 4.5,
   spread: 40,
 };
 export const AIM_MIN = 160;
