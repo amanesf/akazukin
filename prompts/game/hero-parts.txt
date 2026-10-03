@@ -1,0 +1,12 @@
+Game sprite parts sheet for cutout (paper doll) animation of the girl in 1枚目 = image 1. She faces left in exact side view, exactly as in image 1: same face, blue eyes, hood, braids, clothes, colors, art style and line weight.
+
+Draw these 7 separate parts on one flat light gray background, all at the same scale, as parts of one girl whose full height would be 85% of the sheet height. Each part stands alone with wide gray space around it:
+1. Torso: from the shoulders down to the skirt hem, with the gray fur hood cape over her shoulders and back, the white blouse front, the brown belts with two small wolf heads, the gray wolf tail and the long dark-red skirt with lace hem. At the shoulder the blouse side is complete where the arm attaches; at the top the collar is complete where the neck attaches.
+2. Head: her head inside the hood with the wolf ears and the black braids, plus her neck down to the collar.
+3. Near arm (her right arm): the whole puffed white sleeve from a rounded shoulder cap down to the frilled cuff, arm straight down, the hand closed in a loose fist as if holding a handle.
+4. Far arm (her left arm): the same sleeve, arm straight down, the hand relaxed and open.
+5. Near leg and 6. far leg: each leg on its own, from the top of the thigh in black tights down to the red lace-up heeled boot, standing straight.
+7. The back cannon pod from 2枚目 = image 2 in exact side profile, facing left: black lacquer armor with gold vines and brass trim, the two brass barrels pointing straight down, the brass shoulder mount joint at the top.
+
+Even soft lighting, clean outlines, cel shading, every part complete and whole.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), every part fully in frame.
