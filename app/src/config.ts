@@ -16,8 +16,8 @@ export const COIN_START = 100;
 export const COIN_PER_SEC = 14;
 export const FIRST_WAVE_DELAY = 2; // 最初の波までの間（秒）。2波目からは「次の波」ボタンで始める
 
-// ── 主人公（無双風・2026-10-03・アマネさん）──
-// 戦場を動き回り、攻撃は自動。プレイヤーは構え（近／遠）を切り替え、ゲージが溜まったら無双乱舞
+// ── 主人公（動き回る乱戦アクション・2026-10-03・アマネさん）──
+// 戦場を動き回り、攻撃は自動。プレイヤーは構え（近／遠）を切り替え、ゲージが溜まったら桜嵐
 export const HERO = {
   hp: 220,
   size: 26,
@@ -26,6 +26,7 @@ export const HERO = {
   maxX: FIELD_LENGTH * 0.5, // 主人公は画面の中央まで（2026-10-03・アマネさん「端っこに行くとさみしい」）
   reviveTime: 4, // 倒れたら家の前で立ち上がるまで
   hitStunTime: 0.25,
+  holdTime: 3, // タップした所で踏みとどまる秒数
 };
 
 // 狼の体の動き：弾く（横の勢い）・打ち上げる（上の勢い）・叩き落とす（下へ叩きつけて跳ねる）
@@ -65,7 +66,7 @@ export const MOVES: Record<MoveId, MoveSpec> = {
 };
 export const BOW_FLIGHT = { base: 0.3, perUnit: 0.0005, hitRadius: 26 };
 export const MOVE_CD = { kaiten: 3, tosshin: 2.5, ame: 5, hougeki: 7 };
-export const MUSOU = { time: 3, tick: 0.15, damage: 22, reach: 130, final: 90, finalArea: 380, gain: { hit: 1.6, hurt: 0.6 } };
+export const OURAN = { time: 3, tick: 0.15, damage: 22, reach: 130, final: 90, finalArea: 380, gain: { hit: 1.6, hurt: 0.6 } };
 export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る
 
 // ── 昼に買うもの：体力・近接・遠隔の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」
@@ -121,6 +122,8 @@ export const COMBO_BASE = 4; // 斬り・斬り・斬り上げ・叩き落とし
 export const AIM_MIN = 160;
 export const AIM_MAX = FIELD_LENGTH - 20;
 
+export const DOG_BLOCK = 2; // 番犬1匹が足止めできる狼の数
+export const DOG_MAX = 5; // 番犬は同時にこれまで（並べるほど狼が止まって簡単すぎた。計測で実測）
 export type DogKind = 'shiba' | 'akita' | 'tosa';
 export interface DogSpec {
   name: string;
@@ -164,16 +167,5 @@ export const SHOCKWAVE = { range: 460, interval: 3.2, speed: 260, damage: 12 };
 export const POUNCE = { range: 130, interval: 2.5, lift: 380, speed: 320, damage: 8 };
 
 // 1波＝1晩。波の合間は昼。99日生き残れば完全クリア＝狼絶滅（2026-10-03・アマネさん）。
-// 試作は WAVES の数（6晩）で終わる。99晩ぶんの組み方は plan.md §5
+// 晩は手で並べず、晩ごとの「狼の予算」で組む（nights.ts。plan.md §5）
 export const DAYS_TO_CLEAR = 99;
-
-// 波（晩）：[種類, 数, 間隔（秒）, 開始の遅れ（秒）]
-export type SpawnLine = [WolfKind, number, number, number];
-export const WAVES: SpawnLine[][] = [
-  [['pup', 6, 1.4, 0]],
-  [['pup', 8, 1.0, 0], ['wolf', 3, 3, 4]],
-  [['wolf', 6, 2, 0], ['pup', 10, 0.8, 2]],
-  [['armored', 2, 6, 0], ['wolf', 6, 1.6, 3], ['howler', 1, 1, 8]],
-  [['pup', 16, 0.5, 0], ['armored', 3, 5, 4], ['howler', 2, 6, 6]],
-  [['alpha', 1, 1, 6], ['wolf', 10, 1.5, 0], ['armored', 3, 5, 10]],
-];

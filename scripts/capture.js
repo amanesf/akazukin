@@ -4,7 +4,7 @@
  * あわせて状態（銭・家の耐久・波・討伐数）を書き出す。
  *
  * 使い方: node scripts/capture.js [--at 5,20,40] [--speed 4] [--play 1] [--out shots]
- *   --play 1 : 素朴な自動操作。構えは「近」、体力が3割を切ったら「遠」。無双乱舞は溜まったら押す。
+ *   --play 1 : 素朴な自動操作。構えは「近」、体力が3割を切ったら「遠」。桜嵐は溜まったら押す。
  *              銭があれば番犬、昼は近接→体力→近接→遠隔の順に1段ずつ買って次の晩へ
  * 先に app で npm run build すること。
  */
@@ -57,7 +57,7 @@ const autoplay = () => page.evaluate(() => {
     return;
   }
   s.setStance(s.hero.hp < s.maxHp * 0.3 ? 'far' : 'near');
-  s.musou();
+  s.ouran();
   for (const k of ['tosa', 'akita', 'shiba']) if (s.sendDog(k)) break;
 });
 

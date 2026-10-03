@@ -1,6 +1,6 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は番犬・構え・無双乱舞、昼（波の合間）は体力・近接・遠隔の強化と「夜を迎える」に入れ替わる。
-import { DAWN_REPAIR, DAYS_TO_CLEAR, DOGS, HOUSE_HP, TRACKS, WAVES, type DogKind, type Track } from './config';
+// 夜（戦闘中）は番犬・構え・桜嵐、昼（波の合間）は体力・近接・遠隔の強化と「夜を迎える」に入れ替わる。
+import { DAWN_REPAIR, DAYS_TO_CLEAR, DOGS, HOUSE_HP, TRACKS, type DogKind, type Track } from './config';
 import type { Sim, Stance } from './sim';
 
 export class Panel {
@@ -9,7 +9,7 @@ export class Panel {
   private wave: HTMLElement;
   private battle: HTMLElement;
   private shop: HTMLElement;
-  private musou: HTMLButtonElement;
+  private ouran: HTMLButtonElement;
   private stances: [Stance, HTMLButtonElement][] = [];
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [Track, HTMLButtonElement][] = [];
@@ -30,7 +30,7 @@ export class Panel {
             <button data-s="near">近<small>踏み込む</small></button>
             <button data-s="far">遠<small>下がる</small></button>
           </div>
-          <button class="musou">無双乱舞<small></small></button>
+          <button class="ouran">桜嵐<small></small></button>
         </div>
       </div>
       <div class="shop" hidden>
@@ -45,8 +45,8 @@ export class Panel {
     this.wave = q('.wave');
     this.battle = q('.battle');
     this.shop = q('.shop');
-    this.musou = q('.musou');
-    this.musou.addEventListener('pointerdown', () => this.sim().musou());
+    this.ouran = q('.ouran');
+    this.ouran.addEventListener('pointerdown', () => this.sim().ouran());
     q('.next').addEventListener('click', () => this.sim().nextWave());
     host.querySelectorAll<HTMLButtonElement>('.stance button').forEach((b) => {
       const s = b.dataset.s as Stance;
@@ -75,7 +75,7 @@ export class Panel {
     const s = this.sim();
     this.coins.textContent = `${Math.floor(s.coins)} 銭`;
     this.house.style.width = `${(100 * s.houseHp) / HOUSE_HP}%`;
-    const day = Math.min(s.wave + 1, WAVES.length);
+    const day = Math.min(s.wave + 1, DAYS_TO_CLEAR);
     this.wave.textContent = `${day}日目・${s.phase === 'shop' ? '昼' : '夜'}　/ ${DAYS_TO_CLEAR}日`;
     const shop = s.phase === 'shop';
     this.battle.hidden = shop;
@@ -92,10 +92,10 @@ export class Panel {
       return;
     }
     for (const [st, b] of this.stances) b.classList.toggle('on', s.stance === st);
-    this.musou.disabled = !s.canMusou();
-    this.musou.classList.toggle('ready', s.canMusou());
-    this.musou.style.setProperty('--fill', String(s.gauge / 100));
-    this.musou.querySelector('small')!.textContent = s.hero.musou > 0 ? '乱舞中' : s.gauge >= 100 ? '押せ！' : `${Math.floor(s.gauge)}%`;
+    this.ouran.disabled = !s.canOuran();
+    this.ouran.classList.toggle('ready', s.canOuran());
+    this.ouran.style.setProperty('--fill', String(s.gauge / 100));
+    this.ouran.querySelector('small')!.textContent = s.hero.ouran > 0 ? '乱舞中' : s.gauge >= 100 ? '押せ！' : `${Math.floor(s.gauge)}%`;
     for (const [kind, b] of this.dogs) {
       b.disabled = !s.canDog(kind);
       b.style.setProperty('--cd', String(s.dogCd[kind] / DOGS[kind].cooldown));

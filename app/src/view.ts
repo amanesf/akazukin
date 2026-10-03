@@ -1,7 +1,7 @@
 // 戦場の描画。いまは灰色の箱だけの仮の絵（plan.md §6：絵は生成した素材に差し替える）。
 // 手応えの演出（ヒットストップは sim、ここでは画面の揺れ・ダメージ数字・斬撃の線）だけは先に入れる。
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { FIELD_LENGTH, HOUSE_X, WOLVES } from './config';
+import { FIELD_LENGTH, HOUSE_X, WOLVES, type WolfKind } from './config';
 import type { Sim, Unit } from './sim';
 
 const COLOR = {
@@ -33,6 +33,15 @@ const COLOR = {
   shock: 0x9ab0ff,
 };
 
+// 狼の仮の色（予告の印にも使う）
+export const WOLF_COLOR: Record<WolfKind, number> = {
+  pup: 0x6a6a74,
+  wolf: 0x6a6a74,
+  armored: 0x8a8a96,
+  howler: 0x5a6a8a,
+  alpha: 0x4a4a52,
+};
+
 export class View {
   app = new Application();
   private world = new Container(); // 揺らすのはこちら
@@ -54,6 +63,11 @@ export class View {
       this.world.addChild(t);
       this.nums.push(t);
     }
+  }
+
+  // 画面の横位置 → 間合い
+  toFieldX(px: number) {
+    return ((px - this.pad()) / (this.w - this.pad() * 2)) * FIELD_LENGTH;
   }
 
   draw(sim: Sim) {
@@ -86,12 +100,20 @@ export class View {
     g.poly([hx - hw - 6, ground - hw * 1.1, hx + 6, ground - hw * 1.1, hx - hw / 2, ground - hw * 1.7]).fill(COLOR.roof);
     g.rect(hx - hw * 0.65, ground - hw * 0.8, hw * 0.3, hw * 0.3).fill(COLOR.window);
 
+    // タップした所の印（近：向かう先／遠：撃つ位置）
+    const mark = sim.phase === 'wave' ? (sim.stance === 'far' ? sim.hero.farX : sim.hero.order) : null;
+    if (mark !== null) {
+      const mx = X(mark);
+      g.moveTo(mx, ground + depth * 0.5).lineTo(mx, ground - 26).stroke({ width: 2, color: 0xffffff, alpha: 0.6 });
+      g.poly([mx, ground - 26, mx + 14, ground - 21, mx, ground - 16]).fill({ color: COLOR.girl, alpha: 0.9 });
+    }
+
     // 奥から手前へ
     type Item = { lane: number; draw: () => void };
     const items: Item[] = [];
     for (const d of sim.dogs) items.push({ lane: d.lane, draw: () => this.body(g, X(d.x), Y(d.lane), d, u, COLOR.dog, 0.7) });
     for (const w of sim.wolves) {
-      const c = w.kind === 'armored' ? COLOR.armored : w.kind === 'howler' ? COLOR.howler : w.kind === 'alpha' ? COLOR.alpha : COLOR.wolf;
+      const c = WOLF_COLOR[w.kind];
       items.push({
         lane: w.lane,
         draw: () => {
@@ -186,11 +208,11 @@ export class View {
     const m = h.move;
     if (m && m !== 'bow' && m !== 'ame' && m !== 'hougeki') x += h.facing * Math.sin(Math.min(1, h.moveT / 0.15) * Math.PI) * b * 0.5;
     const lift = m === 'launch' || m === 'air' ? b * 0.6 : 0;
-    const col = h.musou > 0 ? (Math.floor(sim.clock * 20) % 2 ? 0xffe060 : 0xff6040) : h.hitFlash > 0 ? 0xffffff : COLOR.girl;
+    const col = h.ouran > 0 ? (Math.floor(sim.clock * 20) % 2 ? 0xffe060 : 0xff6040) : h.hitFlash > 0 ? 0xffffff : COLOR.girl;
     g.rect(x - b / 2, gy - b * 3 - lift, b, b * 3).fill(col);
     g.circle(x, gy - b * 3.5 - lift, b * 0.55).fill(COLOR.hair);
     // 背中の主砲：撃つ技のときだけ前上へ起きる
-    const up = m === 'shiki' || m === 'hougeki' || h.musou > 0;
+    const up = m === 'shiki' || m === 'hougeki' || h.ouran > 0;
     const r = b * 1.3;
     const bx = x - h.facing * b * 0.2;
     g.moveTo(bx, gy - b * 2.6 - lift).lineTo(bx + h.facing * (up ? r : -r * 0.8), gy - b * 2.6 - lift - (up ? r : -r * 0.8)).stroke({ width: b * 0.3, color: COLOR.brass });

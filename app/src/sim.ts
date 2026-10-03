@@ -1,11 +1,12 @@
 // 戦いの中身。描画を知らない。固定ステップで進め、同じ入力なら同じ結果になる。
-// 主人公は自動で動いて戦う（無双風）。プレイヤーが決めるのは構え・無双乱舞・番犬だけ。
+// 主人公は自動で動いて戦う（乱戦アクション）。プレイヤーが決めるのは構え・桜嵐・番犬だけ。
 import {
-  BODY, BOW_FLIGHT, COIN_PER_SEC, COIN_START, COMBO_BASE, COMBO_RESET, DOG_HOLD_X, DOG_SPAWN_X, DOGS,
-  FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, MOVE_CD, MOVES, MUSOU, POUNCE, SHOCKWAVE, STEP,
-  DAWN_REPAIR, TRACK_COSTS, TRACKS, WAVES, WOLF_SPAWN_X, WOLVES,
+  BODY, BOW_FLIGHT, DOG_BLOCK, DOG_MAX, COIN_PER_SEC, COIN_START, COMBO_BASE, COMBO_RESET, DOG_HOLD_X, DOG_SPAWN_X, DOGS,
+  FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, MOVE_CD, MOVES, OURAN, POUNCE, SHOCKWAVE, STEP,
+  DAWN_REPAIR, DAYS_TO_CLEAR, TRACK_COSTS, TRACKS, WOLF_SPAWN_X, WOLVES,
   type DogKind, type MoveId, type Perk, type SkillId, type Track, type WolfKind,
 } from './config';
+import { hpScale, night, SURGE_WARN } from './nights';
 
 export interface Unit {
   id: number;
@@ -41,9 +42,12 @@ export type Result = 'playing' | 'won' | 'lost';
 export type Phase = 'lead' | 'wave' | 'shop';
 export type Stance = 'near' | 'far';
 // 画面の演出と主人公の吹き出しのための出来事（main が受け取って消す）
-export type Event = 'night' | 'finisher' | 'musou' | 'hurt' | 'down' | 'revive' | 'dawn';
+export type Sound = 'swing' | 'hit' | 'heavy' | 'slam' | 'boom' | 'bow' | 'hurt' | 'ouran' | 'horn' | 'buy';
+export type Event = 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge';
 
-interface Spawner { kind: WolfKind; left: number; interval: number; next: number }
+export interface Save { v: 1; wave: number; coins: number; houseHp: number; levels: Record<Track, number>; kills: number; bestCombo: number }
+
+interface Spawner { kind: WolfKind; left: number; interval: number; next: number; surge: boolean; warned: boolean }
 
 export interface Hero {
   x: number;
@@ -56,16 +60,19 @@ export interface Hero {
   down: number; // 倒れている残り秒数
   stun: number;
   hitFlash: number;
-  musou: number; // 無双乱舞の残り秒数
-  musouTick: number;
+  ouran: number; // 桜嵐の残り秒数
+  ouranTick: number;
   facing: 1 | -1;
+  order: number | null; // 戦場をタップした所。近ではそこへ走って少し踏みとどまる
+  orderT: number;
+  farX: number; // 遠の構えで撃つ位置（タップで変わる）
 }
 
 export class Sim {
   clock = 0;
   coins = COIN_START;
   houseHp = HOUSE_HP;
-  wave = 0; // 0 始まり。WAVES.length に達したら試作はおしまい
+  wave = 0; // 0 始まり（何晩を越えたか）。DAYS_TO_CLEAR に達したら狼絶滅
   lead = FIRST_WAVE_DELAY;
   phase: Phase = 'lead';
   result: Result = 'playing';
@@ -74,15 +81,16 @@ export class Sim {
   stance: Stance = 'near';
   hero: Hero = {
     x: GIRL_X + 40, hp: HERO.hp, move: null, moveT: 0, moveTarget: 0, dashTo: 0, step: 0,
-    down: 0, stun: 0, hitFlash: 0, musou: 0, musouTick: 0, facing: 1,
+    down: 0, stun: 0, hitFlash: 0, ouran: 0, ouranTick: 0, facing: 1, order: null, orderT: 0, farX: HERO.farX,
   };
-  gauge = 0; // 無双ゲージ（0〜100）
+  gauge = 0; // 桜嵐のゲージ（0〜100）
   combo = 0;
   bestCombo = 0;
   sinceHit = 99;
   hitStop = 0;
   shake = 0;
   events: Event[] = [];
+  sounds: Sound[] = []; // 効果音（main が受け取って鳴らす）
 
   wolves: Wolf[] = [];
   dogs: Dog[] = [];
@@ -103,12 +111,34 @@ export class Sim {
     this.seed = seed;
   }
 
+  // 保存は夜明け（昼の始まり）だけ。家が落ちたら消して1日目から（決定）
+  save(): Save {
+    return { v: 1, wave: this.wave, coins: Math.floor(this.coins), houseHp: this.houseHp, levels: { ...this.levels }, kills: this.kills, bestCombo: this.bestCombo };
+  }
+
+  static load(d: Save, seed: number) {
+    const s = new Sim(seed);
+    s.wave = d.wave;
+    s.coins = d.coins;
+    s.houseHp = d.houseHp;
+    s.levels = { ...s.levels, ...d.levels };
+    s.kills = d.kills;
+    s.bestCombo = d.bestCombo;
+    s.phase = 'shop';
+    s.hero.hp = s.maxHp;
+    return s;
+  }
+
   // 3本の段から、いま効いているものを数える
   private perks(t: Track): Perk[] {
     return TRACKS[t].perks.slice(0, this.levels[t]);
   }
   private sum(t: Track, key: 'hp' | 'combo' | 'power' | 'rate') {
     return this.perks(t).reduce((n, p) => n + (p[key] ?? 0), 0);
+  }
+  // 狼の噛む力も晩ごとに少しずつ強くなる（体力の伸びと同じ割合）
+  private get bite() {
+    return hpScale(this.wave + 1);
   }
   get maxHp() {
     return HERO.hp + this.sum('body', 'hp');
@@ -129,25 +159,38 @@ export class Sim {
   // ── 入力 ──
   setStance(s: Stance) {
     this.stance = s;
+    this.hero.order = null;
   }
 
-  canMusou() {
-    return this.phase === 'wave' && this.gauge >= 100 && this.hero.down <= 0 && this.hero.musou <= 0;
+  // 戦場のタップ：近ならそこへ走って3秒踏みとどまる。遠ならそこが撃つ位置になる
+  moveTo(x: number) {
+    const h = this.hero;
+    const to = Math.min(HERO.maxX, Math.max(GIRL_X, x));
+    if (this.stance === 'far') h.farX = to;
+    else {
+      h.order = to;
+      h.orderT = HERO.holdTime;
+    }
   }
 
-  musou() {
-    if (!this.canMusou()) return false;
+  canOuran() {
+    return this.phase === 'wave' && this.gauge >= 100 && this.hero.down <= 0 && this.hero.ouran <= 0;
+  }
+
+  ouran() {
+    if (!this.canOuran()) return false;
     this.gauge = 0;
-    this.hero.musou = MUSOU.time;
-    this.hero.musouTick = 0.35; // カットインのぶん少し待つ
+    this.hero.ouran = OURAN.time;
+    this.hero.ouranTick = 0.35; // カットインのぶん少し待つ
     this.hero.move = null;
     this.hitStop = 0.35;
-    this.events.push('musou');
+    this.events.push('ouran');
+    this.sounds.push('ouran');
     return true;
   }
 
   canDog(kind: DogKind) {
-    return this.result === 'playing' && this.phase === 'wave' && this.dogCd[kind] <= 0 && this.coins >= DOGS[kind].cost;
+    return this.result === 'playing' && this.phase === 'wave' && this.dogs.length < DOG_MAX && this.dogCd[kind] <= 0 && this.coins >= DOGS[kind].cost;
   }
 
   sendDog(kind: DogKind) {
@@ -177,6 +220,7 @@ export class Sim {
     if (!this.canBuy(t)) return false;
     this.coins -= this.trackCost(t)!;
     this.levels[t]++;
+    this.sounds.push('buy');
     return true;
   }
 
@@ -187,7 +231,7 @@ export class Sim {
   }
 
   private startWave() {
-    this.spawners = WAVES[this.wave].map(([kind, count, interval, delay]) => ({ kind, left: count, interval, next: delay }));
+    this.spawners = night(this.wave + 1).map((l) => ({ kind: l.kind, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
     this.phase = 'wave';
     this.hero.hp = this.maxHp; // 昼のあいだに傷は癒える（案）
     this.hero.down = 0;
@@ -244,12 +288,17 @@ export class Sim {
   }
 
   private runWaves(dt: number) {
+    let warn = false;
     for (const s of this.spawners) {
       s.next -= dt;
+      if (s.surge && !s.warned && s.next <= SURGE_WARN) {
+        s.warned = true;
+        warn = true;
+      }
       while (s.left > 0 && s.next <= 0) {
         const w = WOLVES[s.kind];
         this.wolves.push({
-          ...this.unit(WOLF_SPAWN_X, w.hp, w.size), kind: s.kind, hasted: false,
+          ...this.unit(WOLF_SPAWN_X, w.hp * hpScale(this.wave + 1), w.size), kind: s.kind, hasted: false,
           z: 0, vz: 0, vx: 0, stun: 0, slammed: false, skillCd: 1 + this.rand() * 2,
         });
         s.left--;
@@ -257,6 +306,17 @@ export class Sim {
       }
     }
     this.spawners = this.spawners.filter((s) => s.left > 0);
+    if (warn) {
+      this.events.push('surge');
+      this.sounds.push('horn');
+    }
+  }
+
+  // 次に来る群れの予告：この晩にまだ出ていない狼を種類ごとに数える
+  pending(): Partial<Record<WolfKind, number>> {
+    const out: Partial<Record<WolfKind, number>> = {};
+    for (const s of this.spawners) out[s.kind] = (out[s.kind] ?? 0) + s.left;
+    return out;
   }
 
   // 晩の狼を全滅させたら昼へ。最後の晩なら試作はおしまい
@@ -268,7 +328,7 @@ export class Sim {
     this.shots = [];
     this.combo = 0;
     this.hero.move = null;
-    if (this.wave >= WAVES.length) this.result = 'won';
+    if (this.wave >= DAYS_TO_CLEAR) this.result = 'won';
     else {
       this.phase = 'shop';
       this.houseHp = Math.min(HOUSE_HP, this.houseHp + DAWN_REPAIR);
@@ -279,6 +339,7 @@ export class Sim {
   // ── 狼 ──
   private moveWolves(dt: number) {
     const howlers = this.wolves.filter((w) => w.kind === 'howler');
+    const blocked = new Map<Dog, number>();
     const h = this.hero;
     const heroUp = h.down <= 0;
     for (const w of this.wolves) {
@@ -305,6 +366,7 @@ export class Sim {
             w.vz = BODY.bounce;
             w.z = 0.01;
             this.fx.push({ kind: 'land', x: w.x, lane: w.lane, t: 0, r: BODY.slamSplash });
+            this.sounds.push('slam');
             for (const o of this.wolves) {
               if (o !== w && o.z <= 0 && Math.abs(o.x - w.x) <= BODY.slamSplash) {
                 this.hit(o, BODY.slamSplashDamage, { stop: 0, kb: 120 * Math.sign(o.x - w.x || 1) });
@@ -340,14 +402,17 @@ export class Sim {
       }
 
       // 噛みつく相手：主人公 → 番犬 → 家
-      const heroTouch = heroUp && h.musou <= 0 && Math.abs(w.x - h.x) <= (w.size + HERO.size) / 2;
-      const dog = this.dogs.find((d) => d.x < w.x && w.x - d.x <= (w.size + d.size) / 2);
+      const heroTouch = heroUp && h.ouran <= 0 && Math.abs(w.x - h.x) <= (w.size + HERO.size) / 2;
+      // 番犬1匹が足止めできるのは DOG_BLOCK 匹まで。あふれた狼はすり抜けて家へ向かう
+      const dog = this.dogs.find((d) => d.x < w.x && w.x - d.x <= (w.size + d.size) / 2 && (blocked.get(d) ?? 0) < DOG_BLOCK);
+      if (dog) blocked.set(dog, (blocked.get(dog) ?? 0) + 1);
       if (heroTouch || dog || w.x <= HOUSE_X + w.size / 2) {
         if (w.cooldown <= 0) {
           w.cooldown = s.interval;
-          if (heroTouch) this.hurtHero(s.damage);
-          else if (dog) this.hurt(dog, s.damage);
-          else this.houseHp -= s.damage;
+          const bite = s.damage * this.bite;
+          if (heroTouch) this.hurtHero(bite);
+          else if (dog) this.hurt(dog, bite);
+          else this.houseHp -= bite;
         }
         continue;
       }
@@ -360,17 +425,17 @@ export class Sim {
     const h = this.hero;
     this.shots = this.shots.filter((s) => {
       s.x -= SHOCKWAVE.speed * dt;
-      if (h.down <= 0 && h.musou <= 0 && Math.abs(s.x - h.x) < HERO.size / 2) {
-        this.hurtHero(SHOCKWAVE.damage);
+      if (h.down <= 0 && h.ouran <= 0 && Math.abs(s.x - h.x) < HERO.size / 2) {
+        this.hurtHero(SHOCKWAVE.damage * this.bite);
         return false;
       }
       const dog = this.dogs.find((d) => Math.abs(s.x - d.x) < d.size / 2);
       if (dog) {
-        this.hurt(dog, SHOCKWAVE.damage);
+        this.hurt(dog, SHOCKWAVE.damage * this.bite);
         return false;
       }
       if (s.x <= HOUSE_X) {
-        this.houseHp -= SHOCKWAVE.damage;
+        this.houseHp -= SHOCKWAVE.damage * this.bite;
         return false;
       }
       return true;
@@ -397,13 +462,14 @@ export class Sim {
   // ── 主人公 ──
   private hurtHero(dmg: number) {
     const h = this.hero;
-    if (h.down > 0 || h.musou > 0) return;
+    if (h.down > 0 || h.ouran > 0) return;
     const before = h.hp;
+    this.sounds.push('hurt');
     h.hp -= dmg;
     h.hitFlash = 0.15;
     h.stun = HERO.hitStunTime;
     h.move = null; // 噛まれると技が途切れる
-    this.gain(MUSOU.gain.hurt * dmg);
+    this.gain(OURAN.gain.hurt * dmg);
     if (h.hp <= 0) {
       h.hp = 0;
       h.down = HERO.reviveTime;
@@ -425,7 +491,7 @@ export class Sim {
       }
       return;
     }
-    if (h.musou > 0) return this.runMusou(dt);
+    if (h.ouran > 0) return this.runOuran(dt);
     if (h.stun > 0) {
       h.stun -= dt;
       return;
@@ -440,6 +506,17 @@ export class Sim {
   // 近：踏み込んで連撃。斬る→斬る→斬り上げ→（追い打ち）→叩き落とし／至近の主砲
   private thinkNear(dt: number, target: Wolf | undefined) {
     const h = this.hero;
+    if (h.order !== null) {
+      // 指示された所へ。途中で触れた狼は斬るが、追いかけない
+      const touching = target && Math.abs(target.x - h.x) - (target.size + HERO.size) / 2 <= MOVES.slash.reach * 0.8;
+      if (touching) {
+        h.facing = target.x >= h.x ? 1 : -1;
+        return this.startMove(this.comboMove(target), target.id);
+      }
+      if (Math.abs(h.x - h.order) > 4) return this.walk(dt, h.order);
+      if ((h.orderT -= dt) <= 0) h.order = null;
+      return;
+    }
     if (!target) return this.walk(dt, Math.max(h.x, GIRL_X + 40));
     h.facing = target.x >= h.x ? 1 : -1;
     // 中央より先へは出ない。狼が来るまで中央で待つ
@@ -466,7 +543,7 @@ export class Sim {
   // 遠：家の前へ下がって弓。群れには矢の雨と主砲の撃ち込み
   private thinkFar(dt: number, target: Wolf | undefined) {
     const h = this.hero;
-    if (Math.abs(h.x - HERO.farX) > 4) return this.walk(dt, HERO.farX);
+    if (Math.abs(h.x - h.farX) > 4) return this.walk(dt, h.farX);
     h.facing = 1;
     if (!target) return;
     const crowd = this.densest();
@@ -540,6 +617,7 @@ export class Sim {
     for (const w of targets) {
       this.hit(w, dmg, { kb: (m.kb ?? 0) * Math.sign(w.x - h.x || h.facing), lift: m.lift, slam: m.slam, stop: m.stop });
     }
+    this.sounds.push(id === 'shiki' ? 'boom' : 'swing');
     if (id === 'kaiten') this.fx.push({ kind: 'spin', x: h.x, lane: 0.5, t: 0, r: m.area });
     else if (id === 'shiki') this.fx.push({ kind: 'blast', x: h.x + h.facing * 50, lane: 0.5, t: 0, r: m.area });
     else this.fx.push({ kind: 'slash', x: h.x + h.facing * 30, lane: 0.5, t: 0, z: id === 'launch' || id === 'air' ? 1 : id === 'slam' ? -1 : 0 });
@@ -556,12 +634,12 @@ export class Sim {
     }
   }
 
-  private runMusou(dt: number) {
+  private runOuran(dt: number) {
     const h = this.hero;
-    h.musou -= dt;
-    h.musouTick -= dt;
-    if (h.musouTick <= 0) {
-      h.musouTick = MUSOU.tick;
+    h.ouran -= dt;
+    h.ouranTick -= dt;
+    if (h.ouranTick <= 0) {
+      h.ouranTick = OURAN.tick;
       // 次の狼へ一足で跳び、まわりをまとめて斬る
       const t = this.nearest(this.wolves.filter((w) => Math.abs(w.x - h.x) <= 360 && w.x <= HERO.maxX + 140), h.x);
       if (t) {
@@ -569,20 +647,20 @@ export class Sim {
         h.x = Math.min(HERO.maxX + 60, Math.max(GIRL_X, t.x - h.facing * 20)); // 乱舞のときだけ少し先まで
       }
       for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) <= MUSOU.reach) this.hit(w, MUSOU.damage * this.nearPower, { lift: 240, stop: 0.02, kb: 60 * Math.sign(w.x - h.x || 1) });
+        if (Math.abs(w.x - h.x) <= OURAN.reach) this.hit(w, OURAN.damage * this.nearPower, { lift: 240, stop: 0.02, kb: 60 * Math.sign(w.x - h.x || 1) });
       }
-      this.fx.push({ kind: 'spin', x: h.x, lane: 0.5, t: 0, r: MUSOU.reach });
+      this.fx.push({ kind: 'spin', x: h.x, lane: 0.5, t: 0, r: OURAN.reach });
       this.shake = Math.max(this.shake, 4);
     }
-    if (h.musou <= 0) {
+    if (h.ouran <= 0) {
       // 締め：主砲の全弾
       for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) <= MUSOU.finalArea) this.hit(w, MUSOU.final * this.nearPower, { kb: 500 * Math.sign(w.x - h.x || 1), stop: 0 });
+        if (Math.abs(w.x - h.x) <= OURAN.finalArea) this.hit(w, OURAN.final * this.nearPower, { kb: 500 * Math.sign(w.x - h.x || 1), stop: 0 });
       }
-      this.fx.push({ kind: 'blast', x: h.x + 120, lane: 0.5, t: 0, r: MUSOU.finalArea * 0.6 });
+      this.fx.push({ kind: 'blast', x: h.x + 120, lane: 0.5, t: 0, r: OURAN.finalArea * 0.6 });
       this.hitStop = 0.2;
       this.shake = 14;
-      h.musou = 0;
+      h.ouran = 0;
       h.step = 0;
     }
   }
@@ -592,6 +670,7 @@ export class Sim {
     const h = this.hero;
     const flight = BOW_FLIGHT.base + Math.abs(toX - h.x) * BOW_FLIGHT.perUnit;
     this.arrows.push({ fromX: h.x, toX, t: -delay / flight, flight, lane: 0.5, damage });
+    this.sounds.push('bow');
   }
 
   private flyArrows(dt: number) {
@@ -616,6 +695,7 @@ export class Sim {
         }
       }
       this.fx.push({ kind: 'blast', x: s.toX, lane: s.lane, t: 0, r: s.area });
+      this.sounds.push('boom');
       this.shake = Math.max(this.shake, 3);
       return false;
     });
@@ -637,15 +717,16 @@ export class Sim {
     w.stun = Math.max(w.stun, 0.25);
     this.fx.push({ kind: 'num', x: w.x, lane: w.lane, t: 0, n: Math.round(dmg), z: w.z, big: dmg >= 30 });
     if (o.quiet) return; // 番犬の噛みつきはコンボに数えない
+    this.sounds.push(o.slam || (o.stop ?? 0) >= 0.08 ? 'heavy' : 'hit');
     this.combo++;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.sinceHit = 0;
-    this.gain(MUSOU.gain.hit);
+    this.gain(OURAN.gain.hit);
     if (o.stop) this.hitStop = Math.max(this.hitStop, o.stop);
   }
 
   private gain(n: number) {
-    if (this.hero.musou > 0) return;
+    if (this.hero.ouran > 0) return;
     this.gauge = Math.min(100, this.gauge + n);
   }
 
