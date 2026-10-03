@@ -19,10 +19,11 @@ async function main() {
   await view.init(field);
   const panel = new Panel(document.getElementById('panel')!, () => sim);
 
-  // 戦場をタップすると照準が動く
+  // 戦場をタップすると照準が動き、主砲が撃てるならそこへ一斉射する
   view.app.canvas.addEventListener('pointerdown', (e) => {
     const r = view.app.canvas.getBoundingClientRect();
     sim.setAim(view.toFieldX(e.clientX - r.left));
+    sim.fireCannon();
   });
 
   let running = false;
@@ -43,7 +44,7 @@ async function main() {
   show(
     `<h1>鋼桜奇譚<small>大正赤ずきん</small></h1>
      <p>月の裂け目から狼が来る。おばあさんの家を守れ。</p>
-     <ul><li>戦場をタップ：照準（弓が近くを狙う・主砲の着弾点）</li><li>下のボタン：番犬を出す／主砲を撃つ</li></ul>`,
+     <ul><li>戦場をタップ：照準を置く（弓が近くを狙う）。主砲が撃てるときは、そこへ一斉射</li><li>下のボタン：番犬を出す</li></ul>`,
     'はじめる',
   );
   if (params.get('auto')) {
