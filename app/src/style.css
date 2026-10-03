@@ -1,0 +1,99 @@
+:root {
+  --bg: #120d10;
+  --panel: #1e161a;
+  --line: #3a2a30;
+  --text: #f0e6e0;
+  --dim: #a0909a;
+  --red: #b3202a;
+  --brass: #c8a860;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 上部がメイン画面、下にボタン類（決定） */
+#field { flex: 0 0 52%; position: relative; }
+#field canvas { display: block; }
+
+#panel {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto 1fr 1fr;
+  gap: 10px;
+  padding: 10px 16px 14px;
+  background: var(--panel);
+  border-top: 2px solid var(--line);
+}
+
+.status { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+.coins { color: var(--brass); min-width: 5em; font-variant-numeric: tabular-nums; }
+.house { flex: 1; height: 8px; background: #000; border-radius: 4px; overflow: hidden; }
+.house i { display: block; height: 100%; background: #60d070; }
+.wave { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+.dogs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+button {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: #2a2026;
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+button small { font-size: 12px; color: var(--dim); }
+button:disabled { opacity: 0.5; }
+/* 再使用までの残り（下から減る） */
+button::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--cd, 0) * 100%);
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.cannon { background: #4a1c22; border-color: var(--red); font-size: 20px; }
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  background: rgba(10, 6, 8, 0.86);
+  text-align: center;
+}
+#overlay[hidden] { display: none; }
+#overlay h1 { margin: 0; font-size: 34px; letter-spacing: 0.15em; display: flex; flex-direction: column; gap: 6px; }
+#overlay h1 small { font-size: 18px; color: var(--brass); letter-spacing: 0.3em; }
+#overlay p { margin: 0; color: var(--dim); }
+#overlay ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--dim); line-height: 1.8; }
+#overlay button { padding: 12px 40px; background: var(--red); border-color: var(--red); }

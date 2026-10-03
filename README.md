@@ -1,5 +1,13 @@
 # 武装赤ずきん / 鋼桜奇譚（こうおうきたん）　大正赤ずきん
 
+**https://amanesf.github.io/akazukin/** ── ゲームの試作（横向きタワーディフェンス・スマホ縦長）。計画は [`plan.md`](plan.md)、本体は `app/`。
+
+```sh
+cd app && npm ci && npm run dev
+```
+
+## 資料
+
 [amanesf/kabu](https://github.com/amanesf/kabu)（コミット 5b5a39b）から赤ずきん関連の資料一式を移したもの。パス構成は kabu と同じ。
 
 - `docs/spinoff/akazukin.md` — 決定事項と経緯（正本）
