@@ -47,6 +47,8 @@ export class Minimap {
     };
   }
 
+  private lastT = 0;
+
   draw(sim: Sim, t: number, view: { x0: number; x1: number }, day: number) {
     const g = this.g.clear();
     const top = this.top.clear();
@@ -63,7 +65,8 @@ export class Minimap {
     // 家（齧られると赤く点滅）
     const hx = this.mx(HOUSE_X);
     if (sim.fx.some((f) => f.kind === 'bite' && f.t < 0.25)) this.houseBlink = 0.3;
-    this.houseBlink -= 1 / 60;
+    this.houseBlink -= Math.max(0, Math.min(0.1, t - this.lastT)); // 画面の速さによらず同じ長さ
+    this.lastT = t;
     const hc = this.houseBlink > 0 && Math.floor(t * 20) % 2 ? 0xff4040 : 0x6a5040;
     g.rect(2, gy - H * 0.28, hx - 1, H * 0.28 + H * 0.36).fill(hc);
     g.poly([0, gy - H * 0.28, hx + 3, gy - H * 0.28, hx * 0.5, gy - H * 0.44]).fill(0x2a1e22);

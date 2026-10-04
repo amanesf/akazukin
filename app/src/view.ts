@@ -64,6 +64,8 @@ export class View {
   heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
   trail: { x: number; y: number; t: number }[] = []; // 指の軌跡（input が足す）
   dragGhost: { kind: DogKind; x: number; lane: number } | null = null; // 昼：置こうとしている番犬
+  picked = -1; // 昼：外すために選んだ番犬（もう一度タップで外す）
+  private pickText!: Text;
 
   async init(host: HTMLElement) {
     await this.app.init({ preference: 'webgl', resizeTo: host, background: 0x2a1e1e, antialias: true, resolution: Math.min(devicePixelRatio, 2), autoDensity: true });
@@ -88,6 +90,10 @@ export class View {
       this.world.addChild(t);
       this.markText.push(t);
     }
+    this.pickText = new Text({ text: 'もう一度タップで外す', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 16, fill: 0xffe0a0, stroke: { color: 0x000000, width: 4 } } });
+    this.pickText.anchor.set(0.5, 1);
+    this.pickText.visible = false;
+    this.world.addChild(this.pickText);
     st.addChild(this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
@@ -225,7 +231,7 @@ export class View {
 
     // ── 地面・家・裂け目・影 ──
     const gr = this.ground.clear();
-    this.drawHouse(gr, sim);
+    this.drawHouse(gr, sim, dt);
     this.drawRift(gr, sim);
     const shadow = (x: number, lane: number, w: number, zz: number) => {
       const k = Math.max(0.35, 1 - zz / 300);
@@ -247,8 +253,15 @@ export class View {
       const b = this.wx(DOG_POST_MAX);
       gr.rect(a, this.wy(0) - 6, b - a, this.wy(1) - this.wy(0) + 12).fill({ color: 0xffe0a0, alpha: 0.1 }).stroke({ width: 3, color: 0xffe0a0, alpha: 0.3 });
       gr.moveTo(b, this.wy(0) - 6).lineTo(b, this.wy(1) + 6).stroke({ width: 3, color: 0xffe0a0, alpha: 0.35 });
-      for (const p of sim.posts) gr.ellipse(this.wx(p.x), this.wy(p.lane), 60, 16).stroke({ width: 4, color: 0xffe0a0, alpha: 0.7 });
+      sim.posts.forEach((p, i) => {
+        const on = i === this.picked;
+        gr.ellipse(this.wx(p.x), this.wy(p.lane), 60, 16).stroke({ width: on ? 6 : 4, color: on ? 0xff7060 : 0xffe0a0, alpha: on ? 0.6 + 0.3 * Math.sin(this.vt * 10) : 0.7 });
+      });
     }
+    if (!day || !sim.posts[this.picked]) this.picked = -1;
+    const pk = sim.posts[this.picked];
+    this.pickText.visible = !!pk;
+    if (pk) this.pickText.position.set(this.wx(pk.x), this.wy(pk.lane) - this.geo.Hm * 0.13);
 
     // ── 体（奥から手前へ。主人公より奥は backG、手前は frontG）──
     const bg = this.backG.clear();
@@ -607,7 +620,7 @@ export class View {
   }
 
   // おばあさんの家（仮の影絵：大正の和洋折衷の屋敷）。齧られると赤く光り、傷むとひびが入る
-  private drawHouse(g: Graphics, sim: Sim) {
+  private drawHouse(g: Graphics, sim: Sim, dt: number) {
     const gx = this.geo;
     const right = this.wx(HOUSE_X) + 8;
     const base = this.wy(1) + 8;
@@ -634,7 +647,7 @@ export class View {
       const cy = top + (base - top) * ((i * 0.53 + 0.2) % 0.8);
       g.moveTo(cx, cy).lineTo(cx + 10, cy + 14).lineTo(cx + 4, cy + 26).lineTo(cx + 14, cy + 38).stroke({ width: 2, color: 0x1a1010 });
     }
-    this.houseFlash -= 1 / 60;
+    this.houseFlash -= dt; // 1コマごとに減らすと、画面の速さで長さが変わった
   }
 
   // 異界の裂け目（戦場の右の端）。狼はここから出てくる

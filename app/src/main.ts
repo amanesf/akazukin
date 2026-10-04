@@ -153,6 +153,7 @@ async function main() {
     }
   };
 
+  const manual = !!params.get('manual');
   let running = false;
   let shown = 'playing';
   function show(html: string, buttons: [string, () => void][]) {
@@ -184,6 +185,15 @@ async function main() {
     if (d) store.write(sim.save());
   };
 
+  // 一時停止（2026-10-04 レビュー 12）。画面を離れたときも止める
+  const pause = () => {
+    if (!running || sim.result !== 'playing' || !overlay.hidden) return;
+    running = false;
+    show(`<h1>一時停止</h1><p>${Math.min(sim.wave + 1, 99)}日目・${sim.phase === 'shop' ? '昼' : '夜'}</p>`, [['続ける', () => {}]]);
+  };
+  document.getElementById('pause')!.addEventListener('click', pause);
+  document.addEventListener('visibilitychange', () => document.hidden && !manual && pause());
+
   const saved = store.read();
   const title = `<h1>鋼桜奇譚<small>大正赤ずきん</small></h1>
      <p>月の裂け目から狼が来る。99日、おばあさんの家を守り抜け。</p>
@@ -197,7 +207,6 @@ async function main() {
   }
 
   // ?manual=1：時計を止め、外から akazukin.tick(秒) で1コマずつ進める（動きをコマ送りで点検する）
-  const manual = !!params.get('manual');
   const frame = (dt: number) => {
     if (running) sim.advance(dt);
     view.draw(sim, dt);

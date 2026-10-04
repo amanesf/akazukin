@@ -1,7 +1,7 @@
 // 指一本の操作（2026-10-04）。戦場の上で：
 //   タップ＝斬り（狼に触れればその狼へ・遠くの地面ならそこへ走る）／はじく＝左右：突進斬り・上：斬り上げ・下：叩き落とし／
 //   長押し→離す＝主砲。小さい地図のタップ＝そこへ駆けつける。
-// 昼は番犬の持ち場を指で動かす（札から引っぱって置く・置いた犬を引っぱる・タップで外す）。
+// 昼は番犬の持ち場を指で動かす（札から引っぱって置く・置いた犬を引っぱる・タップで選んでもう一度タップで外す）。
 // はじきは指を離すのを待たず、動いた瞬間に出す（手応えを早く返す）。
 import type { DogKind } from './config';
 import type { Sim } from './sim';
@@ -60,6 +60,7 @@ export class Input {
     if (s.phase === 'shop') {
       const i = this.view.postAt(s, p.x, p.y);
       if (i >= 0) this.drag = { i, moved: false, x: p.x, y: p.y };
+      else this.view.picked = -1; // ほかの所に触れたら選ぶのをやめる
       return;
     }
     if (this.down) {
@@ -121,7 +122,13 @@ export class Input {
       return;
     }
     if (this.drag) {
-      if (!this.drag.moved) s.removePost(this.drag.i); // タップで外す
+      // タップで選び、選んだ犬をもう一度タップで外す（1回で外れると、触っただけで消えた）
+      if (!this.drag.moved) {
+        if (this.view.picked === this.drag.i) {
+          s.removePost(this.drag.i);
+          this.view.picked = -1;
+        } else this.view.picked = this.drag.i;
+      } else this.view.picked = -1;
       this.drag = null;
       return;
     }

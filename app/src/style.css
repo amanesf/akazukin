@@ -233,6 +233,16 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   color: var(--dim);
 }
 #sound.on { color: #fff; border-color: var(--brass); }
+#pause {
+  position: absolute;
+  right: 88px;
+  top: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--text);
+}
 #next {
   position: absolute;
   right: 10px;

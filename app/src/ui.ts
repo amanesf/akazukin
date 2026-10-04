@@ -106,7 +106,7 @@ export class Panel {
       const cost = s.postCost;
       const short = cost > s.coins;
       this.posts.innerHTML = s.posts.length
-        ? `今夜の番犬 ${s.posts.length}/${DOG_MAX}匹・<b class="${short ? 'short' : ''}">${cost}銭</b>${short ? '（足りない分は出ない）' : ''}<br><span>戦場の犬を引っぱって動かす・タップで外す</span>`
+        ? `今夜の番犬 ${s.posts.length}/${DOG_MAX}匹・<b class="${short ? 'short' : ''}">${cost}銭</b>${short ? '（足りない分は出ない）' : ''}<br><span>戦場の犬を引っぱって動かす・タップで選んで、もう一度タップで外す</span>`
         : `札を戦場へ引っぱって番犬を置く（毎晩 銭がかかる）`;
       return;
     }
