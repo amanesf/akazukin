@@ -27,7 +27,7 @@ export class Backdrop {
   private moonGlow = new Sprite(glowTexture());
   private lights: { s: Sprite; x: number; y: number; ph: number }[] = [];
   private starList: { x: number; y: number; r: number; ph: number }[] = [];
-  moonArt = new Sprite(); // 紅い月の絵（メインビジュアルから切り抜き）。あれば図形の月の代わり
+  moonArt = new Sprite(); // 紅い月の絵（moon-v1）。あれば図形の月の代わり
   town: Texture | null = null;
   props: Record<string, Texture> | null = null; // 草と小物の絵（2026-10-04 生成 grass-v1）。あれば手前の影絵の代わり
   private sway: { s: Sprite; ph: number; amp: number }[] = []; // 町並みの絵（2026-10-04 生成）。あれば奥の山と町の影絵の代わりに使う
@@ -65,7 +65,7 @@ export class Backdrop {
     mg.moveTo(R * 0.1, -R).lineTo(-R * 0.05, -R * 0.4).lineTo(R * 0.15, -R * 0.05).lineTo(-R * 0.1, R * 0.45).lineTo(R * 0.05, R)
       .stroke({ width: 3, color: 0xff9080, alpha: 0.9 });
     this.sunG.clear().circle(0, 0, R * 0.8).fill(0xfff4d0).circle(0, 0, R * 0.62).fill(0xffffff);
-    this.moonArt.width = this.moonArt.height = R * 2.6; // 絵の縁の柔らかい所のぶん大きめに
+    this.moonArt.width = this.moonArt.height = R * 2.1;
     this.moonGlow.width = this.moonGlow.height = R * 6;
     this.moonGlow.tint = 0xff4050;
     this.moonGlow.alpha = 0.35;

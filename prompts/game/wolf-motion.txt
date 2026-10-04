@@ -1,0 +1,8 @@
+Sprite sheet of the wolf in 1枚目 = image 1: four figures of exactly this wolf side by side on one flat light gray background, with wide gray space between them, all at the same size as each other, all facing right like image 1. Same smoky charcoal-gray fur, glowing red eyes and glowing crimson crack-like markings, same proportions, same art style, colors, line weight and cel shading as image 1.
+
+1. Walking, the other step: mid-stride with the opposite legs forward compared with image 1.
+2. Biting: lunging forward low, jaws wide open with fangs, front legs reaching, ears back.
+3. Hit: recoiling backward with its head thrown back, eyes squeezed shut, legs bracing, a pained snarl.
+4. Knocked into the air: tumbling sideways with all four legs flailing, belly showing, dazed swirling eyes.
+
+Even soft lighting, the floor the same flat gray. All four fully in frame.
