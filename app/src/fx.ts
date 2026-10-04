@@ -2,7 +2,7 @@
 // 火花・土煙・桜の花びら・破片・輪・斬撃の弧・光（加算の丸いぼかし）を、まとめて毎フレーム描く。
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 
-type Kind = 'spark' | 'dust' | 'petal' | 'debris' | 'ring' | 'arc' | 'glow' | 'line';
+type Kind = 'spark' | 'dust' | 'petal' | 'bokeh' | 'debris' | 'ring' | 'arc' | 'glow' | 'line';
 interface P {
   kind: Kind;
   x: number; y: number; vx: number; vy: number;
@@ -37,6 +37,7 @@ export function glowTexture() {
 }
 
 export const PINK = [0xffc0d8, 0xffd6e4, 0xf8a8c4, 0xffe8f0];
+export const NIGHT_PINK = [0xc89ab4, 0xb88aa8, 0xd8aec4, 0xa87c9c]; // 遠くの花びら：夜の色に沈めた桜色
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
@@ -48,6 +49,7 @@ export class Particles {
   private ps: P[] = [];
   private pool: Sprite[] = [];
   max = 900;
+  avoid: { x: number; y: number; rx: number; ry: number } | null = null; // 玉ボケの花びらが透ける所（主人公の体。画面の座標）
 
   constructor() {
     this.glows.blendMode = 'add';
@@ -93,8 +95,13 @@ export class Particles {
     for (let i = 0; i < (big ? 6 : 2); i++) this.petal(x, y, s, rnd(-200, 200) + dir * 160, rnd(-260, -60));
   }
 
-  petal(x: number, y: number, s: number, vx = rnd(-60, 60), vy = rnd(-40, 40), life = rnd(0.8, 1.6)) {
-    this.add({ kind: 'petal', x, y, vx: vx * s, vy: vy * s, life, size: rnd(3, 5.5) * s, color: pick(PINK), rot: rnd(0, 6.28), vr: rnd(-8, 8), g: 160 * s, drag: 2.2 });
+  petal(x: number, y: number, s: number, vx = rnd(-60, 60), vy = rnd(-40, 40), life = rnd(0.8, 1.6), colors = PINK, alpha = 1) {
+    this.add({ kind: 'petal', x, y, vx: vx * s, vy: vy * s, life, size: rnd(3, 5.5) * s, color: pick(colors), alpha, rot: rnd(0, 6.28), vr: rnd(-8, 8), g: 160 * s, drag: 2.2 });
+  }
+
+  // カメラのすぐ前を横切る花びら：大きく、半透明で、ふちがぼけている（重力なし・速い）
+  bokeh(x: number, y: number, size: number, vx: number, vy: number, life: number) {
+    this.add({ kind: 'bokeh', x, y, vx, vy, life, size, color: pick(PINK), alpha: rnd(0.22, 0.34), rot: rnd(0, 6.28), vr: rnd(-1.5, 1.5) });
   }
 
   // 光る桜の粒：ゆっくり漂って、ふっと消える（夜の地面の上）。蛍だと夏になって季節が混ざった
@@ -182,6 +189,7 @@ export class Particles {
       p.y += p.vy * dt;
       p.rot += p.vr * dt;
       if (p.kind === 'petal') p.x += Math.sin(p.t * 7 + p.rot) * 30 * dt; // ひらひら
+      if (p.kind === 'bokeh') p.y += Math.sin(p.t * 2.2 + p.rot) * 40 * dt; // ゆったり揺れる
       if (p.y > p.floor) {
         p.y = p.floor;
         p.vy *= -0.35;
@@ -211,7 +219,22 @@ export class Particles {
           // 花びら：細長い楕円がくるくる回る（裏返るときに細くなる）
           const flip = Math.abs(Math.cos(p.rot * 0.7));
           place(g, p.x, p.y, p.rot);
-          g.ellipse(0, 0, p.size, p.size * 0.55 * (0.25 + flip * 0.75)).fill({ color: p.color, alpha: Math.min(1, fade * 2.5) });
+          g.ellipse(0, 0, p.size, p.size * 0.55 * (0.25 + flip * 0.75)).fill({ color: p.color, alpha: p.alpha * Math.min(1, fade * 2.5) });
+          g.restore();
+          break;
+        }
+        case 'bokeh': {
+          // 薄い楕円を外から内へ重ねて、ふちをぼかす。主人公の体の上を通るときは透ける
+          let a = p.alpha * Math.min(1, fade * 3, q * 8);
+          const av = this.avoid;
+          if (av) {
+            const d = Math.hypot((p.x - av.x) / av.rx, (p.y - av.y) / av.ry);
+            a *= 0.15 + 0.85 * Math.min(1, Math.max(0, d - 0.6) / 0.6);
+          }
+          if (a <= 0.01) break;
+          const flip = 0.45 + 0.55 * Math.abs(Math.cos(p.rot * 0.8));
+          place(g, p.x, p.y, p.rot);
+          for (const k of [1, 0.82, 0.64]) g.ellipse(0, 0, p.size * k, p.size * 0.6 * flip * k).fill({ color: p.color, alpha: a / 3 });
           g.restore();
           break;
         }

@@ -4,7 +4,7 @@
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
 import { DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
-import { crescent, easeOut, glowTexture, Particles, PINK, place } from './fx';
+import { crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
@@ -73,7 +73,8 @@ export class View {
   private ghosts: { rig: HeroRig; pose: Pose | null; t: number; tint: number }[] = [];
   private ghostT = 0;
   private parts = new Particles(); // 世界の粒
-  private screenParts = new Particles(); // 画面の粒（速度線・桜嵐の花吹雪）
+  private screenParts = new Particles(); // 画面の粒（速度線・桜嵐の花吹雪・カメラの前を横切る玉ボケの花びら）
+  private airBack = new Particles(); // 夜風の花びらの奥の層（画面の座標。主人公・狼・番犬より後ろに描く）
   private screen = new Graphics(); // 画面に固定の演出（周辺の暗がり・閃光・矢印・指の軌跡）
   private blade: { x: number; y: number; t: number }[][] = [[], []]; // 刃先の通り道（ナイフ2本）
   private marks: { kind: 'sweat' | 'cross' | 'sparkle' | 'note' | 'star'; t: number; life: number; ox: number; oy: number }[] = []; // 漫画の記号（頭のまわり）
@@ -145,7 +146,7 @@ export class View {
       this.fog.push(f);
     }
     this.rimRig.root.blendMode = 'add';
-    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
+    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -356,6 +357,9 @@ export class View {
     const oy = g.Hm / 2 - this.cam.y * z + sy;
     this.world.scale.set(z);
     this.world.position.set(ox, oy);
+    // 奥の花びらは画面の座標で動かす（世界の中に入れて、カメラの動きを打ち消す）
+    this.airBack.root.scale.set(1 / z);
+    this.airBack.root.position.set(-ox / z, -oy / z);
     this.xf = { z, ox, oy };
     for (const l of this.backdrop.layers) {
       l.c.scale.set(z);
@@ -482,6 +486,10 @@ export class View {
     this.trackMarks(sim, dt);
     const toScreen = (x: number, y: number) => ({ x: x * z + ox, y: y * z + oy });
     this.heroAt = toScreen(hx, top - 6);
+    const bodyTop = toScreen(hx, top);
+    const bodyFoot = toScreen(hx, hy);
+    const bh = bodyFoot.y - bodyTop.y;
+    this.screenParts.avoid = { x: bodyFoot.x, y: (bodyTop.y + bodyFoot.y) / 2, rx: bh * 0.4, ry: bh * 0.62 };
 
     // ── 矢・砲弾・衝撃波・斬撃の弧・数字 ──
     this.drawOver(sim, dt);
@@ -523,6 +531,8 @@ export class View {
     gd.rect(0, 0, g.W, g.Hm).fill({ color: mix(0xbcb4ec, 0xfff0d8, skyK), alpha: 0.35 });
     this.parts.update(pdt);
     this.parts.draw();
+    this.airBack.update(dt);
+    this.airBack.draw();
     this.screenParts.update(dt);
     this.screenParts.draw();
 
@@ -684,15 +694,22 @@ export class View {
     if (this.ambientT <= 0) {
       this.ambientT = 0.05;
       if (h.running > 0 && h.z <= 0 && Math.random() < (h.running > 400 ? 0.9 : 0.45)) P.dust(this.wx(h.x) - h.facing * 14, this.wy(h.lane), this.ds(h.lane) * g.Hm / 600, 1, 20, 30);
-      // 夜風の花びら（画面の右上から）。奥は小さくゆっくり、手前は大きく速く。ときどき風がひと吹きする
+      // 夜風の花びら（画面の右上から）。2層に分ける（2026-10-04 アマネさん「桜吹雪がキャラにかぶって目障り」）：
+      //   奥：主人公・狼より後ろ。小さく、夜の色に沈めて少し透かす（遠くの空気）。前は全部が体の手前で、顔にかぶっていた
+      //   手前：カメラのすぐ前を横切る玉ボケが画面に3〜5枚だけ。大きく半透明で、主人公の体の上では透ける
       this.gustT -= 0.05;
       if (this.gustT < -1.6) this.gustT = 6 + Math.random() * 7;
       const gust = this.gustT < 0;
       const SP = this.screenParts;
+      const AB = this.airBack;
       const few = sim.phase === 'shop' ? 0.25 : sim.mood === 'sakura' ? 2.5 : 1; // 昼は花びらを4分の1に（多すぎた。2026-10-04 アマネさん）。桜吹雪の夜は多く
-      if (Math.random() < 0.7 * few) SP.petal(g.W * (0.2 + Math.random() * 0.9), -10, 0.6, -30 - Math.random() * 40, 20 + Math.random() * 25, 7 + Math.random() * 4);
-      if (Math.random() < 0.3 * few) SP.petal(g.W * (0.4 + Math.random() * 0.7), -10, 1.5, -90 - Math.random() * 80, 60 + Math.random() * 50, 3 + Math.random() * 2);
-      if (gust && Math.random() < few) for (let i = 0; i < 4; i++) SP.petal(g.W + 10, Math.random() * g.Hm * 0.8, 0.6 + Math.random(), -380 - Math.random() * 300, (Math.random() - 0.3) * 120, 2.5);
+      if (Math.random() < 0.35 * few) AB.petal(g.W * (0.2 + Math.random() * 0.9), -10, 0.6, -30 - Math.random() * 40, 20 + Math.random() * 25, 7 + Math.random() * 4, NIGHT_PINK, 0.75);
+      if (Math.random() < 0.15 * few) AB.petal(g.W * (0.4 + Math.random() * 0.7), -10, 1.2, -90 - Math.random() * 80, 60 + Math.random() * 50, 3 + Math.random() * 2, NIGHT_PINK, 0.85);
+      if (gust && Math.random() < few) for (let i = 0; i < 3; i++) AB.petal(g.W + 10, Math.random() * g.Hm * 0.8, 0.6 + Math.random() * 0.6, -380 - Math.random() * 300, (Math.random() - 0.3) * 120, 2.5, NIGHT_PINK, 0.85);
+      if (Math.random() < 0.07 * few) {
+        const big = g.Hm * (0.035 + Math.random() * 0.03);
+        SP.bokeh(g.W + big, g.Hm * (0.05 + Math.random() * 0.85), big, -(g.W / 1.6) * (0.8 + Math.random() * 0.5), 40 + Math.random() * 60, 2.4);
+      }
       // 蛍のような光の粒（夜・画面に映っている地面の上）・裂け目の火の粉
       if (sim.phase === 'wave' && Math.random() < 0.35) {
         const x = this.cam.x - g.W / 2 / this.cam.z + Math.random() * (g.W / this.cam.z); // 画面に映っている所
