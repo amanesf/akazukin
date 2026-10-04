@@ -4,6 +4,9 @@
  * ページの時計を動画の時計にそろえる：sim は ?manual=1 で 1/30 秒ずつ、setTimeout と CSS のアニメーションも 1/30 秒ずつ進める
  * （そのままだと、1コマ撮るあいだに実時間が過ぎ、カットインや吹き出しが一瞬で終わる）。
  * 使い方: node scripts/movie.mjs 出力.mp4 [--seed 13] [--k 0.8] [--night 10] [--height 720] [--frames 0（0＝最後まで）]
+ *   --wide 720x480：横長。スマホで見たままの大きさ（カメラはそのまま）で、メイン画面の上下を切って3:2にする。
+ *     切る位置は主人公の体（頭〜足もと）が縦の真ん中に来る所で、跳んだらそのぶん一緒に上へ動かす（跳んでも見切れない）。
+ *     --zoom 0.5 でカメラを引き、--center で主人公を横の真ん中に映すこともできる（ふだんは使わない）
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -22,15 +25,18 @@ const HEIGHT = Number(args.height ?? 720);
 const LIMIT = Number(args.frames ?? 0);
 const view = { width: 390, height: 844 };
 const W = Math.round((HEIGHT * view.width) / view.height / 2) * 2;
+const WIDE = args.wide ? args.wide.split('x').map(Number) : null;
+const ZOOM = Number(args.zoom ?? 1); // 横長のときのカメラの引き（1＝スマホで見たまま。2026-10-04 アマネさん）
+const CROP = WIDE ? { w: view.width, h: (view.width * WIDE[1]) / WIDE[0] } : null; // 画面の座標（CSS の画素）
 
 const T = { '.js': 'text/javascript', '.css': 'text/css', '.webp': 'image/webp', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.html': 'text/html' };
 const root = new URL('../app/dist', import.meta.url).pathname;
 const srv = createServer(async (q, s) => { let p = new URL(q.url, 'http://x').pathname.replace(/^\/akazukin/, ''); if (p === '/') p = '/index.html'; try { const b = await readFile(join(root, p)); s.writeHead(200, { 'content-type': T[extname(p)] || 'text/html' }); s.end(b); } catch { s.writeHead(404).end(); } });
 await new Promise((r) => srv.listen(0, r));
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const p = await b.newPage({ viewport: view, deviceScaleFactor: HEIGHT > view.height ? 2 : 1, hasTouch: true });
+const p = await b.newPage({ viewport: view, deviceScaleFactor: WIDE || HEIGHT > view.height ? 2 : 1, hasTouch: true });
 p.on('pageerror', (e) => console.log('E', e.message));
-await p.goto(`http://127.0.0.1:${srv.address().port}/akazukin/?auto=1&manual=1&seed=${SEED}`);
+await p.goto(`http://127.0.0.1:${srv.address().port}/akazukin/?auto=1&manual=1&seed=${SEED}${WIDE && ZOOM !== 1 ? `&camzoom=${ZOOM}` : ''}${args.center ? '&camcenter=1' : ''}`);
 await p.waitForFunction(() => document.body.classList.contains('ready'));
 // 絵が全部読み込まれるまで（主人公・狼・番犬）
 await p.waitForFunction(() => { const v = window.akazukin.view; return v.rig.ready && v.wolves.ready && v.dogArt.ready; }, null, { timeout: 60000 });
@@ -67,11 +73,12 @@ await p.evaluate(({ dir, setup, night }) => {
 }, { dir: director.toString(), setup: setupNight.toString(), night: NIGHT });
 
 const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
-  '-vf', `scale=${W}:${HEIGHT}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUTFILE], { stdio: ['pipe', 'inherit', 'inherit'] });
+  '-vf', WIDE ? `scale=${WIDE[0]}:${WIDE[1]}:flags=lanczos` : `scale=${W}:${HEIGHT}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUTFILE], { stdio: ['pipe', 'inherit', 'inherit'] });
 const done = new Promise((r) => ff.on('close', r));
 
 const t0 = Date.now();
 let after = -1;
+let cropY = null;
 for (let i = 0; ; i++) {
   const st = await p.evaluate(({ i, k, fps }) => {
     const a = window.akazukin, s = a.sim;
@@ -80,9 +87,20 @@ for (let i = 0; ; i++) {
     window.__advanceTimers(1000 / fps);
     window.__advanceAnims(1000 / fps);
     a.view.app.render();
-    return { phase: s.phase, kills: s.nightKills, combo: s.bestCombo, clock: s.clock, result: s.result };
+    // 主人公の足もと（画面の座標）と、跳んで持ち上がった分・メイン画面の高さ（横長の切り抜きに使う）
+    const v = a.view, h = s.hero, { z, oy } = v.xf;
+    const feet = v.wy(h.lane) * z + oy;
+    const lift = h.z * v.zk() * 0.75 * z;
+    return { phase: s.phase, kills: s.nightKills, combo: s.bestCombo, clock: s.clock, result: s.result, feet, lift, body: v.heroH(h.lane) * z, Hm: v.geo.Hm };
   }, { i, k: K, fps: FPS });
-  ff.stdin.write(await p.screenshot({ type: 'jpeg', quality: 92 }));
+  let clip;
+  if (CROP) {
+    // 体の真ん中（足もとから背の半分上・跳んだ分も）を枠の縦の真ん中に
+    const want = st.feet - st.lift - st.body * 0.52 - CROP.h / 2;
+    cropY = cropY === null ? want : cropY + (want - cropY) * 0.3; // 少し遅れて追う（揺れの細かい上下は拾わない）
+    clip = { x: 0, y: Math.max(0, Math.min(st.Hm - CROP.h, cropY)), width: CROP.w, height: CROP.h };
+  }
+  ff.stdin.write(await p.screenshot({ type: 'jpeg', quality: 92, clip }));
   if (i % 150 === 0) console.log(`frame ${i}  ${(i / FPS).toFixed(1)}s  ${((Date.now() - t0) / 1000 / (i + 1)).toFixed(2)}s/コマ`, JSON.stringify(st));
   if (st.phase !== 'wave' && after < 0) { after = i; console.log('夜明け', JSON.stringify(st)); }
   if (after >= 0 && i - after >= FPS) break; // 夜明けの1秒後まで

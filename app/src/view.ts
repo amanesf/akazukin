@@ -22,6 +22,10 @@ const COLOR = {
 
 // 画面の中の文字も明朝に（ダメージの数字・番犬の役目・画面の外の狼の数）
 const MINCHO = '"Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif';
+// 撮影用（scripts/movie.mjs）：?camzoom=0.46 でカメラを引き、?camcenter=1 で主人公を真ん中に映す。ふだんは使わない
+const CAM_PARAMS = new URLSearchParams(location.search);
+const CAM_ZOOM = Number(CAM_PARAMS.get('camzoom') ?? 1);
+const CAM_CENTER = !!CAM_PARAMS.get('camcenter');
 const VIEW_UNITS = 250; // 夜のカメラが横に映す間合い（戦場は 1000＝画面4つ分。全体は小さい地図で）
 const GHOSTS = 7;
 
@@ -342,16 +346,17 @@ export class View {
       const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
       // 少し引いて広く映す（2026-10-04 アマネさん「ステージ狭い？」。寄りすぎて主人公と狼2匹で画面がいっぱいだった）
       tz = 0.85 * (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
-      tx = this.wx(h.x) + h.facing * g.W * 0.14;
+      tz *= CAM_ZOOM;
+      tx = this.wx(h.x) + (CAM_CENTER ? 0 : h.facing * g.W * 0.14);
       // 左の端は家の右半分（戸口と二階）が映るところまで
       const houseL = this.house.visible ? this.house.x - this.house.width * 0.28 : -this.heroH(1) * 1.2;
       // 家の前では、主人公を右へ寄せて家を広く映す（家が画面の外で、守っている感じがしなかった）
       const nearHome = Math.max(0, Math.min(1, (240 - h.x) / 150));
-      if (nearHome > 0) tx += (Math.max(houseL + g.W / 2 / tz, this.wx(h.x) - (g.W / 2 / tz) * 0.5) - tx) * nearHome;
+      if (nearHome > 0 && !CAM_CENTER) tx += (Math.max(houseL + g.W / 2 / tz, this.wx(h.x) - (g.W / 2 / tz) * 0.5) - tx) * nearHome;
       // 裂け目の近くでは、裂け目が画面の右に入るように寄せる（前はカメラが手前で止まり、裂け目が見えなかった）
       const nearRift = Math.max(0, Math.min(1, (h.x - 600) / 160));
       const riftR = this.wx(WOLF_SPAWN_X) + 170;
-      if (nearRift > 0) tx += (Math.min(riftR - g.W / 2 / tz, this.wx(h.x) + (g.W / 2 / tz) * 0.55) - tx) * nearRift;
+      if (nearRift > 0 && !CAM_CENTER) tx += (Math.min(riftR - g.W / 2 / tz, this.wx(h.x) + (g.W / 2 / tz) * 0.55) - tx) * nearRift;
       // 決めポーズ：主人公と、駆け寄ってくる番犬が両方映るように真ん中へ（前は進む向きの先を映していて、後ろに来た犬が画面の外だった）
       if (sim.cheer >= 0) {
         const near = sim.dogs.filter((d) => d.down <= 0 && Math.abs(d.x - h.x) < 260);
