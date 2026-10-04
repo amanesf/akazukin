@@ -6,6 +6,8 @@
  * 使い方: node scripts/movie.mjs 出力.mp4 [--seed 13] [--k 0.8] [--night 10] [--height 720] [--frames 0（0＝最後まで）]
  *   --wide 720x480：横長。スマホで見たままの大きさ（カメラはそのまま）で、メイン画面の上下を切って3:2にする。
  *     切る位置は主人公の体（頭〜足もと）が縦の真ん中に来る所で、跳んだらそのぶん一緒に上へ動かす（跳んでも見切れない）。
+ *   --shots 9,25.5,36：動画の代わりに、その秒の全画面を PNG で撮る（端末の解像度3倍・1170×2532）。出力は「出力.mp4」の名前に _9s.png などを付ける。
+ *     撮らないコマは描画を飛ばす（状態は毎コマ進める）ので速い
  *     --zoom 0.5 でカメラを引き、--center で主人公を横の真ん中に映すこともできる（ふだんは使わない）
  */
 import { chromium } from 'playwright';
@@ -23,6 +25,7 @@ const K = Number(args.k ?? 0.8);
 const NIGHT = Number(args.night ?? 10);
 const HEIGHT = Number(args.height ?? 720);
 const LIMIT = Number(args.frames ?? 0);
+const SHOTS = args.shots ? args.shots.split(',').map((t) => Math.round(Number(t) * 30)) : null;
 const view = { width: 390, height: 844 };
 const W = Math.round((HEIGHT * view.width) / view.height / 2) * 2;
 const WIDE = args.wide ? args.wide.split('x').map(Number) : null;
@@ -34,7 +37,7 @@ const root = new URL('../app/dist', import.meta.url).pathname;
 const srv = createServer(async (q, s) => { let p = new URL(q.url, 'http://x').pathname.replace(/^\/akazukin/, ''); if (p === '/') p = '/index.html'; try { const b = await readFile(join(root, p)); s.writeHead(200, { 'content-type': T[extname(p)] || 'text/html' }); s.end(b); } catch { s.writeHead(404).end(); } });
 await new Promise((r) => srv.listen(0, r));
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const p = await b.newPage({ viewport: view, deviceScaleFactor: WIDE || HEIGHT > view.height ? 2 : 1, hasTouch: true });
+const p = await b.newPage({ viewport: view, deviceScaleFactor: SHOTS ? 3 : WIDE || HEIGHT > view.height ? 2 : 1, hasTouch: true });
 p.on('pageerror', (e) => console.log('E', e.message));
 await p.goto(`http://127.0.0.1:${srv.address().port}/akazukin/?auto=1&manual=1&seed=${SEED}${WIDE && ZOOM !== 1 ? `&camzoom=${ZOOM}` : ''}${args.center ? '&camcenter=1' : ''}`);
 await p.waitForFunction(() => document.body.classList.contains('ready'));
@@ -72,27 +75,33 @@ await p.evaluate(({ dir, setup, night }) => {
   };
 }, { dir: director.toString(), setup: setupNight.toString(), night: NIGHT });
 
-const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
+const ff = SHOTS ? null : spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
   '-vf', WIDE ? `scale=${WIDE[0]}:${WIDE[1]}:flags=lanczos` : `scale=${W}:${HEIGHT}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', OUTFILE], { stdio: ['pipe', 'inherit', 'inherit'] });
-const done = new Promise((r) => ff.on('close', r));
+const done = ff ? new Promise((r) => ff.on('close', r)) : Promise.resolve();
 
 const t0 = Date.now();
 let after = -1;
 let cropY = null;
 for (let i = 0; ; i++) {
-  const st = await p.evaluate(({ i, k, fps }) => {
+  const shoot = !SHOTS || SHOTS.includes(i);
+  const st = await p.evaluate(({ i, k, fps, shoot }) => {
     const a = window.akazukin, s = a.sim;
     if (i % 3 === 0 && s.phase === 'wave') window.__director(s, window.__mem, k);
     a.tick(1 / fps);
     window.__advanceTimers(1000 / fps);
     window.__advanceAnims(1000 / fps);
-    a.view.app.render();
+    if (shoot) a.view.app.render();
     // 主人公の足もと（画面の座標）と、跳んで持ち上がった分・メイン画面の高さ（横長の切り抜きに使う）
     const v = a.view, h = s.hero, { z, oy } = v.xf;
     const feet = v.wy(h.lane) * z + oy;
     const lift = h.z * v.zk() * 0.75 * z;
     return { phase: s.phase, kills: s.nightKills, combo: s.bestCombo, clock: s.clock, result: s.result, feet, lift, body: v.heroH(h.lane) * z, Hm: v.geo.Hm };
-  }, { i, k: K, fps: FPS });
+  }, { i, k: K, fps: FPS, shoot });
+  if (SHOTS) {
+    if (shoot) { const f = OUTFILE.replace(/\.mp4$/, '') + `_${(i / FPS).toFixed(1)}s.png`; await p.screenshot({ path: f }); console.log('shot', f); }
+    if (i >= Math.max(...SHOTS)) break;
+    continue;
+  }
   let clip;
   if (CROP) {
     // 体の真ん中（足もとから背の半分上・跳んだ分も）を枠の縦の真ん中に
@@ -106,7 +115,7 @@ for (let i = 0; ; i++) {
   if (after >= 0 && i - after >= FPS) break; // 夜明けの1秒後まで
   if (st.result !== 'playing' || (LIMIT && i + 1 >= LIMIT) || i > FPS * 300) break;
 }
-ff.stdin.end();
+ff?.stdin.end();
 await done;
 console.log('done', OUTFILE, `${((Date.now() - t0) / 1000).toFixed(0)}s`);
 await b.close(); srv.close();
