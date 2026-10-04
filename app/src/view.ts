@@ -4,7 +4,7 @@
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
 import { DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
-import { crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
+import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
@@ -57,6 +57,16 @@ export class View {
   private stepT = 0;
   private mono = 0; // 締めの一撃の一瞬のモノクロ
   private monoFilter = new ColorMatrixFilter();
+  // ── 演出の追加（2026-10-04） ──
+  private whiteFilter = new ColorMatrixFilter(); // 一瞬の白い影：狼を真っ白に抜く
+  private impact = 0; // 白い影の残り（秒。画面の時計）
+  private splitLayer = new Container(); // 斬られて上下にずれる狼の影
+  private splits: { top: Container; bot: Container; t: number; dir: number; hh: number; x: number; y: number; a: number }[] = [];
+  private crests: { x: number; lane: number; r: number; t: number }[] = []; // 主砲の跡に焼き付く桜の紋
+  private branch: { t: number; big: boolean } | null = null; // 連撃の節目に画面の縁から伸びる桜の枝
+  private lastCombo = 0;
+  private claws: { t: number; x: number; y: number; a: number } | null = null; // 噛まれた爪あと
+  private lastHeroFlash = 0;
   private grade = new Graphics(); // 色の仕上げ（夜は藍・昼は暖かく）
   private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
@@ -146,7 +156,7 @@ export class View {
       this.fog.push(f);
     }
     this.rimRig.root.blendMode = 'add';
-    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
+    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -170,6 +180,7 @@ export class View {
       this.roleText.push(t);
     }
     this.grade.blendMode = 'multiply';
+    this.whiteFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
     st.addChild(this.grade, this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
       const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
@@ -532,6 +543,13 @@ export class View {
       this.monoFilter.alpha = Math.min(1, this.mono / 0.12);
     }
     for (const c of [this.paraRoot, this.ground, this.house, this.dogBack, this.dogFront, this.wolfBack, this.wolfFront, this.rig.root, this.backdrop.sky]) c.filters = monoOn ? [this.monoFilter] : null;
+    // 一瞬の白い影：大きな一撃の2〜4コマだけ、狼を真っ白に抜き、まわりを暗くする（打撃の重さ）
+    if (sim.events.includes('finisher')) this.impact = Math.max(this.impact, 0.07);
+    this.impact = Math.max(0, this.impact - dt);
+    if (this.impact > 0) for (const c of [this.wolfBack, this.wolfFront, this.splitLayer]) c.filters = [this.whiteFilter];
+    else this.splitLayer.filters = null;
+    this.runSplits(dt);
+    this.watchCombo(sim);
     // 色の仕上げ：画面全体に、夜は藍・昼は暖かい色を薄く掛ける
     const gd = this.grade.clear();
     gd.rect(0, 0, g.W, g.Hm).fill({ color: mix(0xbcb4ec, 0xfff0d8, skyK), alpha: 0.35 });
@@ -560,6 +578,7 @@ export class View {
         const wolf = this.geo.Hm * 0.06;
         P.hit(x, y - zy - wolf, f.dir ?? 1, s, !!f.big);
         if (f.big) this.flash = Math.max(this.flash, 0.22);
+        if (f.big) this.impact = Math.max(this.impact, 0.05);
         break;
       }
       case 'slash': {
@@ -603,6 +622,7 @@ export class View {
         P.dust(x, y, s * 1.8, 8, 90, 50);
         for (let i = 0; i < 10; i++) P.petal(x + (Math.random() - 0.5) * 80, y, s, (Math.random() - 0.5) * 300, -200 - Math.random() * 300); // 地面の花びらが舞い上がる
         this.flash = Math.max(this.flash, 0.2);
+        this.impact = Math.max(this.impact, 0.05);
         break;
       }
       case 'land':
@@ -624,6 +644,10 @@ export class View {
         for (let i = 0; i < (f.big ? 16 : 6); i++) P.petal(x, by, s, (Math.random() - 0.5) * 700, -Math.random() * 500);
         this.flash = Math.max(this.flash, f.big ? 0.55 : 0.3);
         this.flashColor = 0xfff0d0;
+        this.impact = Math.max(this.impact, f.big ? 0.08 : 0.05);
+        // 着いた地面に桜の紋が焼き付く（数秒で冷めて消える）
+        this.crests.push({ x: f.x, lane: f.lane, r: (f.r ?? 60) * (f.big ? 1.1 : 0.8), t: 0 });
+        if (this.crests.length > 8) this.crests.shift();
         break;
       }
       case 'muzzle': {
@@ -655,7 +679,8 @@ export class View {
       case 'poof':
         // 倒した狼：影の狼なので、黒い煙と紅い火の粉になって昇り、桜の花びらが散る
         P.pop(x, y - zy - this.geo.Hm * 0.05, s, f.r ?? 30);
-        P.smoke(x, y - zy - this.geo.Hm * 0.06, s, 7);
+        P.smoke(x, y - zy - this.geo.Hm * 0.06, s, 4);
+        if (f.wolf) this.splitWolf(f, x, y - zy, s);
         for (let i = 0; i < 8; i++) P.ember(x + (Math.random() - 0.5) * 40 * s, y - zy - this.geo.Hm * 0.06, s);
         for (let i = 0; i < 6; i++) P.petal(x, y - zy - this.geo.Hm * 0.05, s, (Math.random() - 0.5) * 500 + (f.dir ?? 0) * 200, -150 - Math.random() * 300);
         // 道に花びらが積もる（夜が進むほど道が桜色に）
@@ -680,6 +705,7 @@ export class View {
         const hd = this.wolfHead(f.x, f.lane, f.z ?? 0, rel);
         P.ring(hd.x, hd.y, 4, this.geo.Hm * 0.07 * rel, 3 * s, 0xffc0d8, 0.22);
         P.glow(hd.x, hd.y, this.geo.Hm * 0.12, 0xff90b8, 0.15, 0.9, 0.6);
+        P.flower(hd.x, hd.y, this.geo.Hm * 0.03 * rel, 0.55); // 当たった所に桜がぱっと咲く
         for (let i = 0; i < 4; i++) P.petal(hd.x, hd.y, s, (Math.random() - 0.3) * 260 * (f.dir ?? 1), -120 - Math.random() * 200, 0.6);
         this.stuck.push({ id: f.n ?? 0, x: f.x, lane: f.lane, z: f.z ?? 0, rel, t: 0, dir: f.dir ?? 1 });
         if (this.stuck.length > 12) this.stuck.shift();
@@ -1109,6 +1135,20 @@ export class View {
         g.circle(sx + 5, sy, 2.2).fill({ color: 0xff5060, alpha: 0.9 });
       }
     }
+    // まもなく出てくる狼：裂け目の下のほう（狼の頭の高さ）で、赤い目がゆっくり開いて光る
+    if (sim.phase === 'wave') {
+      for (const c of sim.coming) {
+        const k = Math.max(0, Math.min(1, 1 - c.next / 1.2));
+        const rel = WOLF_REL[c.kind];
+        const ey = this.wy(0.5) - this.heroH(0.5) * 0.6 * rel * 0.62 - (c.i % 3) * 8;
+        const ex = spine[Math.round(n * 0.85)][0] - 4 + ((c.i * 7) % 5) - 2;
+        const r = 3.2 * Math.max(0.8, rel);
+        const open = k < 0.25 ? k / 0.25 : 1;
+        g.circle(ex, ey, r * 5).fill({ color: 0xff1030, alpha: 0.12 * k });
+        for (const dx of [-r * 2.4, r * 2.4]) g.ellipse(ex + dx, ey, r * 1.3, r * 0.75 * open).fill({ color: 0xff4050, alpha: 0.95 });
+        for (const dx of [-r * 2.4, r * 2.4]) g.ellipse(ex + dx, ey, r * 0.5, r * 0.4 * open).fill({ color: 0xffe0e0, alpha: 0.9 * k });
+      }
+    }
     // 縁の光る線
     g.poly(outline(1)).stroke({ width: 2.5, color: 0xff7080, alpha: 0.9 * pulse });
     // 枝分かれしたひび（空へ・地面へ）
@@ -1337,8 +1377,34 @@ export class View {
 
   // 道に積もった花びらと、走った足あと
   private drawGroundMarks(gr: Graphics, sim: Sim, dt: number) {
+    // 夜明けの光：決めポーズのあいだ、朝の光が地面を左から右へ走り、道の花びらが金色に光る
+    const { z, ox } = this.xf;
+    const band = sim.cheer >= 0 ? (-0.3 * this.geo.W + Math.min(1, sim.cheer / 1.3) * 1.6 * this.geo.W - ox) / z : NaN;
+    const bw = this.geo.W * 0.18 / z;
+    if (!Number.isNaN(band)) {
+      const y0 = this.wy(0) - this.geo.Hm * 0.02;
+      const y1 = this.wy(1) + this.geo.Hm * 0.03;
+      for (let i = 0; i < 6; i++) {
+        const k = 1 - i / 6;
+        gr.rect(band - bw * k, y0, bw * 2 * k, y1 - y0).fill({ color: 0xffe0a0, alpha: 0.09 });
+      }
+    }
     for (const p of this.groundPetals) {
-      gr.ellipse(this.wx(p.x), this.wy(p.lane) + 2, p.r * 1.4, p.r * 0.6).fill({ color: p.c, alpha: 0.55 });
+      const px = this.wx(p.x);
+      const near = Number.isNaN(band) ? 0 : Math.max(0, 1 - Math.abs(px - band) / bw);
+      const passed = !Number.isNaN(band) && px < band ? 0.35 : 0;
+      const gold = Math.max(near, passed);
+      gr.ellipse(px, this.wy(p.lane) + 2, p.r * 1.4 * (1 + near * 0.3), p.r * 0.6 * (1 + near * 0.3)).fill({ color: gold ? mix(p.c, 0xffd060, gold) : p.c, alpha: 0.55 + 0.4 * near });
+    }
+    // 主砲の跡：地面に平たく焼き付いた桜の紋。橙に光ってから冷めて紅く、薄れて消える
+    this.crests = this.crests.filter((c) => (c.t += dt) < 3.2);
+    for (const c of this.crests) {
+      const q = c.t / 3.2;
+      const r = c.r * this.geo.K * 1.7 * (c.t < 0.15 ? easeOut(c.t / 0.15) : 1); // 0.9 倍では小さく暗く、撮影で見えなかった
+      const col = mix(0xffc060, 0xe04870, Math.min(1, c.t / 1.2));
+      blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r * 1.15, 0.3, 0x200008, 0.35 * (1 - q), 0.32); // 焦げ
+      blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r, 0.3, col, 0.85 * (1 - q) ** 1.2, 0.32);
+      blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r * 0.55, 0.3 + Math.PI / 5, mix(col, 0xffffff, 0.5 * (1 - q)), 0.6 * (1 - q) ** 2, 0.32);
     }
     const h = sim.hero;
     this.stepT -= dt;
@@ -1564,6 +1630,122 @@ export class View {
     void dt;
   }
 
+  // 倒した狼：影が刃の線で上下に割れてずれ、端から花びらにほどけて消える
+  private splitWolf(f: Fx, x: number, y: number, s: number) {
+    const kind = f.wolf!;
+    const dir = f.dir || 1;
+    const hh = this.heroH(f.lane) * 0.6 * WOLF_REL[kind];
+    const cy = y - this.wolves.center(hh);
+    // 花びらにほどける：体のあたりから、影の色と桜色の花びらが当てた向きへ流れる
+    const SHADOW = [0x2a1c2c, 0x45283c, 0x6a3850, ...PINK];
+    for (let i = 0; i < 16; i++) {
+      this.parts.petal(x + (Math.random() - 0.5) * hh * 0.9, cy + (Math.random() - 0.5) * hh * 0.6, s, dir * (80 + Math.random() * 220), -60 - Math.random() * 160, 0.9 + Math.random() * 0.8, SHADOW);
+    }
+    if (!this.wolves.ready || this.splits.length >= 10) return;
+    const tex = this.wolves.tex[kind as keyof typeof this.wolves.tex] as Texture | undefined;
+    const m = this.wolves.meta[kind as keyof typeof this.wolves.meta] as { size: [number, number]; feet: [number, number] } | undefined;
+    if (!tex || !m) return;
+    const a = -dir * (0.25 + Math.random() * 0.25); // 刃の線（少し斜め）
+    const half = (top: boolean) => {
+      const c = new Container();
+      c.position.set(x, cy);
+      c.rotation = a;
+      const sp = new Sprite(tex);
+      sp.anchor.set(m.feet[0] / m.size[0], (m.feet[1] * 0.55) / m.size[1]);
+      const k = hh / m.feet[1];
+      sp.scale.set(k);
+      sp.rotation = -a;
+      sp.tint = 0xffd8e0;
+      const L = hh * 2;
+      const mask = new Graphics().rect(-L, top ? -L : 0, L * 2, L).fill(0xffffff);
+      c.addChild(sp, mask);
+      sp.mask = mask;
+      this.splitLayer.addChild(c);
+      return c;
+    };
+    this.splits.push({ top: half(true), bot: half(false), t: 0, dir, hh, x, y: cy, a });
+  }
+
+  private runSplits(dt: number) {
+    const o = this.overG;
+    this.splits = this.splits.filter((sp) => {
+      sp.t += dt;
+      const life = 0.45;
+      if (sp.t >= life) {
+        sp.top.destroy({ children: true });
+        sp.bot.destroy({ children: true });
+        return false;
+      }
+      const q = sp.t / life;
+      const e = easeOut(Math.min(1, q * 1.4));
+      // 上の半分は刃の向きへ滑って少し回り、下の半分は少し沈む
+      const nx = Math.sin(sp.a);
+      const ny = -Math.cos(sp.a);
+      sp.top.position.set(sp.x + Math.cos(sp.a) * sp.dir * sp.hh * 0.22 * e + nx * sp.hh * 0.06 * e, sp.y + ny * sp.hh * 0.08 * e);
+      sp.top.rotation = sp.a + sp.dir * 0.12 * e;
+      sp.bot.position.set(sp.x - Math.cos(sp.a) * sp.dir * sp.hh * 0.05 * e, sp.y + sp.hh * 0.05 * e);
+      sp.top.alpha = sp.bot.alpha = (1 - q) ** 1.3;
+      // 割れた瞬間の白い刃の線
+      if (sp.t < 0.12) {
+        const L = sp.hh * 0.75 * (0.6 + 0.4 * (sp.t / 0.12));
+        const c = Math.cos(sp.a);
+        const s2 = Math.sin(sp.a);
+        o.moveTo(sp.x - c * L, sp.y - s2 * L).lineTo(sp.x + c * L, sp.y + s2 * L).stroke({ width: 4 * (1 - sp.t / 0.12) + 1, color: 0xffffff, alpha: 0.95, cap: 'round' });
+      }
+      return true;
+    });
+  }
+
+  // 連撃30・50・100：画面の左右の縁から桜の枝がすっと伸び、花が咲いて、少しして消える
+  private watchCombo(sim: Sim) {
+    const crossed = (n: number) => this.lastCombo < n && sim.combo >= n;
+    if (crossed(30) || crossed(50) || crossed(100)) this.branch = { t: 0, big: sim.combo >= 50 };
+    this.lastCombo = sim.combo;
+  }
+
+  private drawBranches(s: Graphics, dt: number) {
+    const b = this.branch;
+    if (!b) return;
+    b.t += dt;
+    const life = 2.4;
+    if (b.t >= life) { this.branch = null; return; }
+    const g = this.geo;
+    const grow = easeOut(Math.min(1, b.t / 0.55));
+    const fade = b.t > life - 0.5 ? (life - b.t) / 0.5 : 1;
+    const L = g.W * (b.big ? 0.42 : 0.32);
+    for (const side of [-1, 1]) {
+      // 決まった形の枝（毎回同じ）。左の縁から右下へ、右の縁から左下へ
+      const x0 = side < 0 ? -4 : g.W + 4;
+      const y0 = g.Hm * 0.2;
+      const pts: [number, number][] = [];
+      for (let i = 0; i <= 10; i++) {
+        const k = i / 10;
+        pts.push([x0 - side * L * k, y0 + L * 0.35 * k * k + Math.sin(k * 5 + side) * g.W * 0.02]);
+      }
+      const shown = Math.max(1, Math.round(10 * grow));
+      for (let i = 1; i <= shown; i++) {
+        const w = (1 - i / 11) * g.W * 0.022 + 1;
+        // 夜空に沈まないよう、暗い枝に月明かりの縁を1本
+        s.moveTo(pts[i - 1][0], pts[i - 1][1]).lineTo(pts[i][0], pts[i][1]).stroke({ width: w + 2, color: 0xd8a0b8, alpha: 0.55 * fade, cap: 'round' });
+        s.moveTo(pts[i - 1][0], pts[i - 1][1]).lineTo(pts[i][0], pts[i][1]).stroke({ width: w, color: 0x5a3038, alpha: 0.95 * fade, cap: 'round' });
+      }
+      // 小枝と花：枝が通ったところから順に咲く
+      for (let i = 2; i <= 10; i += 2) {
+        if (i > shown) break;
+        const [px, py] = pts[i];
+        const tx = px - side * g.W * 0.04;
+        const ty = py + (i % 4 ? -1 : 1) * g.W * 0.05;
+        s.moveTo(px, py).lineTo(tx, ty).stroke({ width: 3.5, color: 0xd8a0b8, alpha: 0.5 * fade, cap: 'round' });
+        s.moveTo(px, py).lineTo(tx, ty).stroke({ width: 2, color: 0x5a3038, alpha: 0.95 * fade, cap: 'round' });
+        const bt = Math.max(0, b.t - (i / 10) * 0.55);
+        const open = Math.min(1, bt / 0.25);
+        const r = g.W * (b.big ? 0.03 : 0.024) * easeOut(open) * (0.85 + ((i * 13) % 5) * 0.06);
+        blossom(s, tx, ty, r, i * 0.7, PINK[i % 4], 0.95 * fade);
+        blossom(s, px, py, r * 0.75, i * 1.3, PINK[(i + 1) % 4], 0.9 * fade);
+      }
+    }
+  }
+
   private drawScreen(sim: Sim, dt: number, z: number, ox: number) {
     const s = this.screen.clear();
     const g = this.geo;
@@ -1599,6 +1781,36 @@ export class View {
       this.flash = Math.max(0, this.flash - dt * 5);
       if (this.flash <= 0) this.flashColor = 0xffffff;
     }
+    // 一瞬の白い影のあいだは、まわりを暗くする
+    if (this.impact > 0) sh.rect(0, 0, g.W, g.Hm).fill({ color: 0x000000, alpha: 0.35 });
+    // 噛まれた：画面に3本の爪あと（さっと走って薄れる）
+    // （'hurt' は体力が3割を切ったときだけなので、噛まれるたびに立つ hitFlash を見る）
+    const bitten = h.hitFlash > this.lastHeroFlash + 0.05;
+    this.lastHeroFlash = h.hitFlash;
+    if (bitten && (!this.claws || this.claws.t > 0.3)) {
+      this.claws = { t: 0, x: g.W * (0.3 + Math.random() * 0.4), y: g.Hm * (0.3 + Math.random() * 0.25), a: (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.3) };
+    }
+    if (this.claws) {
+      const c = this.claws;
+      c.t += dt;
+      const life = 0.55;
+      if (c.t >= life) this.claws = null;
+      else {
+        const R = g.W * 0.9;
+        for (let i = 0; i < 3; i++) {
+          const run = Math.min(1, Math.max(0, (c.t - i * 0.025) / 0.08)); // 1本ずつ、さっと走る
+          const al = (1 - c.t / life) * 0.85;
+          const off = (i - 1) * g.W * 0.06;
+          // 3本を横に並べる（中心ごと、線と直角の向きへずらす）
+          const cx = c.x + Math.cos(c.a + Math.PI / 2) * R + Math.cos(c.a - Math.PI / 2) * off;
+          const cy = c.y + Math.sin(c.a + Math.PI / 2) * R + Math.sin(c.a - Math.PI / 2) * off;
+          const a0 = c.a - Math.PI / 2 - 0.13;
+          crescent(s, cx, cy, R, a0, a0 + 0.26 * run, g.W * 0.022, 0xc01028, al);
+          crescent(s, cx, cy, R, a0, a0 + 0.26 * run, g.W * 0.008, 0xffe0e0, al);
+        }
+      }
+    }
+    this.drawBranches(s, dt);
     // 画面の外の狼：端に矢印と数（家に近い狼がいると赤く脈打つ）
     const x0 = (0 - ox) / z / g.K;
     const x1 = (g.W - ox) / z / g.K;

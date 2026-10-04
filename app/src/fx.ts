@@ -2,7 +2,7 @@
 // 火花・土煙・桜の花びら・破片・輪・斬撃の弧・光（加算の丸いぼかし）を、まとめて毎フレーム描く。
 import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 
-type Kind = 'spark' | 'dust' | 'petal' | 'bokeh' | 'debris' | 'ring' | 'arc' | 'glow' | 'line';
+type Kind = 'spark' | 'dust' | 'petal' | 'bokeh' | 'flower' | 'debris' | 'ring' | 'arc' | 'glow' | 'line';
 interface P {
   kind: Kind;
   x: number; y: number; vx: number; vy: number;
@@ -97,6 +97,11 @@ export class Particles {
 
   petal(x: number, y: number, s: number, vx = rnd(-60, 60), vy = rnd(-40, 40), life = rnd(0.8, 1.6), colors = PINK, alpha = 1) {
     this.add({ kind: 'petal', x, y, vx: vx * s, vy: vy * s, life, size: rnd(3, 5.5) * s, color: pick(colors), alpha, rot: rnd(0, 6.28), vr: rnd(-8, 8), g: 160 * s, drag: 2.2 });
+  }
+
+  // 桜の花がぱっと開いて、少し回りながら消える（矢が当たった所）
+  flower(x: number, y: number, size: number, life = 0.55) {
+    this.add({ kind: 'flower', x, y, size, life, rot: rnd(0, 6.28), vr: rnd(-3, 3), color: pick(PINK), vy: -20 });
   }
 
   // カメラのすぐ前を横切る花びら：大きく、半透明で、ふちがぼけている（重力なし・速い）
@@ -223,6 +228,12 @@ export class Particles {
           g.restore();
           break;
         }
+        case 'flower': {
+          // 最初の3割で開き（少し大きく行きすぎて戻る）、あとは薄れる
+          const open = q < 0.3 ? easeOut(q / 0.3) * 1.15 : 1.15 - 0.15 * Math.min(1, (q - 0.3) / 0.2);
+          blossom(g, p.x, p.y, p.size * open, p.rot, p.color, Math.min(1, fade * 2));
+          break;
+        }
         case 'bokeh': {
           // 薄い楕円を外から内へ重ねて、ふちをぼかす。主人公の体の上を通るときは透ける
           let a = p.alpha * Math.min(1, fade * 3, q * 8);
@@ -278,6 +289,21 @@ export class Particles {
     for (const p of this.ps) if (p.sprite) this.release(p.sprite);
     this.ps = [];
   }
+}
+
+// 桜の花（5枚の花びら・先に切れ込み・真ん中に黄色い芯）。r は花の半径
+export function blossom(g: Graphics, x: number, y: number, r: number, rot: number, color: number, alpha: number, flat = 1) {
+  if (alpha <= 0.01 || r <= 0.5) return;
+  for (let i = 0; i < 5; i++) {
+    const a = rot + (i * Math.PI * 2) / 5;
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const px = (u: number, v: number) => [x + (c * u - s * v), y + (s * u + c * v) * flat];
+    // 花びら：付け根から先へふくらみ、先に小さな切れ込み
+    const pts = [px(0, 0), px(r * 0.45, -r * 0.34), px(r * 0.95, -r * 0.22), px(r * 0.82, 0), px(r * 0.95, r * 0.22), px(r * 0.45, r * 0.34)].flat();
+    g.poly(pts).fill({ color, alpha });
+  }
+  g.ellipse(x, y, r * 0.2, r * 0.2 * flat).fill({ color: 0xffe08a, alpha });
 }
 
 // 三日月の形：先端（a1 側）が太く、尾（a0 側）が細い

@@ -2,7 +2,7 @@
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
 import { Assets, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
-import { MOVES } from './config';
+import { HERO, MOVES } from './config';
 import type { Sim } from './sim';
 
 // idle＝構え（技の振りかぶり）・calm＝力を抜いた待機（2026-10-04 生成。happy・wink・cry は同じ姿勢で顔だけ違う）・
@@ -370,7 +370,10 @@ export class HeroRig {
     let facing = h.facing;
     if (sim.cheer >= 0 && h.down <= 0) {
       const v = VICTORY[sim.wave % VICTORY.length];
-      const dog = sim.dogs.filter((d) => d.down <= 0 && Math.abs(d.x - h.x) < 170).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
+      // なでるのは、そばまで来て止まった犬だけ（走ってくる途中の犬に手を伸ばすと、何もない所をなでて見えた。2026-10-04 アマネさん「犬がいない」）
+      const dog = sim.dogs
+        .filter((d) => d.down <= 0 && d.run < 20 && Math.abs(d.x - h.x) <= (HERO.size + d.size) / 2 + 60 && Math.abs(d.lane - h.lane) < 0.35)
+        .sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
       const pet = sim.cheer > 1.5 && dog;
       frame = sim.cheer < 0.12 ? 'idle' : pet ? 'pet' : v;
       lean = 0;

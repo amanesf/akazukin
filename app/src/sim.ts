@@ -49,6 +49,7 @@ export interface Fx {
   dir?: number; // 向き（1 右・-1 左）
   x2?: number; // 突進の終わり
   move?: MoveId;
+  wolf?: WolfKind; // 倒した狼の種類（倒れる演出で絵を割る）
 }
 
 export type Result = 'playing' | 'won' | 'lost';
@@ -142,6 +143,10 @@ export class Sim {
   levels: Record<Track, number> = { body: 0, near: 0, far: 0, dog: 0 };
 
   private spawners: Spawner[] = [];
+  // まもなく裂け目から出てくる狼（画面の予告：裂け目の中で赤い目が開く）。next＝出てくるまでの秒
+  get coming(): { kind: WolfKind; next: number; i: number }[] {
+    return this.spawners.flatMap((s, i) => (s.left > 0 && s.next < 1.2 ? [{ kind: s.kind, next: s.next, i }] : []));
+  }
   private holdWanted = false;
   private queued: { act: Act; t: number } | null = null;
   private nextId = 1;
@@ -1349,7 +1354,7 @@ export class Sim {
       this.nightEarned += b;
       this.kills++;
       this.nightKills++;
-      this.fx.push(this.mk({ kind: 'poof', x: w.x, lane: w.lane, z: w.z, r: w.size, n: b, dir: w.hitDir }));
+      this.fx.push(this.mk({ kind: 'poof', x: w.x, lane: w.lane, z: w.z, r: w.size, n: b, dir: w.hitDir, wolf: w.kind }));
       return false;
     });
     // 番犬は消えずに倒れて、家で休んでから戻る
