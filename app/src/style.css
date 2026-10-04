@@ -118,8 +118,12 @@ button::after {
   text-align: center;
 }
 #overlay[hidden] { display: none; }
-#overlay.title { background: linear-gradient(rgba(10, 6, 12, 0.35), rgba(10, 6, 12, 0.88) 55%), var(--title) center top / cover no-repeat; justify-content: flex-end; padding-bottom: 6vh; }
-#overlay.title h1 { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 60, 90, 0.7); }
+/* 題字の画面：メインビジュアルをしっかり見せる（暗くするのは下の文字の所だけ）。大正赤ずきんを大きく（2026-10-04 アマネさん） */
+#overlay.title { background: linear-gradient(transparent 52%, rgba(10, 6, 12, 0.85) 80%), var(--title) center top / cover no-repeat; justify-content: flex-end; padding-bottom: 5vh; gap: 10px; }
+#overlay.title h1 { font-size: 46px; letter-spacing: 0.12em; text-shadow: 0 3px 0 #000, 0 0 20px rgba(255, 60, 90, 0.8); }
+#overlay.title h1 small { order: -1; font-size: 16px; letter-spacing: 0.5em; color: var(--brass); }
+#overlay.title p { color: #f0e0e6; text-shadow: 0 1px 2px #000; }
+#overlay.title .how { font-size: 12px; color: var(--dim); }
 #overlay h1 { margin: 0; font-size: 34px; letter-spacing: 0.15em; display: flex; flex-direction: column; gap: 6px; }
 #overlay h1 small { font-size: 18px; color: var(--brass); letter-spacing: 0.3em; }
 #overlay p { margin: 0; color: var(--dim); }
@@ -307,3 +311,21 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
 body.tutorial #next { display: none; }
 @keyframes hint-in { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); } 100% { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 @keyframes hint-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 160, 200, 0); } 50% { box-shadow: 0 0 0 6px rgba(255, 160, 200, 0.25); } }
+
+/* アイコン（文字の代わり・添え） */
+.ic { width: 1.35em; height: 1.35em; vertical-align: middle; margin-right: 4px; flex: none; }
+.status .ic { width: 22px; height: 22px; }
+.coins, .wave { display: inline-flex; align-items: center; gap: 2px; }
+.up b { display: flex; align-items: center; gap: 4px; font-size: 19px; white-space: nowrap; }
+.up b .ic { width: 26px; height: 26px; }
+.ouran .row { display: flex; align-items: center; gap: 6px; }
+.ouran .ic { width: 30px; height: 30px; }
+.dog { flex-direction: row; gap: 6px; }
+.dog .pic { height: 34px; width: auto; }
+.dog small { white-space: nowrap; font-size: 11px; }
+#hint .ic { width: 22px; height: 22px; }
+.dog span { display: flex; flex-direction: column; align-items: flex-start; }
+#next img { height: 18px; width: auto; transform: scaleX(-1); }
+#pause, #sound { display: inline-flex; flex-direction: row; align-items: center; gap: 2px; padding: 2px 8px 2px 3px; white-space: nowrap; }
+#pause { padding: 2px; }
+#pause .ic, #sound .ic { width: 24px; height: 24px; margin: 0; }

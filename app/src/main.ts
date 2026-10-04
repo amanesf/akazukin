@@ -3,8 +3,7 @@ import { Sfx } from './audio';
 import { WOLVES, type WolfKind } from './config';
 import { Input } from './input';
 import { Sim, type Event, type Save } from './sim';
-import { Panel } from './ui';
-import { WOLF_COLOR } from './palette';
+import { ICON, Panel } from './ui';
 import { View } from './view';
 
 const params = new URLSearchParams(location.search);
@@ -47,9 +46,11 @@ async function main() {
 
   // 音：最初は切。押すと入る
   const sound = document.getElementById('sound') as HTMLButtonElement;
+  sound.innerHTML = `${ICON('note')}切`;
+  document.getElementById('pause')!.innerHTML = ICON('pause');
   sound.addEventListener('click', () => {
     const on = sfx.toggle();
-    sound.textContent = on ? '♪ 音 入' : '♪ 音 切';
+    sound.innerHTML = `${ICON('note')}${on ? '入' : '切'}`;
     sound.classList.toggle('on', on);
   });
 
@@ -81,11 +82,11 @@ async function main() {
   // 前は時間で流れて消える文字だった）
   type Did = Sim['did'];
   const STEPS: { text: string; done: (d: Did, b: Did) => boolean }[] = [
-    { text: '👆 右から来る狼をタップして斬ろう（続けてタップで連撃）', done: (d, b) => d.tap - b.tap >= 3 },
-    { text: '👉 画面を左か右に、さっとはじこう → 突進斬り', done: (d, b) => d.dash > b.dash },
-    { text: '☝ 上か下にはじこう → 斬り上げ／叩き落とし', done: (d, b) => d.launch + d.slam > b.launch + b.slam },
-    { text: '✊ 長押しして、離そう → 背中の主砲', done: (d, b) => d.shiki > b.shiki },
-    { text: '🗺 下の小さい地図をタップ → そこへ駆けつける', done: (d, b) => d.mini > b.mini },
+    { text: '右から来る狼をタップして斬ろう（続けてタップで連撃）', done: (d, b) => d.tap - b.tap >= 3 },
+    { text: '画面を左か右に、さっとはじこう → 突進斬り', done: (d, b) => d.dash > b.dash },
+    { text: '上か下にはじこう → 斬り上げ／叩き落とし', done: (d, b) => d.launch + d.slam > b.launch + b.slam },
+    { text: '長押しして、離そう → 背中の主砲', done: (d, b) => d.shiki > b.shiki },
+    { text: '下の小さい地図をタップ → そこへ駆けつける', done: (d, b) => d.mini > b.mini },
   ];
   let step = -1;
   let base: Did = { ...sim.did };
@@ -157,7 +158,7 @@ async function main() {
     } else step = -1;
     if (hx !== lastHint) {
       lastHint = hx;
-      hint.textContent = hx;
+      hint.innerHTML = hx && !hx.startsWith('✨') ? `${ICON('tap')}${hx}` : hx;
       hint.classList.toggle('ok', hx.startsWith('✨'));
       document.body.classList.toggle('tutorial', !!hx); // 説明のあいだは右上の「これから」を隠す（重なる）
       if (hx) restart(hint);
@@ -181,7 +182,7 @@ async function main() {
       lastPending = key;
       const kinds = Object.keys(pend) as WolfKind[];
       next.hidden = kinds.length === 0;
-      next.innerHTML = '<b>これから</b>' + kinds.map((k) => `<span><i style="background:#${WOLF_COLOR[k].toString(16).padStart(6, '0')}"></i>${WOLVES[k].name} ${pend[k]}</span>`).join('');
+      next.innerHTML = '<b>これから</b>' + kinds.map((k) => `<span><img src="${BASE}wolves/${k}.webp" alt="">${WOLVES[k].name} ${pend[k]}</span>`).join('');
     }
   };
 
@@ -245,9 +246,9 @@ async function main() {
   document.addEventListener('visibilitychange', () => document.hidden && !manual && pause());
 
   const saved = store.read();
-  const title = `<h1>鋼桜奇譚<small>大正赤ずきん</small></h1>
+  const title = `<h1><small>鋼桜奇譚</small>大正赤ずきん</h1>
      <p>月の裂け目から狼が来る。99日、おばあさんの家を守り抜け。</p>
-     <ul><li><b>タップ</b>：斬る（連打で連撃）／遠くの地面：走る</li><li><b>はじく</b>：左右＝突進斬り・上＝斬り上げ・下＝叩き落とし</li><li><b>長押し→離す</b>：主砲</li><li><b>下の地図をタップ</b>：そこへ駆けつける</li><li>当てるとゲージが溜まる。満タンで桜嵐</li><li>昼：鍛える・番犬を戦場に置く</li></ul>`;
+     <p class="how">操作は1晩目に「やってみよう」で</p>`; // 操作の一覧は、絵が見えるように外した（2026-10-04 アマネさん「画像しっかり見えるように」）
   show(title, saved
     ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
     : [['はじめる', () => {}]], true);

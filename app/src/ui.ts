@@ -3,6 +3,10 @@
 import { DAYS_TO_CLEAR, DOG_MAX, DOGS, HOUSE_HP, TRACKS, type DogKind, type Track } from './config';
 import type { Sim } from './sim';
 
+// アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
+export const ICON = (n: string) => `<img class="ic" src="${import.meta.env.BASE_URL}ui/icons/${n}.webp" alt="">`;
+const TRACK_ICON: Record<Track, string> = { body: 'heart', near: 'knife', far: 'cannon' };
+
 export class Panel {
   private coins: HTMLElement;
   private house: HTMLElement;
@@ -17,17 +21,18 @@ export class Panel {
   private dawn: HTMLElement;
   private sim: () => Sim;
   private lastCoins = -1;
+  private lastWave = '';
 
   constructor(host: HTMLElement, sim: () => Sim, onDogDrag: (kind: DogKind, e: PointerEvent) => void) {
     this.sim = sim;
     host.innerHTML = `
       <div class="status">
         <span class="coins"></span>
-        <span class="house"><i></i></span>
+        ${ICON('house')}<span class="house"><i></i></span>
         <span class="wave"></span>
       </div>
       <div class="battle">
-        <button class="ouran">桜嵐<small></small></button>
+        <button class="ouran"><span class="row">${ICON('sakura')}桜嵐</span><small></small></button>
       </div>
       <div class="shop" hidden>
         <p class="dawn"></p>
@@ -51,7 +56,7 @@ export class Panel {
     for (const kind of Object.keys(DOGS) as DogKind[]) {
       const b = document.createElement('button');
       b.className = 'dog';
-      b.innerHTML = `${DOGS[kind].name}<small>${DOGS[kind].cost}銭／晩</small>`;
+      b.innerHTML = `<img class="pic" src="${import.meta.env.BASE_URL}dogs/${kind}.webp" alt=""><span>${DOGS[kind].name}<small>${DOGS[kind].cost}銭／晩</small></span>`;
       b.addEventListener('pointerdown', (e) => {
         if (!this.sim().canPlace()) return;
         e.preventDefault();
@@ -63,7 +68,7 @@ export class Panel {
     for (const t of Object.keys(TRACKS) as Track[]) {
       const b = document.createElement('button');
       b.className = 'up';
-      b.innerHTML = `<b>${TRACKS[t].name}</b><span class="lv"></span><small></small><em></em>`;
+      b.innerHTML = `<b>${ICON(TRACK_ICON[t])}${TRACKS[t].name}</b><span class="lv"></span><small></small><em></em>`;
       b.addEventListener('click', () => this.sim().buy(t));
       q('.ups').appendChild(b);
       this.ups.push([t, b]);
@@ -74,7 +79,7 @@ export class Panel {
     const s = this.sim();
     const c = Math.floor(s.coins);
     if (c !== this.lastCoins) {
-      this.coins.textContent = `${c} 銭`;
+      this.coins.innerHTML = `${ICON('coin')}${c}`;
       if (c > this.lastCoins && this.lastCoins >= 0) {
         this.coins.classList.remove('gain');
         void this.coins.offsetWidth;
@@ -85,7 +90,11 @@ export class Panel {
     this.house.style.width = `${(100 * s.houseHp) / HOUSE_HP}%`;
     this.house.classList.toggle('low', s.houseHp < HOUSE_HP * 0.3);
     const day = Math.min(s.wave + 1, DAYS_TO_CLEAR);
-    this.wave.textContent = `${day}日目・${s.phase === 'shop' ? '昼' : '夜'}`;
+    const wv = `${day}${s.phase}`;
+    if (wv !== this.lastWave) {
+      this.lastWave = wv;
+      this.wave.innerHTML = `${ICON(s.phase === 'shop' ? 'sun' : 'moon')}${day}日目`;
+    }
     const shop = s.phase === 'shop';
     document.body.classList.toggle('day', shop);
     this.battle.hidden = shop;
