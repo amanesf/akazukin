@@ -33,6 +33,13 @@ def bounds(img):
 
 wolf_h = bounds(imgs['wolf'])[3] - bounds(imgs['wolf'])[1]
 k = WOLF_PX / wolf_h
+# ふつうの狼の動き（wolf-motion-v1：もう1歩・噛みつき・のけぞり・宙で転がる）。別の1枚なので、歩きの背の高さを
+# ふつうの狼にそろえた倍率で、4枚とも縮める
+MOTION = ['wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air']
+mimgs = {n: cv2.flip(cv2.imread(f'{SRC}/{n}.png', cv2.IMREAD_UNCHANGED), 1) for n in MOTION}
+km = wolf_h / (bounds(mimgs['wolf_walk2'])[3] - bounds(mimgs['wolf_walk2'])[1])
+for n, img in mimgs.items():
+    imgs[n] = cv2.resize(img, (int(img.shape[1] * km), int(img.shape[0] * km)), interpolation=cv2.INTER_AREA)
 meta = {}
 for n, img in imgs.items():
     x0, y0, x1, y1 = bounds(img)
@@ -43,7 +50,10 @@ for n, img in imgs.items():
     bottom = np.nonzero(a.any(axis=1))[0].max()
     # 前足と後ろ足のあいだの真ん中（下から背の高さの12%の行に写る脚の端と端）
     xs = np.nonzero(a[int(bottom - small.shape[0] * 0.12):bottom + 1].any(axis=0))[0]
-    meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [float((xs.min() + xs.max()) / 2), float(bottom)],
+    fx = float((xs.min() + xs.max()) / 2)
+    if n in MOTION:
+        fx = small.shape[1] / 2  # 動きの絵は前足を伸ばすので、絵の真ん中を基準に（コマを替えても体が跳ばない）
+    meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [fx, float(bottom)],
                'h': round(float((y1 - y0) / wolf_h), 3)}
 json.dump(meta, open(f'{OUT}/meta.json', 'w'), indent=1)
 total = sum(os.path.getsize(f'{OUT}/{f}') for f in os.listdir(OUT))

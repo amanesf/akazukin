@@ -41,7 +41,8 @@ export class View {
   private wolfBack = new Container(); // 狼の絵（主人公より奥）
   private wolfFront = new Container(); // 狼の絵（主人公より手前）
   private wolfHud = new Graphics(); // 狼の体力の棒（絵の上）
-  private wolves = new UnitArt<WolfKind>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha'], this.wolfBack, this.wolfFront);
+  // ふつうの狼だけ動きの絵がある（もう1歩・噛みつき・のけぞり・宙で転がる。wolf-motion-v1）
+  private wolves = new UnitArt<WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air'>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air'], this.wolfBack, this.wolfFront);
   private dogBack = new Container();
   private dogFront = new Container();
   private dogArt = new UnitArt<DogKind>('dogs', ['shiba', 'akita', 'tosa'], this.dogBack, this.dogFront); // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
@@ -703,14 +704,21 @@ export class View {
     const tint = o.flash ? 0xff9a9a : w.hasted ? 0xfff0a0 : 0xffffff;
     const layer: 0 | 1 = g === this.backG ? 0 : 1;
     const cy = o.ground - o.lift - o.bob * 0.6 - this.wolves.center(hh);
-    this.wolves.put(layer, w.kind, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born);
+    // ふつうの狼は、動きに合わせて絵を差し替える。差し替えた絵は姿勢そのものなので、傾けすぎない
+    let art: Parameters<typeof this.wolves.put>[1] = w.kind;
+    if (w.kind === 'wolf') {
+      if (w.z > 0 && !w.pouncing) { art = 'wolf_air'; rot *= 0.5; }
+      else if (o.hit > 0 || (w.stun > 0.05 && w.z <= 0)) { art = 'wolf_hit'; rot *= 0.3; }
+      else if (o.biteK > 0.15) { art = 'wolf_bite'; rot *= 0.3; }
+      else if (w.vx === 0 && Math.sin((sim.clock + w.id * 0.37) * 7) < 0) art = 'wolf_walk2';
+    }
+    this.wolves.put(layer, art, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born);
     if (w.hp < w.maxHp && w.age > 0.4) {
       const hb = Math.max(o.bw * 0.8, hh * 0.5);
       const hy = o.ground - o.lift - hh * 1.05;
       this.wolfHud.rect(o.x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
       this.wolfHud.rect(o.x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
     }
-    void sim;
   }
 
   // ── 番犬（箱。右を向いて構える）──
@@ -1166,7 +1174,6 @@ export class View {
       const k = 1 - (now - b.t) / 0.18;
       s.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 2 + 8 * k, color: 0xffe0f0, alpha: 0.55 * k, cap: 'round' });
     }
-    void sim;
   }
 
   // 絵が読めないときの主人公（赤い箱）
