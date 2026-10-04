@@ -147,7 +147,7 @@ export class Input {
     const f = this.view.toField(d.x, d.y);
     if (!f) return;
     if (f.mini) s.runTo(f.x, f.lane, true);
-    else s.tap(f.x, f.lane);
+    else s.tap(f.x, f.sky ? s.hero.lane : f.lane); // 空に触れたら奥行きはそのまま（一番奥まで走っていた）
   }
 
   // 押していた指を忘れる（溜めていたら撃たずに止める）

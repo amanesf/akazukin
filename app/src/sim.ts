@@ -242,6 +242,11 @@ export class Sim {
       const t = best;
       return this.queue(() => this.attack(t));
     }
+    if (Math.abs(x - h.x) <= 120 && Math.abs(lane - h.lane) > 0.3) {
+      // 主人公の近くでも、奥行きが離れた地面なら、そこへ動く（奥行きのずれた狼を追えなかった）
+      this.runTo(x, lane);
+      return;
+    }
     if (Math.abs(x - h.x) <= 120) {
       const dir = (Math.sign(x - h.x) || h.facing) as 1 | -1;
       return this.queue(() => this.attack(undefined, dir));

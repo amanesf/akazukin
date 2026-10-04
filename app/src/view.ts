@@ -142,7 +142,7 @@ export class View {
   private zk() { return this.geo.K * 0.9; } // 高さ（間合い）→画素
 
   // 画面の点 → 戦場（間合いと奥行き）。小さい地図の上なら sprint
-  toField(sx: number, sy: number): { x: number; lane: number; mini: boolean } | null {
+  toField(sx: number, sy: number): { x: number; lane: number; mini: boolean; sky?: boolean } | null {
     const g = this.geo;
     if (sy >= g.Hm) {
       const m = this.mini.toField(sx, sy - g.Hm);
@@ -150,7 +150,8 @@ export class View {
     }
     const wxp = (sx - g.W / 2) / this.cam.z + this.cam.x;
     const wyp = (sy - g.Hm / 2) / this.cam.z + this.cam.y;
-    return { x: wxp / g.K, lane: Math.max(0, Math.min(1, (wyp - g.laneTop) / (g.laneH * (1 + 2.2 * this.dayK)))), mini: false };
+    const raw = (wyp - g.laneTop) / (g.laneH * (1 + 2.2 * this.dayK));
+    return { x: wxp / g.K, lane: Math.max(0, Math.min(1, raw)), mini: false, sky: raw < -0.15 }; // sky：地面より上（空）に触れた
   }
 
   // 昼：画面の点の近くにある番犬の持ち場
@@ -238,7 +239,11 @@ export class View {
       gr.ellipse(this.wx(x), this.wy(lane) + 2, w * 0.55 * k, w * 0.13 * k).fill({ color: 0x000000, alpha: 0.42 * k });
     };
     for (const d of sim.dogs) shadow(d.x, d.lane, d.size * this.U(d.lane), 0);
-    for (const w of sim.wolves) shadow(w.x, w.lane, w.size * this.U(w.lane), w.z);
+    // 画面の外の狼は描かない（狼が150匹の晩で、描画の半分が狼だった）
+    const vx0 = -ox / z - 250;
+    const vx1 = (g.W - ox) / z + 250;
+    const seen = sim.wolves.filter((w) => { const wx = this.wx(w.x); return wx > vx0 && wx < vx1; });
+    for (const w of seen) shadow(w.x, w.lane, w.size * this.U(w.lane), w.z);
     if (h.down <= 0) shadow(h.x, h.lane, this.heroH(h.lane) * 0.5, h.z);
     // 溜めの足もとの光
     if (h.charge >= 0) {
@@ -274,7 +279,7 @@ export class View {
       const p = this.dragGhost;
       items.push({ lane: p.lane, draw: (gg) => this.drawDog(gg, { id: -99, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 }, sim, 0.6) });
     }
-    for (const w of sim.wolves) items.push({ lane: w.lane, draw: (gg) => this.drawWolf(gg, w, sim) });
+    for (const w of seen) items.push({ lane: w.lane, draw: (gg) => this.drawWolf(gg, w, sim) });
     items.sort((a, b) => a.lane - b.lane);
     for (const it of items) it.draw(it.lane <= h.lane ? bg : fg);
 

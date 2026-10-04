@@ -90,7 +90,13 @@ export class Minimap {
       const x = this.mx(wf.x);
       const y = this.my(wf.lane) - wf.z * 0.12;
       const rot = wf.z > 0 && !wf.pouncing ? (wf.hitDir || 1) * Math.min(Math.PI * 1.5, wf.z / 60) : 0;
-      if (wf.z > 0) g.ellipse(x, this.my(wf.lane), w * 0.5, 1.5).fill({ color: 0x000000, alpha: 0.4 });
+      if (!rot) {
+        // 地面にいる狼（ほとんど）は回さずに描く（回すための変換が重い）
+        g.rect(x - w / 2, y - h, w, h).fill(wf.hitFlash > 0 ? 0xffffff : WOLF_COLOR[wf.kind]);
+        g.rect(x - w / 2 + 1, y - h + 1, 2, 2).fill(wf.hasted ? 0xffff60 : 0xff4040);
+        continue;
+      }
+      g.ellipse(x, this.my(wf.lane), w * 0.5, 1.5).fill({ color: 0x000000, alpha: 0.4 });
       place(g, x, y - h / 2, rot);
       g.rect(-w / 2, -h / 2, w, h).fill(wf.hitFlash > 0 ? 0xffffff : WOLF_COLOR[wf.kind]);
       g.rect(-w / 2 + 1, -h / 2 + 1, 2, 2).fill(wf.hasted ? 0xffff60 : 0xff4040);
