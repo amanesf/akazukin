@@ -1,7 +1,7 @@
 // 赤ずきんの絵。ポーズの絵を技に合わせて差し替え、歩きだけ脚を切り絵で動かす（2026-10-03・アマネさん：
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
-import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { Sim } from './sim';
 
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back';
@@ -18,6 +18,21 @@ interface Meta {
   frames: Record<FrameName, FrameMeta> & Record<'knife' | 'bow', { size: [number, number]; pivot: [number, number]; guard?: number; cams?: [number, number][] }>;
 }
 
+// 揺れもの（2026-10-04 レビュー A1）：ポーズの絵を細かい網目に貼り、しっぽ・スカートの裾・フードの耳の網目だけをバネで遅れて動かす。
+// 部品に切り分けないので継ぎ目は出ない。顔・手・ブーツは動かさない。座標は書き出した絵（webp）の画素
+interface Sway {
+  tail?: { at: [number, number]; len: number; top: number; bot: number }; // しっぽ：体から出る所を中心に回す。at より左（しっぽの先の側）で、top〜bot の帯の中だけ
+  skirt?: { waist: number; hem: number; legs: boolean }; // 裾：腰から下ほど横へずらす。legs＝裾の下に脚が描いてある絵（裾の下ですぐ0に戻す）
+  ears?: [number, number][]; // 耳の付け根。そこから上を回す
+}
+const SWAY: Partial<Record<FrameName, Sway>> = {
+  idle: { tail: { at: [180, 455], len: 110, top: 400, bot: 560 }, skirt: { waist: 400, hem: 690, legs: false }, ears: [[252, 108], [342, 112]] },
+  strike: { tail: { at: [115, 445], len: 100, top: 360, bot: 500 }, skirt: { waist: 365, hem: 640, legs: true }, ears: [[240, 62], [330, 70]] },
+  up: { tail: { at: [115, 480], len: 100, top: 405, bot: 545 }, skirt: { waist: 400, hem: 690, legs: true }, ears: [[190, 112], [285, 114]] },
+};
+const EAR_R = 52;
+const MESH_STEP = 12; // 網目の細かさ（画素）
+
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
 const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back'];
@@ -26,9 +41,26 @@ export class HeroRig {
   root = new Container();
   private body = new Container(); // 揺らす・傾ける
   private frames = {} as Record<FrameName, Container>;
-  private sprites: Sprite[] = []; // 光らせる対象
+  private sprites: (Sprite | MeshPlane)[] = []; // 光らせる対象
+  private meshes: Partial<Record<FrameName, { mesh: MeshPlane; base: Float32Array; sway: Sway; key: string }>> = {};
+  // 揺れもののバネ（値と速さ）。しっぽは角度、裾は横のずれ（画素）、耳は角度
+  private spring = { tail: 0, tailV: 0, skirt: 0, skirtV: 0, ear0: 0, ear0V: 0, ear1: 0, ear1V: 0 };
+  private lastX = NaN;
+  private lastLean = 0;
+  private lastLift = 0;
+  private twitchT = 2;
+  // 待機の性格（A2）：じっとしている時間・ナイフを回す・振り返る
+  private idleFor = 0;
+  private twirl = -1; // ナイフを回す進み（0〜1。-1 は回していない）
+  private twirlNext = 2.5;
+  private look = -1; // 振り返りの進み（0〜1）
+  private lookNext = 5;
+  // 技ごとの手順（A3）：技が始まったときの連撃の段
+  private lastMove: string | null = null;
+  private lastMoveT = 0;
+  private moveStep = 0;
   private legs: Record<string, Sprite> = {};
-  private held: { frame: FrameName; slot: number; knife: Sprite }[] = [];
+  private held: { frame: FrameName; slot: number; knife: Sprite; base?: number }[] = [];
   // 弓（遠の構えの突きの絵だけ）：前の手で握り、胸の手で弦を引く。弦と矢は線で描く
   private bow!: Sprite;
   private bowLines = new Graphics();
@@ -108,7 +140,15 @@ export class HeroRig {
         const cams = (this.meta.frames.bow.cams ?? []).map(([x, y]) => [grip[0] + x * Math.cos(rot) - y * Math.sin(rot), grip[1] + x * Math.sin(rot) + y * Math.cos(rot)] as [number, number]);
         this.bowGeo = { cams, nock: draw, rest: [grip[0] + up[0] * 28, grip[1] + up[1] * 28] };
       }
-      const body = sprite(name);
+      const sway = SWAY[name];
+      let body: Sprite | MeshPlane;
+      if (sway) {
+        const t = tex[`hero-${name}`];
+        const mesh = new MeshPlane({ texture: t, verticesX: Math.ceil(t.width / MESH_STEP) + 1, verticesY: Math.ceil(t.height / MESH_STEP) + 1 });
+        mesh.scale.set(1 / s);
+        this.meshes[name] = { mesh, base: Float32Array.from(mesh.geometry.positions), sway, key: '' };
+        body = mesh;
+      } else body = sprite(name);
       c.addChild(body);
       this.sprites.push(body);
       for (const b of front) c.addChild(b);
@@ -204,11 +244,37 @@ export class HeroRig {
       sy += step;
       sx -= step * 0.6;
     } else if (!h.move && h.down <= 0) {
-      // 息づかい：上下ではなく、ふくらむ・しぼむ。少しだけ体を揺らす
+      // 待機（2026-10-04 レビュー A2）：息づかいは見えるくらいに。リズムを取るように小さく弾み、左右に揺れる
       const b = Math.sin(t * 3.2);
-      sy += b * 0.012;
-      sx -= b * 0.006;
-      lean = Math.sin(t * 1.3) * 1.2 * D;
+      sy += b * 0.03;
+      sx -= b * 0.015;
+      const beat = Math.abs(Math.sin(t * 2.6));
+      lift += beat ** 3 * 10;
+      lean = Math.sin(t * 1.3) * 3 * D;
+    }
+    // じっとしていると、ときどきナイフをくるっと回す・後ろを振り返る（狼が近くにいないとき）
+    const calm = !h.move && !run && h.down <= 0 && h.charge < 0 && h.stun <= 0 && h.ouran <= 0;
+    this.idleFor = calm ? this.idleFor + dt : 0;
+    if (this.twirl >= 0) this.twirl = this.twirl + dt / 0.5 >= 1 ? -1 : this.twirl + dt / 0.5;
+    else if (calm && this.idleFor > this.twirlNext) {
+      this.twirl = 0;
+      this.twirlNext = this.idleFor + 2.5 + Math.random() * 3;
+    }
+    const near = sim.wolves.some((w) => Math.abs(w.x - h.x) < 320);
+    if (this.look >= 0) this.look = !calm || this.look + dt / 1.1 >= 1 ? -1 : this.look + dt / 1.1;
+    else if (calm && !near && this.idleFor > this.lookNext) {
+      this.look = 0;
+      this.lookNext = this.idleFor + 5 + Math.random() * 4;
+    }
+    if (!calm) {
+      this.twirlNext = Math.min(this.twirlNext, 2.5);
+      this.lookNext = Math.min(this.lookNext, 5);
+    }
+    let turn = 1; // 振り返り：横幅を縮めて裏返り、少し見てから戻る
+    if (this.look >= 0) {
+      const q = this.look;
+      turn = q < 0.15 ? Math.cos((q / 0.15) * Math.PI) : q > 0.85 ? -Math.cos(((q - 0.85) / 0.15) * Math.PI) : -1;
+      turn = Math.sign(turn || 1) * Math.max(0.15, Math.abs(turn)); // 細い線にならないように
     }
 
     // 技：途中で絵を差し替える。p は技の進み（0〜1）。
@@ -220,27 +286,44 @@ export class HeroRig {
       const wind = p < 0.4 ? p / 0.4 : 1; // 振りかぶりの進み
       const after = p >= 0.4 ? (p - 0.4) / 0.6 : 0; // 振り抜いてからの進み
       const over = Math.sin(Math.min(1, after * 1.6) * Math.PI) * (1 - after); // 行きすぎて戻る
-      if (m === 'slash') {
+      if (m !== this.lastMove || h.moveT < this.lastMoveT) this.moveStep = h.step; // 技の始まり
+      if (m === 'slash' && this.moveStep % 3 === 1) {
+        // 連撃の2手目は踊るように：その場でくるっと回って（後ろ姿を挟む）斬る（2026-10-04 レビュー A3）
+        const a = Math.min(1, p / 0.55) * Math.PI * 2;
+        squash = Math.max(0.12, Math.abs(Math.cos(a)));
+        frame = p >= 0.55 ? 'strike' : Math.cos(a) < 0 ? 'back' : 'idle';
+        lift += Math.sin(Math.min(1, p / 0.6) * Math.PI) * 60;
+        lean = p >= 0.55 ? (8 + 12 * over) * D : 0;
+        if (p >= 0.55) { sx = 1 + 0.2 * over; sy = 1 - 0.14 * over; }
+      } else if (m === 'slash') {
+        // 斬るたびに少し跳ぶ。振りかぶりで沈み、振り抜きで伸びる
         frame = p < 0.4 ? 'idle' : 'strike';
-        lean = p < 0.4 ? -7 * D * wind : (6 + 10 * over) * D;
-        if (p < 0.4) { sy = 1 - 0.05 * wind; sx = 1 + 0.03 * wind; } else { sx = 1 + 0.08 * over; sy = 1 - 0.04 * over; }
+        lean = p < 0.4 ? -10 * D * wind : (8 + 14 * over) * D;
+        lift += Math.sin(p * Math.PI) * 30;
+        if (p < 0.4) { sy = 1 - 0.14 * wind; sx = 1 + 0.08 * wind; } else { sx = 1 + 0.18 * over; sy = 1 - 0.12 * over; }
       }
       if (m === 'air') { frame = after > 0 ? 'strike' : 'up'; lean = after > 0 ? 14 * D * (0.5 + over) : -6 * D; }
       if (m === 'launch') {
-        frame = p < 0.35 ? 'idle' : 'up';
-        lean = p < 0.35 ? 8 * D : -8 * D;
-        if (p < 0.35) { sy = 0.9; sx = 1.08; } else { sy = 1 + 0.12 * over; sx = 1 - 0.06 * over; }
+        // 斬り上げ：深く沈んで、伸び上がりながら宙でくるっと回る（後ろ姿を挟む）。
+        // 宙返り（体ごと1回転）は跳ぶ高さが足りず、頭が地面に入った（コマ送りで確認）
+        const r = p < 0.35 ? 0 : Math.min(1, (p - 0.35) / 0.4);
+        const a = easeInOut(r) * Math.PI * 2;
+        frame = p < 0.35 ? 'idle' : r < 1 && Math.cos(a) < 0 ? 'back' : 'up';
+        if (r > 0 && r < 1) squash = Math.max(0.12, Math.abs(Math.cos(a)));
+        lean = p < 0.35 ? 10 * D : -8 * D;
+        if (p < 0.35) { sy = 0.8; sx = 1.14; } else { sy = 1 + 0.25 * over; sx = 1 - 0.12 * over; }
       }
       if (m === 'slam') {
+        // 叩き落とし：大きく振りかぶり（反って伸びる）、体ごと落ちて地面でつぶれる
         frame = p < 0.45 ? 'up' : 'strike';
-        lean = p < 0.45 ? -10 * D : (18 + 10 * over) * D;
-        if (p >= 0.45) { sy = 1 - 0.1 * over; sx = 1 + 0.1 * over; }
+        lean = p < 0.45 ? -18 * D * wind : (24 + 12 * over) * D;
+        if (p < 0.45) { sy = 1 + 0.12 * wind; sx = 1 - 0.08 * wind; lift += wind * 30; } else { sy = 1 - 0.24 * over; sx = 1 + 0.2 * over; }
       }
       if (m === 'tosshin') {
         frame = p < 0.12 ? 'idle' : 'strike';
-        lean = p < 0.12 ? -8 * D : 20 * D * (1 - after * 0.6);
-        sx = p < 0.12 ? 0.92 : 1.14 - 0.14 * after;
-        sy = p < 0.12 ? 1.04 : 0.9 + 0.1 * after;
+        lean = p < 0.12 ? -10 * D : 22 * D * (1 - after * 0.6);
+        sx = p < 0.12 ? 0.85 : 1.28 - 0.28 * after;
+        sy = p < 0.12 ? 1.08 : 0.82 + 0.18 * after;
       }
       if (m === 'shiki' || m === 'hougeki') {
         // 主砲：撃った反動で後ろへのけぞる
@@ -257,6 +340,8 @@ export class HeroRig {
         sy = 1 + 0.05 * Math.sin(p * Math.PI);
       }
     }
+    this.lastMove = m;
+    this.lastMoveT = h.moveT;
     // 溜め：しゃがんで力をためる。満タンで小刻みに震えて光る
     if (h.charge >= 0) {
       const c = Math.min(1, h.charge / sim.chargeFull);
@@ -292,11 +377,107 @@ export class HeroRig {
     if (h.hitFlash > 0) tint = h.hitFlash > 0.12 ? 0xffc8c8 : 0xffe8e8; // 噛まれた：一瞬だけ淡く赤く（赤く塗りつぶすと汚い）
     else if (h.ouran > 0) tint = Math.floor(t * 20) % 2 ? 0xffe6a0 : 0xffffff;
     const blink = h.iframes > 0 && h.move !== 'tosshin' && Math.floor(t * 20) % 2 === 0; // 起き上がりの無敵は点滅
+    const sw = this.swing(dt, t, x, h.facing, height, lean, lift, run && !m, h.down > 0);
 
     return {
-      frame, x: x + shiver, y, k, facing: h.facing, lean, lift, sx: sx * squash, sy, legSwing, archer, shot, tint,
-      alpha: blink ? 0.4 : 1,
+      frame, x: x + shiver, y, k, facing: h.facing, lean, lift, sx: sx * squash * turn, sy, legSwing, archer, shot, tint,
+      twirl: this.twirl >= 0 ? easeInOut(this.twirl) * Math.PI * 2 : 0,
+      alpha: blink ? 0.4 : 1, ...sw,
     };
+  }
+
+  // 揺れもののバネを進める。体の動き（横の速さ・傾きの変わり方・上下）に遅れてついてくる
+  private swing(dt: number, t: number, x: number, facing: 1 | -1, height: number, lean: number, lift: number, running: boolean, down: boolean) {
+    const sp = this.spring;
+    if (Number.isNaN(this.lastX) || dt <= 0 || dt > 0.08) {
+      this.lastX = x;
+      this.lastLean = lean;
+      this.lastLift = lift;
+      return { tail: sp.tail, skirt: sp.skirt, ears: [sp.ear0, sp.ear1] as [number, number] };
+    }
+    // 前へ進む速さ（背の高さ／秒）。左を向いていても、絵の中では前
+    const v = Math.max(-6, Math.min(6, ((x - this.lastX) / dt / height) * facing));
+    const dLean = (lean - this.lastLean) / dt; // 傾きの変わる速さ（ラジアン／秒）
+    const dLift = (lift - this.lastLift) / dt; // 上がる速さ（絵の画素／秒）
+    this.lastX = x;
+    this.lastLean = lean;
+    this.lastLift = lift;
+    // 待機：しっぽはゆっくり振れ、ときどき耳がぴくっと動く
+    const idle = !running && !down;
+    const swish = idle ? Math.sin(t * 2.1) * 0.07 + Math.sin(t * 0.73) * 0.05 : 0;
+    this.twitchT -= dt;
+    if (this.twitchT <= 0 && idle) {
+      this.twitchT = 1.6 + Math.random() * 3;
+      const which = Math.random() < 0.5 ? 'ear0V' : 'ear1V';
+      sp[which] += (Math.random() < 0.5 ? -1 : 1) * 7;
+    }
+    const tailTo = Math.max(-0.35, Math.min(0.5, v * 0.16)) + swish + (running ? Math.sin(t * 11) * 0.08 : 0);
+    const skirtTo = Math.max(-16, Math.min(16, -v * 6)) + (running ? Math.sin(t * 22) * 2 : 0);
+    const k = (val: 'tail' | 'skirt' | 'ear0' | 'ear1', to: number, stiff: number, damp: number, push: number) => {
+      const vel = `${val}V` as 'tailV' | 'skirtV' | 'ear0V' | 'ear1V';
+      sp[vel] += ((to - sp[val]) * stiff - sp[vel] * damp + push) * dt;
+      sp[val] += sp[vel] * dt;
+    };
+    // 体が前へ傾くと、しっぽと裾は後ろへ遅れる。跳び上がると耳は下がり、裾はふわっと持ち上がる
+    k('tail', tailTo, 55, 5.5, -dLean * 9 + dLift * 0.004);
+    k('skirt', skirtTo, 150, 8, -dLean * 260);
+    k('ear0', 0, 320, 11, -dLean * 30 - dLift * 0.02);
+    k('ear1', 0, 320, 11, -dLean * 30 - dLift * 0.02);
+    sp.tail = Math.max(-0.28, Math.min(0.75, sp.tail)); // 下げすぎると裾に折れ込む（3倍で確認）
+    sp.skirt = Math.max(-22, Math.min(22, sp.skirt));
+    sp.ear0 = Math.max(-0.3, Math.min(0.3, sp.ear0));
+    sp.ear1 = Math.max(-0.3, Math.min(0.3, sp.ear1));
+    return { tail: sp.tail, skirt: sp.skirt, ears: [sp.ear0, sp.ear1] as [number, number] };
+  }
+
+  // 網目を曲げる。同じ値なら作り直さない
+  private bend(name: FrameName, tail: number, skirt: number, ears: [number, number]) {
+    const m = this.meshes[name];
+    if (!m) return;
+    const key = `${tail.toFixed(3)},${skirt.toFixed(2)},${ears[0].toFixed(3)},${ears[1].toFixed(3)}`;
+    if (key === m.key) return;
+    m.key = key;
+    const pos = m.mesh.geometry.positions;
+    const b = m.base;
+    const { tail: T, skirt: K, ears: E } = m.sway;
+    const smooth = (a: number) => (a <= 0 ? 0 : a >= 1 ? 1 : a * a * (3 - 2 * a));
+    const sk = K && K.legs ? skirt * 0.6 : skirt; // 脚まで描いてある絵では控えめに（裾の下のタイツを引っぱらない）
+    for (let i = 0; i < b.length; i += 2) {
+      let x = b[i];
+      let y = b[i + 1];
+      if (T && tail) {
+        const w = smooth((T.at[0] - x) / T.len) * smooth((y - (T.top - 30)) / 30) * smooth((T.bot + 30 - y) / 30);
+        if (w > 0) {
+          const a = tail * w;
+          const dx = x - T.at[0];
+          const dy = y - T.at[1];
+          x = T.at[0] + dx * Math.cos(a) - dy * Math.sin(a);
+          y = T.at[1] + dx * Math.sin(a) + dy * Math.cos(a);
+        }
+      }
+      if (E) {
+        E.forEach(([ex, ey], j) => {
+          const a0 = ears[j];
+          if (!a0) return;
+          const w = smooth((ey - b[i + 1]) / EAR_R) * smooth(1 - Math.abs(b[i] - ex) / (EAR_R * 0.9));
+          if (w <= 0) return;
+          const a = a0 * w;
+          const dx = x - ex;
+          const dy = y - ey;
+          x = ex + dx * Math.cos(a) - dy * Math.sin(a);
+          y = ey + dx * Math.sin(a) + dy * Math.cos(a);
+        });
+      }
+      if (K && sk) {
+        const yy = b[i + 1];
+        let w = yy <= K.waist ? 0 : Math.min(1, (yy - K.waist) / (K.hem - K.waist)) ** 1.6;
+        if (K.legs && yy > K.hem) w = Math.max(0, 1 - (yy - K.hem) / 40);
+        x += sk * w;
+      }
+      pos[i] = x;
+      pos[i + 1] = y;
+    }
+    m.mesh.geometry.getBuffer('aPosition').update();
   }
 
   apply(p: Pose, tint = p.tint, alpha = p.alpha) {
@@ -305,11 +486,16 @@ export class HeroRig {
     this.root.scale.set(p.facing * p.k, p.k); // 絵は右向き
     this.root.alpha = alpha;
     for (const n of NAMES) this.frames[n].visible = n === p.frame;
+    this.bend(p.frame, p.tail, p.skirt, p.ears);
     this.legs.legL && (this.legs.legL.rotation = p.legSwing);
     this.legs.legR && (this.legs.legR.rotation = -p.legSwing);
     // 弓を射る技：突きの絵の前の手に弓、胸の手は弦を引く。両手のナイフは隠す
     const archer = p.archer && p.frame === 'strike';
-    for (const hd of this.held) hd.knife.visible = !(archer && hd.frame === 'strike');
+    for (const hd of this.held) {
+      hd.knife.visible = !(archer && hd.frame === 'strike');
+      hd.base ??= hd.knife.rotation;
+      hd.knife.rotation = hd.base + (hd.frame === 'idle' && hd.slot === 1 ? p.twirl : 0);
+    }
     this.bow.visible = archer;
     this.drawBow(archer, p.shot);
     this.body.rotation = p.lean;
@@ -324,6 +510,12 @@ export interface Pose {
   x: number; y: number; k: number; facing: 1 | -1;
   lean: number; lift: number; sx: number; sy: number; legSwing: number;
   archer: boolean; shot: number; tint: number; alpha: number;
+  tail: number; skirt: number; ears: [number, number]; // 揺れもの
+  twirl: number; // 構えの手のナイフを回す角度
+}
+
+function easeInOut(q: number) {
+  return q < 0.5 ? 2 * q * q : 1 - (-2 * q + 2) ** 2 / 2;
 }
 
 function mixTint(a: number, b: number, k: number) {
