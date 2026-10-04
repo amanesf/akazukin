@@ -83,6 +83,7 @@ export interface Hero {
   down: number; // 倒れている残り秒数
   stun: number;
   iframes: number; // 無敵の残り（突進）
+  jumps: number; // 着地までに跳んだ回数（2段ジャンプまで）
   armor: number; // ひるまない残り（噛まれてひるんだ直後。囲まれてひるみ続けて動けなくなるのを防ぐ）
   hitFlash: number;
   ouran: number; // 桜嵐の残り秒数
@@ -111,7 +112,7 @@ export class Sim {
 
   hero: Hero = {
     x: GIRL_X + 60, lane: 0.5, z: 0, vz: 0, hp: HERO.hp, move: null, moveT: 0, moveTarget: 0, dashTo: 0, lungeTo: null, lungeLane: 0.5,
-    dashHit: [], auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, ouranTick: 0, facing: 1,
+    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, ouranTick: 0, facing: 1,
     order: null, running: 0, charge: -1, autoT: 0, bowT: 0,
   };
   gauge = 0; // 桜嵐のゲージ（0〜100）
@@ -369,8 +370,12 @@ export class Sim {
       this.lunge(t);
     }
     this.startMove('launch', t?.id ?? 0);
-    h.vz = 640; // 一緒に跳ぶ
-    h.z = Math.max(h.z, 0.01);
+    // 一緒に跳ぶ。2段ジャンプまで（上へはじき続けると、どこまでも昇っていった）。3回目からは跳ばずに斬り上げだけ
+    if (h.jumps < 2) {
+      h.jumps++;
+      h.vz = 640;
+      h.z = Math.max(h.z, 0.01);
+    }
     this.sounds.push('jump');
     return true;
   }
@@ -604,6 +609,10 @@ export class Sim {
     this.hero.move = null;
     this.hero.charge = -1;
     this.hero.order = null;
+    // 跳んでいるうちに晩が終わると、昼は体が動かないので宙に浮いたままになった
+    this.hero.z = 0;
+    this.hero.vz = 0;
+    this.hero.jumps = 0;
     this.queued = null;
     if (this.wave >= DAYS_TO_CLEAR) this.result = 'won';
     else {
@@ -822,6 +831,7 @@ export class Sim {
       if (h.z <= 0) {
         h.z = 0;
         h.vz = 0;
+        h.jumps = 0;
         this.fx.push(this.mk({ kind: 'land', x: h.x, lane: h.lane, r: 30 }));
       }
     }

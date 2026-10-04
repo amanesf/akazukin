@@ -285,6 +285,8 @@ export class HeroRig {
     if (h.ouran > 0) frame = (['idle', 'up', 'strike'] as FrameName[])[Math.floor(t * 14) % 3];
     if (h.stun > 0 && !m) { frame = 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
     if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && this.face) frame = this.face.name;
+    // 宙にいるあいだ（技のあと落ちてくるところ）は跳んだ姿。立った姿のまま浮くとおかしかった
+    if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0) { frame = 'rise'; lean = h.vz < 0 ? 4 * D : -4 * D; }
     // 晩の最後の1匹を倒したスローのあいだは決めポーズ
     if (sim.finale > 0 && !m && h.down <= 0) { frame = 'victory'; lean = 0; }
     if (h.down > 0) { frame = 'down'; lean = 0; lift = 0; sx = sy = 1; }

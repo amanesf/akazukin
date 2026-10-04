@@ -52,6 +52,7 @@ const SCENES = {
   play: { setup: '', acts: {} },
   dash: { setup: `s.hero.x=300; s.hero.lane=0.5; s.debugSpawn('wolf',420,0.45); s.debugSpawn('pup',480,0.55); s.debugSpawn('wolf',540,0.5);`, acts: { 2: `s.flick('right')` } },
   combo: { setup: `s.hero.x=300; s.hero.lane=0.5; s.debugSpawn('wolf',360,0.5);`, acts: { 1: `s.tap(360,0.5)`, 8: `s.tap(360,0.5)`, 15: `s.tap(360,0.5)`, 22: `s.tap(360,0.5)`, 30: `s.tap(360,0.5)` } },
+  jump2: { setup: `s.hero.x=300; s.hero.lane=0.5; s.debugSpawn('armored',1400,0.9).stun=999; s.hero.bowT=999;`, acts: { 1: `s.flick('up')`, 8: `s.flick('up')`, 16: `s.flick('up')` } }, // 2段ジャンプまで（3回目は跳ばない）
   launch: { setup: `s.hero.x=300; s.hero.lane=0.5; s.debugSpawn('wolf',360,0.5);`, acts: { 1: `s.flick('up')`, 12: `s.tap(360,0.5)`, 20: `s.flick('down')` } },
   charge: { setup: `s.hero.x=300; s.hero.lane=0.5; for (let i=0;i<4;i++) s.debugSpawn('wolf',350+i*25,0.3+i*0.12);`, acts: { 1: `s.holdStart()`, 42: `s.holdEnd()` } },
   pounce: { setup: `s.hero.x=300; s.hero.lane=0.5; const w=s.debugSpawn('pup',400,0.5); w.skillCd=0;`, acts: {} },
