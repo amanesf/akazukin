@@ -40,17 +40,18 @@ export interface Wolf extends Unit {
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
-// knife：千本桜のナイフ（矢と同じく飛ぶ。絵だけ違う）。sp：必殺技が出したもの（当てても必殺技は溜まらない）
-export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; knife?: boolean; sp?: boolean }
+// sp：必殺技が出したもの（当てても必殺技は溜まらない）。fromZ：跳んだ高さから放つ。big：大きい矢・giant：奥行き全部を貫く大きな一本
+export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean }
 export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number; sp?: boolean }
 export interface Shot { x: number; lane: number } // 狼の衝撃波（左へ飛ぶ）
-export type FxKind = 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge';
+export type FxKind = 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge' | 'beam';
 export interface Fx {
   id: number;
   kind: FxKind;
   x: number; lane: number; t: number; r?: number; n?: number; z?: number; big?: boolean;
   dir?: number; // 向き（1 右・-1 左）
-  x2?: number; // 突進の終わり
+  x2?: number; // 突進の終わり・主砲の弾の行き先
+  lane2?: number; // 主砲の弾の行き先の奥行き
   move?: MoveId;
   wolf?: WolfKind; // 倒した狼の種類（倒れる演出で絵を割る）
 }
@@ -95,6 +96,14 @@ export interface Hero {
   hitFlash: number;
   ouran: number; // 桜嵐（必殺技）の残り秒数
   special: Special; // 出している必殺技
+  spT: number; // 必殺技が始まってからの秒
+  spX: number; // 竜巻の場所（吸い寄せる先）
+  spLane: number;
+  spShot: number; // 連撃の何手目まで出したか
+  spFire: number; // 主砲を撃った回数（描画の反動）
+  facing0: 1 | -1; // 必殺技を始めたときの向き
+  aimX: number; // 主砲を向ける先
+  aimLane: number;
   ouranTick: number;
   facing: 1 | -1;
   order: { x: number; lane: number; target: number; sprint: boolean } | null; // 走って行く先（target は着いたら斬る狼）
@@ -121,7 +130,7 @@ export class Sim {
 
   hero: Hero = {
     x: GIRL_X + 60, lane: 0.5, z: 0, vz: 0, hp: HERO.hp, move: null, moveT: 0, moveTarget: 0, dashTo: 0, lungeTo: null, lungeLane: 0.5,
-    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, special: 'senbon', ouranTick: 0, facing: 1,
+    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, special: 'senbon', spT: 0, spX: 0, spLane: 0.5, spShot: -1, spFire: 0, facing0: 1, aimX: 0, aimLane: 0.5, ouranTick: 0, facing: 1,
     order: null, running: 0, charge: -1, autoT: 0, bowT: 0,
   };
   gauges: Record<Special, number> = { senbon: 0, nagare: 0, midare: 0 }; // 必殺技3つのゲージ（0〜100）
@@ -133,6 +142,7 @@ export class Sim {
     for (const k of SPECIAL_ORDER) this.gauges[k] = v;
   }
   combo = 0;
+  nightHp = 1000; // 今夜の狼の体力の合計（必殺技の溜まり方の物差し）
   bestCombo = 0;
   sinceHit = 99;
   hitStop = 0;
@@ -451,9 +461,17 @@ export class Sim {
     sp ??= SPECIAL_ORDER.find((k) => this.gauges[k] >= 100);
     if (!sp || !this.canOuran(sp)) return false;
     this.gauges[sp] = 0;
-    this.hero.special = sp;
-    this.hero.ouran = OURAN.time;
-    this.hero.ouranTick = 0.35; // カットインのぶん少し待つ
+    const h = this.hero;
+    h.special = sp;
+    h.ouran = OURAN.time;
+    h.ouranTick = 0;
+    h.spT = 0;
+    h.spX = h.x;
+    h.spLane = h.lane;
+    h.spShot = -1;
+    h.facing0 = h.facing;
+    h.order = null;
+    h.lungeTo = null;
     this.hero.move = null;
     this.hero.charge = -1;
     this.hitStop = 0.35;
@@ -525,7 +543,9 @@ export class Sim {
 
   private startWave() {
     this.mood = mood(this.wave + 1);
-    this.spawners = night(this.wave + 1).map((l) => ({ kind: l.kind, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
+    const lines = night(this.wave + 1);
+    this.nightHp = Math.max(1, lines.reduce((n, l) => n + l.count * WOLVES[l.kind].hp, 0) * hpScale(this.wave + 1));
+    this.spawners = lines.map((l) => ({ kind: l.kind, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
     this.phase = 'wave';
     const h = this.hero;
     h.hp = this.maxHp; // 昼のあいだに傷は癒える（案）
@@ -954,7 +974,7 @@ export class Sim {
       h.charge = -1;
       h.lungeTo = null;
     }
-    for (const k of SPECIAL_ORDER) this.gain(k, OURAN.hurt * dmg);
+    for (const k of SPECIAL_ORDER) this.gain(k, (OURAN.hurt * dmg) / this.maxHp);
     this.kick(3, 0);
     if (h.hp <= 0) {
       h.hp = 0;
@@ -1238,101 +1258,181 @@ export class Sim {
     } else if (id !== 'shiki') h.step++;
   }
 
-  // 必殺技：その場で桜の竜巻（吸い寄せるだけ）を起こし、技ごとの飛び道具で削る
+  // 必殺技：桜の竜巻でまわりの狼を吸い寄せ（竜巻は斬らない）、主人公が体ごと暴れて（連撃）、最後に大きく決める（締め）
   private runOuran(dt: number) {
     const h = this.hero;
+    const O = OURAN;
+    const e0 = h.spT;
     h.ouran -= dt;
+    h.spT += dt;
+    const e = h.spT;
     h.ouranTick -= dt;
-    if (h.ouranTick <= 0) {
-      h.ouranTick = OURAN.tick;
-      // 竜巻：まわりの狼を前へ吸い寄せる（奥行きも寄せる）。竜巻そのものは斬らない
+    if (h.ouranTick <= 0 && e < O.final) {
+      h.ouranTick = O.tick;
       for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) > OURAN.pull || w.age < 0.4) continue;
-        w.x += (h.x + h.facing * 60 - w.x) * 0.28;
-        w.lane += (h.lane - w.lane) * 0.3;
+        if (Math.abs(w.x - h.spX) > O.pull || w.age < 0.4) continue;
+        w.x += (h.spX - w.x) * 0.28;
+        w.lane += (h.spLane - w.lane) * 0.3;
         w.vx = 0;
       }
-      this.specialTick();
-      this.kick(3, h.facing);
+    }
+    if (h.special === 'senbon') this.runSenbon(e0, e, dt);
+    else if (h.special === 'midare') this.runMidare(e0, e);
+    else this.runNagare(e0, e);
+    if (e0 < O.final && e >= O.final) {
+      this.hitStop = 0.22;
+      this.kick(16, h.facing);
+      this.punch = 1;
     }
     if (h.ouran <= 0) {
-      this.specialFinal();
-      this.hitStop = 0.2;
-      this.kick(14, h.facing);
-      this.punch = 1;
       h.ouran = 0;
       h.step = 0;
+      h.z = Math.max(0, h.z);
     }
   }
 
-  private specialTick() {
+  // 千本桜：ナイフを持って左右に駆け抜け、通り道の狼を全部斬る → 真ん中で回って、地面をダン
+  private runSenbon(e0: number, e: number, dt: number) {
     const h = this.hero;
-    const near = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= OURAN.knife.reach);
-    if (h.special === 'senbon') {
-      // ナイフをシパパパ：近い狼から順に1本ずつ、少しずつずらして
-      const K = OURAN.knife;
-      const list = near.sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x)).slice(0, K.perTick);
-      const n = Math.max(3, list.length);
-      for (let i = 0; i < n; i++) {
-        const t = list[i % Math.max(1, list.length)];
-        const delay = (i * OURAN.tick) / n;
-        if (t) this.throwKnife(t.x, t.lane, K.damage * this.nearPower, delay, t.id);
-        else this.throwKnife(h.x + h.facing * (120 + this.rand() * 200), this.rand(), 0, delay); // 狼がいなくても投げる（見た目）
+    const O = OURAN;
+    const D = O.dash;
+    const lo = Math.max(HERO.minX, h.spX - D.span);
+    const hi = Math.min(HERO.maxX, h.spX + D.span);
+    const LANES = [0.5, 0.2, 0.8, 0.35, 0.65];
+    const before = h.x;
+    if (e >= O.rush && e < O.wind) {
+      const per = (O.wind - O.rush) / D.passes;
+      const i = Math.floor((e - O.rush) / per);
+      const p = Math.min(1, ((e - O.rush) % per) / (per * 0.75)); // 片道の4分の3で駆け抜け、残りは止まる
+      const dir = (i % 2 === 0 ? h.facing0 : -h.facing0) as 1 | -1;
+      const from = i === 0 ? h.spX : dir > 0 ? lo : hi;
+      const to = dir > 0 ? hi : lo;
+      if (i !== h.spShot) {
+        h.spShot = i;
+        h.dashHit = [];
+        this.sounds.push('dash');
+        this.fx.push(this.mk({ kind: 'dash', x: from, lane: h.lane, x2: to, dir }));
       }
-    } else if (h.special === 'nagare') {
-      // 矢を奥・中・手前へ一斉に。まっすぐ貫く
-      const V = OURAN.volley;
-      for (let i = 0; i < V.lanes; i++) {
-        const lane = (i + 0.5) / V.lanes + (this.rand() - 0.5) * 0.15;
-        this.loose(h.x + h.facing * V.range, lane, V.damage * this.farPower, i * 0.03, false, 0, V.pierce, true);
+      h.facing = dir;
+      h.x = from + (to - from) * (1 - (1 - p) * (1 - p));
+      const lane0 = i === 0 ? h.spLane : LANES[(i - 1) % LANES.length];
+      h.lane = lane0 + (LANES[i % LANES.length] - lane0) * p;
+      h.running = p < 1 ? 2 : 0;
+      const a = Math.min(before, h.x) - 30;
+      const b = Math.max(before, h.x) + 30;
+      for (const w of this.wolves) {
+        if (h.dashHit.includes(w.id) || w.x < a || w.x > b || Math.abs(w.lane - h.lane) > 0.5) continue;
+        h.dashHit.push(w.id);
+        this.hit(w, D.damage * this.nearPower, { kb: 60, lift: 120, stop: 0.03, stun: 0.5, src: 'sp' });
+        this.fx.push(this.mk({ kind: 'slash', x: w.x, lane: w.lane, z: 0, move: 'tosshin', dir, big: true }));
       }
-    } else {
-      // 砲弾を群れへ連射
-      const B = OURAN.barrage;
-      const front = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= OURAN.pull);
-      for (let i = 0; i < B.perTick; i++) {
-        const t = front.length ? front[Math.floor(this.rand() * front.length)] : undefined;
-        const toX = t ? t.x + (this.rand() - 0.5) * 40 : h.x + h.facing * (100 + this.rand() * 250);
-        this.shells.push({ fromX: h.x, toX, t: -i * 0.06, lane: t ? t.lane : this.rand(), damage: B.damage * this.farPower, area: B.area, sp: true });
+    } else if (e >= O.wind && e < O.final) {
+      // 真ん中へ戻って、回る
+      h.x += (h.spX - h.x) * Math.min(1, dt * 18);
+      h.lane += (h.spLane - h.lane) * Math.min(1, dt * 18);
+      h.facing = h.facing0;
+      if (e0 < O.wind) this.sounds.push('swing');
+    }
+    if (e0 < O.final && e >= O.final) {
+      // ダン：まわりの狼を全部弾き飛ばす
+      for (const w of this.wolves) {
+        if (Math.abs(w.x - h.x) <= D.finalArea) this.hit(w, D.final * this.nearPower, { kb: 650, lift: 420, stop: 0, stun: 0.6, src: 'sp' });
       }
-      this.fx.push(this.mk({ kind: 'muzzle', x: h.x + h.facing * 40, lane: h.lane, dir: h.facing }));
-      this.sounds.push('boom');
+      this.fx.push(this.mk({ kind: 'pound', x: h.x, lane: h.lane, r: D.finalArea, big: true }));
+      this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: D.finalArea * 0.7, big: true }));
+      this.fx.push(this.mk({ kind: 'land', x: h.x, lane: h.lane, r: D.finalArea * 0.5, big: true }));
+      this.sounds.push('slam', 'boom');
     }
   }
 
-  private specialFinal() {
+  // 主砲乱れ撃ち：まわりの狼へ次々に撃つ（まっすぐ一瞬で届く）→ 溜めて、前へ極太の一発
+  private runMidare(e0: number, e: number) {
     const h = this.hero;
-    if (h.special === 'senbon') {
-      // まわりの狼すべてに、ナイフが一斉に刺さる
-      const K = OURAN.knife;
-      const list = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= K.reach);
-      for (const w of list) this.throwKnife(w.x, w.lane, K.final * this.nearPower, 0, w.id);
-      for (let i = list.length; i < 8; i++) this.throwKnife(h.x + h.facing * (80 + this.rand() * 280), this.rand(), 0, 0);
-      this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: K.reach * 0.6, big: true }));
-    } else if (h.special === 'nagare') {
-      // 大きな一斉射：奥行きいっぱいに
-      const V = OURAN.volley;
-      for (let i = 0; i < V.final; i++) {
-        this.loose(h.x + h.facing * V.range * 1.2, (i + 0.5) / V.final, V.damage * 2 * this.farPower, i * 0.015, false, 0, 99, true);
+    const O = OURAN;
+    const B = O.barrage;
+    if (e >= O.rush && e < O.wind) {
+      const n = Math.floor((e - O.rush) / B.interval);
+      if (n !== h.spShot) {
+        h.spShot = n;
+        const list = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= B.reach).sort((a, b) => a.x - b.x);
+        const t = list.length ? list[(n * 7) % list.length] : undefined;
+        const tx = t ? t.x : h.x + h.facing * (120 + this.rand() * 300);
+        const tl = t ? t.lane : this.rand();
+        if (Math.abs(tx - h.x) > 20) h.facing = tx > h.x ? 1 : -1;
+        h.aimX = tx;
+        h.aimLane = tl;
+        h.spFire++;
+        for (const w of this.wolves) {
+          if (w.age >= 0.4 && Math.abs(w.x - tx) <= B.area + w.size / 2 && Math.abs(w.lane - tl) <= 0.35) {
+            this.hit(w, B.damage * this.farPower, { kb: 90, lift: 90, stop: 0.015, stun: 0.4, src: 'sp' });
+          }
+        }
+        this.fx.push(this.mk({ kind: 'beam', x: h.x, lane: h.lane, x2: tx, lane2: tl, n: t?.id ?? 0 }));
+        this.fx.push(this.mk({ kind: 'spark', x: tx, lane: tl, z: 0, big: n % 3 === 0, dir: h.facing }));
+        if (n % 2 === 0) this.sounds.push('boom');
+        this.kick(3, h.facing);
       }
-    } else {
-      // 満タンの主砲
-      const B = OURAN.barrage;
+    } else if (e >= O.wind && e < O.final) {
+      // 溜め：群れの多いほうへ向き直り、光を集める
+      if (e0 < O.wind) {
+        const right = this.wolves.filter((w) => w.x > h.x).length;
+        h.facing = right * 2 >= this.wolves.length ? 1 : -1;
+        h.aimX = h.x + h.facing * 300;
+        h.aimLane = h.lane;
+        this.sounds.push('charge');
+        this.fx.push(this.mk({ kind: 'full', x: h.x, lane: h.lane }));
+      }
+    }
+    if (e0 < O.final && e >= O.final) {
+      // ズドン：前へ、奥行き全部を貫く
       for (const w of this.wolves) {
         const d = (w.x - h.x) * h.facing;
-        if (d >= -60 && d <= B.finalArea * 1.6) this.hit(w, B.final * this.farPower, { kb: 500, stop: 0, src: 'sp' });
+        if (d >= -40 && d <= B.range) this.hit(w, B.final * this.farPower, { kb: 700, lift: 300, stop: 0, stun: 0.6, src: 'sp' });
       }
-      this.fx.push(this.mk({ kind: 'blast', x: h.x + h.facing * 140, lane: h.lane, r: B.finalArea * 0.6, big: true }));
+      h.spFire++;
+      this.fx.push(this.mk({ kind: 'beam', x: h.x, lane: h.lane, x2: h.x + h.facing * B.range, lane2: h.lane, big: true }));
       this.fx.push(this.mk({ kind: 'muzzle', x: h.x + h.facing * 40, lane: h.lane, dir: h.facing, big: true }));
+      for (let i = 1; i <= 3; i++) this.fx.push(this.mk({ kind: 'blast', x: h.x + h.facing * B.range * (i / 3.5), lane: h.lane, r: 90, big: i === 2 }));
       this.sounds.push('boom');
     }
   }
 
-  private throwKnife(toX: number, lane: number, damage: number, delay: number, target = 0) {
+  // 桜流れ矢：高く跳んで、下の狼へ矢を撃ち下ろす → 着地して、画面の端まで貫く大きな一本
+  private runNagare(e0: number, e: number) {
     const h = this.hero;
-    const flight = 0.1 + Math.abs(toX - h.x) * 0.0002;
-    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain: false, target, pierce: 1, hits: [], knife: true, sp: true });
-    if (Math.floor(delay * 100) % 3 === 0) this.sounds.push('swing');
+    const O = OURAN;
+    const R = O.rain;
+    h.vz = 0;
+    const up = e < O.rush ? 0 : e < O.rush + 0.2 ? (e - O.rush) / 0.2 : e < O.wind ? 1 : e < O.wind + 0.15 ? 1 - (e - O.wind) / 0.15 : 0;
+    h.z = R.height * (1 - (1 - up) * (1 - up));
+    if (e0 < O.rush && e >= O.rush) this.sounds.push('jump');
+    if (e >= O.rush + 0.15 && e < O.wind) {
+      const n = Math.floor((e - O.rush - 0.15) / R.interval);
+      if (n !== h.spShot) {
+        h.spShot = n;
+        const list = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= R.reach).sort((a, b) => a.x - b.x);
+        const t = list.length ? list[(n * 5) % list.length] : undefined;
+        if (t && Math.abs(t.x - h.x) > 20) h.facing = t.x > h.x ? 1 : -1;
+        const tx = t ? t.x : h.x + h.facing * (80 + this.rand() * 300);
+        this.loose(tx, t ? t.lane : this.rand(), R.damage * this.farPower, 0, false, t?.id ?? 0, 2, true);
+        this.arrows[this.arrows.length - 1].fromZ = h.z;
+        this.arrows[this.arrows.length - 1].big = true;
+      }
+    } else if (e >= O.wind && e < O.final && e0 < O.wind + 0.15 && e >= O.wind + 0.15) {
+      this.fx.push(this.mk({ kind: 'land', x: h.x, lane: h.lane, r: 60, big: true }));
+      const right = this.wolves.filter((w) => w.x > h.x).length;
+      h.facing = right * 2 >= this.wolves.length ? 1 : -1;
+      this.sounds.push('charge');
+      this.fx.push(this.mk({ kind: 'full', x: h.x, lane: h.lane }));
+    }
+    if (e0 < O.final && e >= O.final) {
+      // 大きな一本：奥行き全部を、画面の端まで貫く
+      this.loose(h.x + h.facing * R.range, h.lane, R.final * this.farPower, 0, false, 0, 999, true);
+      const a = this.arrows[this.arrows.length - 1];
+      a.giant = true;
+      a.flight = 0.3;
+      this.fx.push(this.mk({ kind: 'muzzle', x: h.x + h.facing * 40, lane: h.lane, dir: h.facing, big: true }));
+    }
   }
 
   // ── 飛び道具 ──
@@ -1362,11 +1462,11 @@ export class Sim {
         const lo = Math.min(x0, x1);
         const hi = Math.max(x0, x1);
         for (const w of this.wolves) {
-          if (a.hits.includes(w.id) || w.age < 0.4 || w.z > 80 || Math.abs(w.lane - lane) > 0.35) continue;
+          if (a.hits.includes(w.id) || w.age < 0.4 || w.z > (a.giant ? 400 : 80) || (!a.giant && Math.abs(w.lane - lane) > 0.35)) continue;
           if (w.x + w.size / 2 < lo || w.x - w.size / 2 > hi) continue;
           a.hits.push(w.id);
-          this.hit(w, a.damage * (a.knife ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.knife ? 30 : 70, stun: 0.3, src: a.sp ? 'sp' : 'nagare' });
-          this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1, big: a.knife }));
+          this.hit(w, a.damage * (a.giant ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.giant ? 650 : 70, lift: a.giant ? 300 : 0, stun: a.giant ? 0.6 : 0.3, src: a.sp ? 'sp' : 'nagare' });
+          this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1, big: a.sp }));
           if (a.hits.length >= a.pierce) return false;
         }
         if (a.t < 1) return true;
@@ -1431,7 +1531,7 @@ export class Sim {
     if (this.combo === 30) this.events.push('combo30');
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.sinceHit = 0;
-    if (o.src && o.src !== 'sp') this.gain(o.src, dmg * SPECIALS[o.src].gain);
+    if (o.src && o.src !== 'sp') this.gain(o.src, (100 * dmg) / (this.nightHp * SPECIALS[o.src].share));
     if (o.stop) this.hitStop = Math.max(this.hitStop, o.stop);
   }
 

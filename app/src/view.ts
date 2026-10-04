@@ -9,7 +9,7 @@ import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_CROWN, DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
-import { Sim, type Arrow, type Dog, type Fx, type Wolf } from './sim';
+import { Sim, type Dog, type Fx, type Wolf } from './sim';
 import type { WolfKind } from './config';
 
 const COLOR = {
@@ -1240,6 +1240,9 @@ export class View {
     if (h.move === 'hougeki') {
       tx = this.wx(h.dashTo);
       ty = this.wy(h.lane);
+    } else if (h.ouran > 0 && h.special === 'midare') {
+      tx = this.wx(h.aimX);
+      ty = this.wy(h.aimLane) - this.heroH(h.lane) * 0.3;
     } else {
       const t = sim.wolves.filter((w) => (w.x - h.x) * h.facing > 0 && Math.abs(w.lane - h.lane) <= 0.6).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
       if (t) {
@@ -1488,9 +1491,10 @@ export class View {
     const h = sim.hero;
     if (h.ouran <= 0) return;
     const hh = this.heroH(h.lane);
-    const cx = this.wx(h.x);
-    const gy = this.wy(h.lane);
-    const grow = Math.min(1, (3 - h.ouran) / 0.4); // 立ち上がり
+    // 竜巻は始めた場所に立つ（千本桜の主人公は竜巻を突き抜けて駆ける）。締めのあとはしぼむ
+    const cx = this.wx(h.spX);
+    const gy = this.wy(h.spLane);
+    const grow = Math.min(1, h.spT / 0.4, h.ouran / 0.5);
     const t = this.vt;
     const layers = 9;
     for (let i = 0; i < layers; i++) {
@@ -1515,52 +1519,55 @@ export class View {
     o.ellipse(cx, gy, hh * 0.5 * grow, hh * 0.1 * grow).fill({ color: 0xff80b0, alpha: 0.18 + 0.08 * Math.sin(t * 12) });
   }
 
-  // 千本桜のナイフ：胸の高さから、くるくる回りながら狼の頭へ。桜色の尾を引く
-  private drawKnife(o: Graphics, sim: Sim, a: Arrow) {
-    const hh = this.heroH(a.fromLane);
-    const dir = Math.sign(a.toX - a.fromX) || 1;
-    const x0 = this.wx(a.fromX) + dir * hh * 0.12;
-    const y0 = this.wy(a.fromLane) - hh * 0.62;
-    const tw = a.target ? sim.wolves.find((w) => w.id === a.target) : undefined;
-    const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
-    const x1 = hd ? hd.x : this.wx(a.toX);
-    const y1 = hd ? hd.y : this.wy(a.lane) - this.geo.Hm * 0.04;
-    const arc = Math.abs(x1 - x0) * 0.08;
-    const at = (t: number) => ({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * arc });
-    const p = at(Math.min(1, a.t));
-    const q = at(Math.max(0, a.t - 0.25));
-    o.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 5, color: 0xff7aa8, alpha: 0.3, cap: 'round' });
-    o.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 1.8, color: 0xffe0ee, alpha: 0.7, cap: 'round' });
-    const ang = a.t * 18 * dir;
-    const ux = Math.cos(ang);
-    const uy = Math.sin(ang);
-    const L = hh * 0.09;
-    // 刃（銀）と柄（焦げ茶）
-    o.poly([p.x + ux * L, p.y + uy * L, p.x - uy * 3.5, p.y + ux * 3.5, p.x + uy * 3.5, p.y - ux * 3.5]).fill(0xeef2fa).stroke({ width: 1.2, color: 0x2a1a20 });
-    o.moveTo(p.x, p.y).lineTo(p.x - ux * L * 0.6, p.y - uy * L * 0.6).stroke({ width: 4, color: 0x3a2018, cap: 'round' });
+  // 主砲乱れ撃ちの弾：肩の砲口から狼まで、まっすぐ一瞬で届く光の線。締めの一発は極太
+  private drawBeams(o: Graphics, sim: Sim) {
+    for (const f of sim.fx) {
+      if (f.kind !== 'beam') continue;
+      const life = f.big ? 0.45 : 0.12;
+      if (f.t > life) continue;
+      const k = 1 - f.t / life;
+      const h = sim.hero;
+      const hh = this.heroH(f.lane);
+      const dir = Math.sign((f.x2 ?? f.x) - f.x) || h.facing;
+      const x0 = this.wx(f.x) + dir * hh * 0.35;
+      const y0 = this.wy(f.lane) - hh * 0.72 - h.z * this.zk() * 0.75;
+      const tw = f.n ? sim.wolves.find((w) => w.id === f.n) : undefined;
+      const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
+      const x1 = hd ? hd.x : this.wx(f.x2 ?? f.x);
+      const y1 = hd ? hd.y : this.wy(f.lane2 ?? f.lane) - hh * (f.big ? 0.5 : 0.25);
+      if (f.big) {
+        const w = hh * 0.55 * (0.4 + 0.6 * k);
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w * 1.8, color: 0xff8030, alpha: 0.25 * k, cap: 'round' });
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w, color: 0xffd080, alpha: 0.6 * k, cap: 'round' });
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w * 0.4, color: 0xffffff, alpha: 0.95 * k, cap: 'round' });
+      } else {
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 10 * k + 2, color: 0xff9040, alpha: 0.35 * k, cap: 'round' });
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 3.5 * k + 1, color: 0xfff0c0, alpha: 0.95 * k, cap: 'round' });
+        o.circle(x0, y0, hh * 0.09 * k).fill({ color: 0xffe0a0, alpha: 0.8 * k });
+        o.circle(x1, y1, hh * 0.14 * k).fill({ color: 0xffc060, alpha: 0.6 * k });
+      }
+    }
   }
 
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
     const K = this.geo.K;
     this.drawTornado(o, sim);
+    this.drawBeams(o, sim);
     this.drawBlade(o);
     this.drawMarks(o, sim);
     // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
-      if (a.knife) {
-        this.drawKnife(o, sim, a);
-        continue;
-      }
       const hh = this.heroH(a.fromLane);
+      const S = a.giant ? 3 : a.big ? 1.7 : 1; // 必殺技の矢は大きく
       // 弓の絵の矢の高さ（足もとから背の73%・前へ30%）から放つ（55%だと腰のあたりから出て見えた。2026-10-04 アマネさん）
       const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;
-      const y0 = this.wy(a.fromLane) - hh * 0.73;
+      const y0 = this.wy(a.fromLane) - hh * 0.73 - (a.fromZ ?? 0) * this.zk() * 0.75;
       const tw = !a.rain ? sim.wolves.find((w) => w.id === a.target) : undefined;
       const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
       const x1 = hd ? hd.x : this.wx(a.toX);
-      const y1 = hd ? hd.y : this.wy(a.lane) - this.geo.Hm * 0.05;
+      const y1 = hd ? hd.y : a.giant ? y0 : this.wy(a.lane) - this.geo.Hm * 0.05;
       // 放った瞬間：弓のまわりに輪と花びら
       if (!this.seenArrows.has(a)) {
         this.seenArrows.add(a);
@@ -1568,7 +1575,7 @@ export class View {
         for (let i = 0; i < 3; i++) this.parts.petal(x0, y0, this.geo.Hm / 600, Math.sign(x1 - x0) * (80 + Math.random() * 120), -60 - Math.random() * 120, 0.5);
       }
       // ふつうの矢はほぼまっすぐ。矢の雨だけ高い放物線
-      const arc = Math.abs(x1 - x0) * (a.rain ? 0.3 : 0.04);
+      const arc = Math.abs(x1 - x0) * (a.rain ? 0.3 : a.giant || a.fromZ ? 0 : 0.04);
       const at = (t: number) => {
         const vx = x1 - x0;
         const vy = y1 - y0 - Math.cos(Math.PI * t) * Math.PI * arc;
@@ -1576,7 +1583,7 @@ export class View {
         return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * arc, ux: vx / len, uy: vy / len };
       };
       const { x, y, ux, uy } = at(a.t);
-      const L = hh * 0.3; // 矢の長さ
+      const L = hh * 0.3 * S; // 矢の長さ
       // 残像：少し前の位置に、桜色の矢の影を4本。古いほど薄く小さい（主人公の残像とそろえる）
       for (let i = 4; i >= 1; i--) {
         const t = a.t - i * 0.06;
@@ -1585,7 +1592,7 @@ export class View {
         const k = 1 - i / 5;
         const l = L * (0.75 + 0.25 * k);
         const al = 0.42 * k;
-        o.moveTo(p.x - p.ux * l, p.y - p.uy * l).lineTo(p.x, p.y).stroke({ width: 3.5 * k + 1, color: 0xff9cc0, alpha: al, cap: 'round' });
+        o.moveTo(p.x - p.ux * l, p.y - p.uy * l).lineTo(p.x, p.y).stroke({ width: (3.5 * k + 1) * S, color: 0xff9cc0, alpha: al, cap: 'round' });
         o.poly([p.x + p.ux * 10, p.y + p.uy * 10, p.x - p.uy * 5, p.y + p.ux * 5, p.x + p.uy * 5, p.y - p.ux * 5]).fill({ color: 0xffd0e2, alpha: al });
         for (const sg of [1, -1]) {
           const fx = p.x - p.ux * l;
@@ -1595,22 +1602,23 @@ export class View {
       }
       // 光の尾（桜色）：飛んだ道に沿って長く
       const tail = Math.min(a.t, 0.35) * Math.hypot(x1 - x0, y1 - y0);
-      o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 7, color: 0xff7aa8, alpha: 0.18, cap: 'round' });
-      o.moveTo(x - ux * (L + tail * 0.5), y - uy * (L + tail * 0.5)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 3, color: 0xffd8e8, alpha: 0.5, cap: 'round' });
+      o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 7 * S * (a.giant ? 2 : 1), color: 0xff7aa8, alpha: a.giant ? 0.35 : 0.18, cap: 'round' });
+      o.moveTo(x - ux * (L + tail * 0.5), y - uy * (L + tail * 0.5)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 3 * S, color: 0xffd8e8, alpha: a.giant ? 0.9 : 0.5, cap: 'round' });
       // 矢柄・矢じり・矢羽
-      o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 4.5, color: 0x3a2018, cap: 'round' });
-      o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 2.2, color: 0xc89060, cap: 'round' });
-      const hx = x + ux * 12;
-      const hy = y + uy * 12;
-      o.poly([hx, hy, x - uy * 6, y + ux * 6, x + uy * 6, y - ux * 6]).fill(0xe8eef8).stroke({ width: 1.5, color: 0x2a1a20 });
+      o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 4.5 * S, color: 0x3a2018, cap: 'round' });
+      o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 2.2 * S, color: 0xc89060, cap: 'round' });
+      const hx = x + ux * 12 * S;
+      const hy = y + uy * 12 * S;
+      o.poly([hx, hy, x - uy * 6 * S, y + ux * 6 * S, x + uy * 6 * S, y - ux * 6 * S]).fill(0xe8eef8).stroke({ width: 1.5, color: 0x2a1a20 });
       for (const sg of [1, -1]) {
         const fx = x - ux * L;
         const fy = y - uy * L;
-        o.poly([fx, fy, fx + ux * 16 - uy * 7 * sg, fy + uy * 16 + ux * 7 * sg, fx + ux * 20, fy + uy * 20]).fill(0xffe8f0).stroke({ width: 1.2, color: 0x2a1a20 });
+        o.poly([fx, fy, fx + (ux * 16 - uy * 7 * sg) * S, fy + (uy * 16 + ux * 7 * sg) * S, fx + ux * 20 * S, fy + uy * 20 * S]).fill(0xffe8f0).stroke({ width: 1.2, color: 0x2a1a20 });
       }
       // 放った瞬間の光・飛んでいるあいだのきらめき
       if (a.t < 0.12) this.parts.glow(x0, y0, hh * 0.5 * (1 - a.t / 0.12), 0xffc0d8, 0.08, 0.8, 0.5);
-      if (Math.random() < 0.7) this.parts.glow(x - ux * L * 0.6, y - uy * L * 0.6, hh * 0.09, 0xffe0ee, 0.25, 0.9, -0.6);
+      if (Math.random() < 0.7) this.parts.glow(x - ux * L * 0.6, y - uy * L * 0.6, hh * 0.09 * S, 0xffe0ee, 0.25, 0.9, -0.6);
+      if (a.giant) this.parts.glow(x, y, hh * 0.6, 0xffc0d8, 0.15, 0.9, 0.5);
     }
     // 頭に刺さった矢：狼について動き、0.35秒で消える
     this.stuck = this.stuck.filter((st) => (st.t += dt) < 0.35);

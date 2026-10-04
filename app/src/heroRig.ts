@@ -2,7 +2,7 @@
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
 import { Assets, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
-import { MOVES } from './config';
+import { MOVES, OURAN } from './config';
 import type { Sim } from './sim';
 
 // idle＝構え（技の振りかぶり）・calm＝力を抜いた待機（2026-10-04 生成。happy・wink・cry は同じ姿勢で顔だけ違う）・
@@ -105,6 +105,7 @@ export class HeroRig {
   private cannon2!: Sprite;
   private gun = 0; // 起きている度合い（0＝たたむ・1＝構える）
   private recoil = 0;
+  private lastFire = 0; // 必殺技の主砲を撃った回数（変わったら反動）
   private meta!: Meta;
   private walkT = 0;
   private lastClock = 0;
@@ -338,8 +339,37 @@ export class HeroRig {
       } else tint = mixTint(0xffffff, 0xffe0b0, c * 0.6);
     }
     // 桜嵐：腕を高く掲げたまま、竜巻の中で少し浮いて揺れる（絵を細かく切り替えるとガタガタした）
-    // 流れ矢は弓を放った絵、乱れ撃ちは主砲を撃った絵のまま（2026-10-04 必殺技を3つに）
-    if (h.ouran > 0) { frame = h.special === 'nagare' ? 'loose' : h.special === 'midare' ? 'strike' : 'up'; lean = Math.sin(t * 3) * 2 * D; lift += 18 + Math.sin(t * 4) * 6; }
+    // 必殺技（2026-10-04 3つに）：吸い寄せ → 連撃 → 締めの構え → 締め、で絵を変える
+    if (h.ouran > 0) {
+      const e = h.spT;
+      const rush = e >= OURAN.rush && e < OURAN.wind;
+      const wind = e >= OURAN.wind && e < OURAN.final;
+      const end = e >= OURAN.final;
+      lean = 0;
+      if (h.special === 'senbon') {
+        // 竜巻を呼ぶ（腕を掲げる）→ ナイフを構えて駆け抜ける → 回る → 地面をダン
+        if (e < OURAN.rush) frame = 'up';
+        else if (rush) { frame = h.running ? 'dash' : 'strike'; lean = (h.running ? 6 : 10) * D; }
+        else if (wind) {
+          const a = ((e - OURAN.wind) / (OURAN.final - OURAN.wind)) * Math.PI * 4;
+          squash = Math.max(0.6, Math.abs(Math.cos(a)));
+          frame = Math.cos(a) < 0 ? 'back' : 'idle';
+        } else { frame = 'strike'; lean = 22 * D * Math.max(0, 1 - (e - OURAN.final) * 3); sy = 0.85; sx = 1.12; }
+      } else if (h.special === 'midare') {
+        // 足を踏ん張って撃ちまくる（撃つたびに少しのけぞる）→ 溜める → ズドン
+        if (e < OURAN.rush) frame = 'idle';
+        else if (rush) { frame = 'strike'; lean = -(3 + 5 * this.recoil) * D; }
+        else if (wind) { frame = 'charge'; shiver = Math.sin(t * 90) * 2; }
+        else { frame = 'strike'; lean = -14 * D * Math.max(0, 1 - (e - OURAN.final) * 2); }
+      } else {
+        // 跳んで撃ち下ろす → 着地して引き絞る → 大きな一本
+        if (e < OURAN.rush) frame = 'idle';
+        else if (rush) { frame = 'loose'; lean = 10 * D; }
+        else if (wind) frame = 'aim';
+        else { frame = 'loose'; lean = -6 * D * Math.max(0, 1 - (e - OURAN.final) * 2); }
+      }
+      if (end) tint = 0xffffff;
+    }
     if (h.stun > 0 && !m) { frame = 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
     // 待機のしぐさ：力を抜いた待機が続いたら始める。ほかの姿になったらすぐやめる
     let prop = 0;
@@ -421,7 +451,10 @@ export class HeroRig {
     const h = sim.hero;
     const m = h.move;
     const firing = m === 'shiki' || m === 'hougeki';
-    const want = h.charge >= 0 || firing ? 1 : 0;
+    const barrage = h.ouran > 0 && h.special === 'midare';
+    const want = h.charge >= 0 || firing || barrage ? 1 : 0;
+    if (barrage && h.spFire !== this.lastFire) this.recoil = 1;
+    this.lastFire = h.spFire;
     this.gun += (want - this.gun) * Math.min(1, dt * (want ? 14 : 6));
     if (firing && h.moveT >= MOVES_HALF[m] && h.moveT - dt < MOVES_HALF[m]) this.recoil = 1;
     this.recoil = Math.max(0, this.recoil - dt * 5);
