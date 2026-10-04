@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right at the same three-quarter angle as in image 1, standing on the same baseline. Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1. Small idle gestures, relaxed and cute:
+
+1. Stretching: both arms raised straight up overhead, one large knife from image 2 held loosely in each hand pointing up, up on her tiptoes, eyes closed, mouth open in a small happy "nnn" yawn, her wolf tail standing up.
+2. Catching a petal: she looks up with a delighted, open-mouthed smile, her front hand held out palm up at chest height with a single pink cherry blossom petal resting on it; her other hand holds one knife lowered at her side.
+3. Knife toss: she tosses one knife lightly upward and watches it spin in the air just above her raised open hand, a playful grin with her tongue slightly out; her other hand holds the second knife on her hip.
+4. Fixing her hood: one hand reaches up to straighten one of the wolf ears on her hood, head tilted, a shy little smile with one eye closed; her other hand holds a knife lowered at her side.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.

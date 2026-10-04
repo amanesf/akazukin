@@ -1,13 +1,21 @@
 // 赤ずきんの絵。ポーズの絵を技に合わせて差し替え、歩きだけ脚を切り絵で動かす（2026-10-03・アマネさん：
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
-import { Assets, Container, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
+import { Assets, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
 import { MOVES } from './config';
 import type { Sim } from './sim';
 
 // idle＝構え（技の振りかぶり）・calm＝力を抜いた待機（2026-10-04 生成。happy・wink・cry は同じ姿勢で顔だけ違う）・
 // run1/run2＝走りの2コマ・sweep＝横なぎの振り抜き・victory＝決めポーズ。新しい絵はナイフも絵に描いてある
-type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock';
+// 2026-10-04 かわいさの追加：smug・teary・yawn・surprised＝待機の顔（calm に頭だけ重ねた）／
+// stretch・petal・toss・hood＝待機のしぐさ（伸び・花びら・ナイフ投げ・頭巾直し）／shoulder・cheer・curtsy・pet＝晩の終わり
+type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock'
+  | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet';
+type Gesture = 'stretch' | 'petal' | 'toss' | 'hood';
+// しぐさの長さ（秒）。伸びのあとは、あくびの顔で少し待つ
+const GESTURE: Record<Gesture, number> = { stretch: 2.2, petal: 1.9, toss: 1.5, hood: 1.5 };
+// 晩の終わりの決めポーズ（晩ごとに順に替える）
+const VICTORY: FrameName[] = ['victory', 'cheer', 'shoulder', 'curtsy'];
 interface Fist { at: [number, number]; hand: [number, number]; deg: number; front?: boolean } // at＝ナイフの握り、hand＝拳の真ん中
 interface FrameMeta {
   size: [number, number];
@@ -39,8 +47,9 @@ const SWAY: Partial<Record<FrameName, Sway>> = {
   victory: { tail: { at: [110, 410], len: 100, top: 360, bot: 480 }, skirt: { waist: 345, hem: 625, legs: true }, ears: [[212, 55], [292, 55]] },
 };
 // 待機と表情の4枚は同じ姿勢（しっぽの付け根の近くでナイフを持つ手は、しっぽの帯から外す）
-for (const n of ['calm', 'happy', 'wink', 'cry'] as const) {
-  SWAY[n] = { tail: { at: [68, 472], len: 60, top: 452, bot: 500 }, skirt: { waist: 350, hem: 640, legs: true }, ears: [[168, 62], [240, 62]] };
+for (const n of ['calm', 'happy', 'wink', 'cry', 'smug', 'teary', 'yawn', 'surprised'] as const) {
+  // 耳の付け根は書き出した絵で測り直した（前の [168,62]・[240,62] は耳から左へ20〜50画素ずれていて、手前の耳がほとんど動かなかった）
+  SWAY[n] = { tail: { at: [68, 472], len: 60, top: 452, bot: 500 }, skirt: { waist: 350, hem: 640, legs: true }, ears: [[190, 56], [292, 54]] };
 }
 // 絵に描いてあるナイフの刃先（書き出した絵の画素）。刃の軌跡に使う
 const TIPS: Partial<Record<FrameName, [number, number][]>> = { sweep: [[78, 148], [205, 305]], dash: [[75, 30], [212, 10]], rise: [[8, 148], [425, 239]] };
@@ -51,7 +60,12 @@ const MESH_STEP = 12; // 網目の細かさ（画素）
 
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
-const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock'];
+const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock',
+  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet'];
+// しぐさの小道具（書き出した絵の画素）。宙のナイフと手のひらの花びらは切り抜きで落ちたので描く
+const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
+const TOSS_TOP = 40; // ナイフのいちばん高い所
+const PETAL_AT: [number, number] = [535, 322]; // 手のひらの上の花びら
 
 export class HeroRig {
   root = new Container();
@@ -68,6 +82,15 @@ export class HeroRig {
   private face: { name: FrameName; until: number } | null = null; // 出来事で変える顔（待機の絵の差し替え）
   private lastHit = 0;
   private alert = 0; // 構えている残り（秒）
+  // 待機のしぐさ：力を抜いた待機が続いたら、ときどき伸び・花びら・ナイフ投げ・頭巾直しをする
+  private idleFor = 0;
+  private nextGesture = 4;
+  private gesture: { name: Gesture; t: number } | null = null;
+  private lastCombo = 0;
+  private earDroop = 0; // 耳を伏せる残り（秒。噛まれた）
+  private earKick = 0; // 耳をぴょこっと立てる勢い（次のバネの1歩で足す）
+  private tossKnife!: Sprite;
+  private petalG!: Graphics;
   // 技ごとの手順（A3）：技が始まったときの連撃の段
   private lastMove: string | null = null;
   private lastMoveT = 0;
@@ -154,6 +177,13 @@ export class HeroRig {
       this.frames[name] = c;
       this.body.addChild(c);
     }
+    this.tossKnife = gear('knife');
+    this.tossKnife.anchor.set(0.5);
+    this.frames.toss.addChild(this.tossKnife);
+    this.sprites.push(this.tossKnife);
+    this.petalG = new Graphics();
+    this.petalG.ellipse(0, 0, 13, 7).fill(0xffc8dc).stroke({ width: 1.5, color: 0xd88aa8 });
+    this.frames.petal.addChild(this.petalG);
     this.cannon = gear('cannon');
     this.cannon.visible = false;
     this.body.addChildAt(this.cannon, 0); // 体の後ろ
@@ -216,13 +246,22 @@ export class HeroRig {
       lift += (1 - Math.cos(t * 2.2)) * 4;
       lean = Math.sin(t * 1.1) * 1.5 * D;
     }
-    // 顔：締めの一撃でにこっ・連撃10と30でウインク・噛まれたら >_<（待機の絵のときだけ見える）
+    // 顔：締めの一撃でにこっ・連撃10と30でウインク・20と50でどや顔・群れが来るとびっくり・噛まれたら >_<（待機の絵のときだけ見える）
+    // 耳：当てるたびにぴょこっと立ち、噛まれたら伏せる。体力が少ないあいだは少し伏せたまま
     const ev = sim.events;
     if (ev.includes('finisher') || ev.includes('dawn')) this.face = { name: 'happy', until: t + 1.2 };
     if (ev.includes('combo10') || ev.includes('combo30')) this.face = { name: 'wink', until: t + 1.2 };
-    if (h.hitFlash > this.lastHit + 0.05) this.face = { name: 'cry', until: t + 0.7 };
+    const crossed = (n: number) => this.lastCombo < n && sim.combo >= n;
+    if (crossed(20) || crossed(50)) { this.face = { name: 'smug', until: t + 1.4 }; this.earKick += 6; }
+    if (sim.combo > this.lastCombo) this.earKick += 2.2;
+    this.lastCombo = sim.combo;
+    if (ev.includes('surge')) { this.face = { name: 'surprised', until: t + 1 }; this.earKick += 7; }
+    if (h.hitFlash > this.lastHit + 0.05) { this.face = { name: 'cry', until: t + 0.7 }; this.earDroop = 0.8; }
     this.lastHit = h.hitFlash;
+    this.earDroop = Math.max(0, this.earDroop - dt);
     if (this.face && t > this.face.until) this.face = null;
+    const low = sim.phase === 'wave' && h.hp < sim.maxHp * 0.3;
+    const droop = this.earDroop > 0 || h.down > 0 ? 0.55 : low ? 0.32 : 0; // 0.34 では伏せたのが見えなかった（撮影で確認）
 
     // 技：途中で絵を差し替える。p は技の進み（0〜1）。
     // 振りかぶり（溜めの姿勢・後ろへ傾く）→ 振り抜き（前へ傾きすぎてから戻る）で、ため→解放を見せる
@@ -293,19 +332,59 @@ export class HeroRig {
     // 桜嵐：腕を高く掲げたまま、竜巻の中で少し浮いて揺れる（絵を細かく切り替えるとガタガタした）
     if (h.ouran > 0) { frame = 'up'; lean = Math.sin(t * 3) * 2 * D; lift += 18 + Math.sin(t * 4) * 6; }
     if (h.stun > 0 && !m) { frame = 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
+    // 待機のしぐさ：力を抜いた待機が続いたら始める。ほかの姿になったらすぐやめる
+    let prop = 0;
+    if (frame === 'calm' && !this.face && h.ouran <= 0 && h.stun <= 0) {
+      this.idleFor += dt;
+      if (!this.gesture && this.idleFor > this.nextGesture) {
+        const all = Object.keys(GESTURE) as Gesture[];
+        this.gesture = { name: all[Math.floor(Math.random() * all.length)], t: 0 };
+      }
+    } else {
+      this.idleFor = 0;
+      this.gesture = null;
+    }
+    if (this.gesture) {
+      const gs = this.gesture;
+      gs.t += dt;
+      const len = GESTURE[gs.name];
+      if (gs.t >= len) {
+        this.gesture = null;
+        this.idleFor = 0;
+        this.nextGesture = (sim.phase === 'shop' ? 3 : 4) + Math.random() * 4;
+      } else {
+        prop = gs.t / len;
+        frame = gs.name === 'stretch' && gs.t > 1.3 ? 'yawn' : gs.name;
+        if (gs.name === 'stretch' && gs.t < 1.3) lift += Math.sin(Math.min(1, gs.t / 0.5) * Math.PI * 0.5) * 10; // つま先立ち
+        if (gs.name === 'hood' && Math.abs(gs.t - 0.5) < dt) this.earKick += 8; // 直した耳がぴょこっ
+        lean = 0;
+      }
+    }
     if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && this.face) frame = this.face.name;
+    else if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && low) frame = 'teary'; // 体力が少ない：涙目でがんばる
     // 宙にいるあいだ（技のあと落ちてくるところ）は跳んだ姿。立った姿のまま浮くとおかしかった
     if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0) { frame = 'rise'; lean = h.vz < 0 ? 4 * D : -4 * D; }
     // 晩の最後の1匹：スローのあいだは振り抜いたまま見せ、スローが明けてから拳を上げる（2026-10-04 アマネさん「拳あげる早すぎ」）。
     // 上げる瞬間に少し沈んで跳ねる
+    // 決めポーズは晩ごとに替える（ピース・跳んで万歳・主砲を担いでどや・お辞儀）。そのあと、寄ってきた番犬をしゃがんでなでる
+    let facing = h.facing;
     if (sim.cheer >= 0 && h.down <= 0) {
-      frame = sim.cheer < 0.12 ? 'idle' : 'victory';
+      const v = VICTORY[sim.wave % VICTORY.length];
+      const dog = sim.dogs.filter((d) => d.down <= 0 && Math.abs(d.x - h.x) < 170).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
+      const pet = sim.cheer > 1.5 && dog;
+      frame = sim.cheer < 0.12 ? 'idle' : pet ? 'pet' : v;
       lean = 0;
-      lift = sim.cheer < 0.12 ? 0 : Math.sin(Math.min(1, (sim.cheer - 0.12) / 0.3) * Math.PI) * 26;
+      const k2 = Math.min(1, (sim.cheer - 0.12) / (v === 'cheer' ? 0.45 : 0.3));
+      // 跳んで万歳の絵は宙にいる姿なので、跳び上がって少し浮いたまま、ゆっくり降りる
+      lift = sim.cheer < 0.12 || pet ? 0 : v === 'cheer' ? Math.sin(Math.min(1, k2 * 0.5) * Math.PI) * 60 + 14 : Math.sin(k2 * Math.PI) * 26;
+      if (pet && dog) {
+        facing = dog.x >= h.x ? 1 : -1;
+        lift = Math.max(0, Math.sin((sim.cheer - 1.5) * 9)) * 4; // なでる手に合わせて小さく揺れる
+      }
     }
     if (h.down > 0) { frame = 'down'; lean = 0; lift = 0; sx = sy = 1; }
-    // 昼：ときどき小さく跳ねる（くつろいでいる）
-    if (sim.phase === 'shop') {
+    // 昼：ときどき小さく跳ねる（くつろいでいる）。しぐさのあいだは跳ねない
+    if (sim.phase === 'shop' && !this.gesture) {
       const hop = Math.max(0, Math.sin(t * 2.4)) ** 6;
       if (frame === 'calm' && hop > 0.2) frame = 'happy'; // 跳ねるときは笑顔
       lift += hop * 40;
@@ -319,11 +398,11 @@ export class HeroRig {
     if (h.hitFlash > 0) tint = h.hitFlash > 0.12 ? 0xffc8c8 : 0xffe8e8; // 噛まれた：一瞬だけ淡く赤く（赤く塗りつぶすと汚い）
     else if (h.ouran > 0) tint = Math.floor(t * 20) % 2 ? 0xffe6a0 : 0xffffff;
     const blink = h.iframes > 0 && h.move !== 'tosshin' && Math.floor(t * 20) % 2 === 0; // 起き上がりの無敵は点滅
-    const sw = this.swing(dt, t, x, h.facing, height, lean, lift, run && !m, h.down > 0);
+    const sw = this.swing(dt, t, x, h.facing, height, lean, lift, run && !m, h.down > 0, droop);
 
     return {
-      frame, x: x + shiver, y, k, facing: h.facing, lean, lift, sx: sx * squash, sy, legSwing, tint, ...this.aimGun(sim, dt), aim,
-      alpha: blink ? 0.4 : 1, ...sw,
+      frame, x: x + shiver, y, k, facing, lean, lift, sx: sx * squash, sy, legSwing, tint, ...this.aimGun(sim, dt), aim,
+      alpha: blink ? 0.4 : 1, prop, ...sw,
     };
   }
 
@@ -340,7 +419,7 @@ export class HeroRig {
   }
 
   // 揺れもののバネを進める。体の動き（横の速さ・傾きの変わり方・上下）に遅れてついてくる
-  private swing(dt: number, t: number, x: number, facing: 1 | -1, height: number, lean: number, lift: number, running: boolean, down: boolean) {
+  private swing(dt: number, t: number, x: number, facing: 1 | -1, height: number, lean: number, lift: number, running: boolean, down: boolean, droop = 0) {
     const sp = this.spring;
     if (Number.isNaN(this.lastX) || dt <= 0 || dt > 0.08) {
       this.lastX = x;
@@ -374,12 +453,16 @@ export class HeroRig {
     // 体が前へ傾くと、しっぽと裾は後ろへ遅れる。跳び上がると耳は下がり、裾はふわっと持ち上がる
     k('tail', tailTo, 55, 5.5, -dLean * 9 + dLift * 0.004);
     k('skirt', skirtTo, 150, 8, -dLean * 260);
-    k('ear0', 0, 320, 11, -dLean * 30 - dLift * 0.02);
-    k('ear1', 0, 320, 11, -dLean * 30 - dLift * 0.02);
+    // 耳：伏せる＝外へ倒す（奥の耳は−・手前の耳は＋。撮影で確認）。ぴょこっ＝内へ跳ねてから戻る（勢いを一度だけ足す）
+    sp.ear0V += this.earKick;
+    sp.ear1V -= this.earKick;
+    this.earKick = 0;
+    k('ear0', -droop, 320, 11, -dLean * 30 - dLift * 0.02);
+    k('ear1', droop, 320, 11, -dLean * 30 - dLift * 0.02);
     sp.tail = Math.max(-0.28, Math.min(0.75, sp.tail)); // 下げすぎると裾に折れ込む（3倍で確認）
     sp.skirt = Math.max(-22, Math.min(22, sp.skirt));
-    sp.ear0 = Math.max(-0.3, Math.min(0.3, sp.ear0));
-    sp.ear1 = Math.max(-0.3, Math.min(0.3, sp.ear1));
+    sp.ear0 = Math.max(-0.6, Math.min(0.4, sp.ear0));
+    sp.ear1 = Math.max(-0.4, Math.min(0.6, sp.ear1));
     return { tail: sp.tail, skirt: sp.skirt, ears: [sp.ear0, sp.ear1] as [number, number] };
   }
 
@@ -463,8 +546,19 @@ export class HeroRig {
     // 主砲：肩の後ろを中心に回す。撃つと砲身の向きと逆へ跳ねる
     // 初期装備なので、ふだんも背中にたたんで背負っている（2026-10-04 アマネさん「主砲どこいったん」）。倒れた姿・回転の後ろ姿では隠す
     const H = this.meta.height;
-    const show = p.frame !== 'down' && p.frame !== 'back';
+    // 担いだ主砲は絵に描いてある。しゃがんでなでる間は下ろす（背負ったままだと砲口が地面に刺さり、寝かせると画面を横切って大きすぎた）
+    const show = p.frame !== 'down' && p.frame !== 'back' && p.frame !== 'shoulder' && p.frame !== 'pet';
     const shoulderY = p.frame === 'charge' ? -0.62 * H : -0.78 * H; // 肩の上（低いと腰から出ているように見えた）
+    // しぐさの小道具：投げ上げたナイフはくるくる回って手に戻る・手のひらの花びらはふわっと揺れる
+    if (p.frame === 'toss') {
+      const q = Math.sin(Math.PI * p.prop);
+      this.tossKnife.position.set(TOSS_HAND[0] - 20 * q, TOSS_HAND[1] - (TOSS_HAND[1] - TOSS_TOP) * q);
+      this.tossKnife.rotation = p.prop * Math.PI * 4;
+    }
+    if (p.frame === 'petal') {
+      this.petalG.position.set(PETAL_AT[0] + Math.sin(p.prop * 9) * 4, PETAL_AT[1] - 8 - Math.abs(Math.sin(p.prop * 6)) * 10);
+      this.petalG.rotation = Math.sin(p.prop * 7) * 0.6;
+    }
     const g = p.gun;
     const place2 = (c: Sprite, rest: number, aimOff: number, x0: number, x1: number, y0: number, y1: number, kick: number) => {
       c.visible = show;
@@ -500,6 +594,7 @@ export interface Pose {
   x: number; y: number; k: number; facing: 1 | -1;
   lean: number; lift: number; sx: number; sy: number; legSwing: number;
   tint: number; alpha: number;
+  prop: number; // しぐさの進み（0〜1。小道具を動かす）
   gun: number; recoil: number; aim: number; // 背中の主砲の起き具合・反動・向ける角度
   tail: number; skirt: number; ears: [number, number]; // 揺れもの
 }

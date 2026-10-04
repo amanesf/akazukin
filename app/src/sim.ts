@@ -10,7 +10,7 @@ import {
 import { hpScale, mood, night, SURGE_WARN, type Mood } from './nights';
 
 const FINALE = 0.4; // 晩の最後の1匹のあとのスローの長さ（sim の秒。実時間ではこの約3倍）
-const CHEER = 1.5; // スローが明けてから、拳を上げて昼になるまで（秒）
+const CHEER = 2.6; // スローが明けてから、決めポーズ→寄ってきた番犬をなでて昼になるまで（秒）。なでる分を足した（2026-10-04 かわいさ）
 
 export interface Unit {
   id: number;
@@ -861,15 +861,22 @@ export class Sim {
         const side = t.x >= d.x ? -1 : 1;
         tx = t.x + side * ((t.size + d.size) / 2);
         tl = t.lane;
-      } else if (d.role === 'guard' || h.down > 0) {
+      } else if ((d.role === 'guard' && this.finale <= 0) || h.down > 0) {
         tx = home.x + 60;
         tl = home.lane;
+      } else if (this.finale > 0) {
+        // 晩の最後の1匹を倒したら、守りの犬も赤ずきんの前へ寄ってくる（なでてもらう）
+        // 体に重ならず、しゃがんだ手が届く所。前に場所がなければ（右端・家の前）後ろに並ぶ
+        const off = (HERO.size + d.size) / 2 + 40 + DOG_ORDER.indexOf(d.kind) * 50;
+        const side = h.x + h.facing * off > DOG_MAX_X || h.x + h.facing * off < HOUSE_X + 20 ? -h.facing : h.facing;
+        tx = h.x + side * off;
+        tl = clamp(h.lane + (DOG_ORDER.indexOf(d.kind) - 1) * 0.12, 0, 1);
       } else {
         tx = h.x - h.facing * (50 + DOG_ORDER.indexOf(d.kind) * 25);
         tl = clamp(h.lane + (DOG_ORDER.indexOf(d.kind) - 1) * 0.3, 0, 1);
       }
       tx = clamp(tx, HOUSE_X + 20, DOG_MAX_X);
-      const sp = s.speed * (1 + this.sum('dog', 'dogSpeed'));
+      const sp = s.speed * (1 + this.sum('dog', 'dogSpeed')) * (this.finale > 0 ? 2 : 1); // 晩の終わりは急いで駆け寄る
       const dx = clamp(tx - d.x, -sp * dt, sp * dt);
       if (Math.abs(tx - d.x) > 4) d.facing = tx > d.x ? 1 : -1;
       d.x += dx;

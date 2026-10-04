@@ -340,6 +340,12 @@ export class View {
       const nearRift = Math.max(0, Math.min(1, (h.x - 600) / 160));
       const riftR = this.wx(WOLF_SPAWN_X) + 170;
       if (nearRift > 0) tx += (Math.min(riftR - g.W / 2 / tz, this.wx(h.x) + (g.W / 2 / tz) * 0.55) - tx) * nearRift;
+      // 決めポーズ：主人公と、駆け寄ってくる番犬が両方映るように真ん中へ（前は進む向きの先を映していて、後ろに来た犬が画面の外だった）
+      if (sim.cheer >= 0) {
+        const near = sim.dogs.filter((d) => d.down <= 0 && Math.abs(d.x - h.x) < 260);
+        const k = Math.min(1, sim.cheer / 0.4);
+        if (near.length) tx += ((this.wx(h.x) + this.wx(near.reduce((a, d) => a + d.x, 0) / near.length)) / 2 - tx) * k;
+      }
       tx = Math.max(houseL + g.W / 2 / tz, Math.min(riftR - g.W / 2 / tz, tx));
       ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
     }
@@ -921,7 +927,9 @@ export class View {
     const color = DOG_COLOR[d.kind];
     const bite = d.bite > 0 ? Math.sin((1 - d.bite / 0.2) * Math.PI) : 0;
     const hit = d.hitFlash / 0.12;
-    const bob = Math.abs(Math.sin(t * 5)) * bh * 0.04;
+    // 晩の終わりに赤ずきんのそばへ来たら、うれしくて跳ねる
+    const glad = sim.cheer >= 0 && Math.abs(d.x - sim.hero.x) < 160 ? 1 : 0;
+    const bob = Math.abs(Math.sin(t * 5)) * bh * 0.04 + glad * Math.abs(Math.sin(t * 9)) * bh * 0.22;
     if (this.dogArt.ready) {
       // 番犬の絵：噛むときは前へ飛び出して頭を下げる・噛まれたら赤く。伸び縮みはさせない
       const hh = this.heroH(d.lane) * 0.42 * DOG_REL[d.kind];

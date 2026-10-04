@@ -74,14 +74,21 @@ frames['back'] = {'size': save('back', back), 'feet': feet(back)}
 # 描かれたので、1枚目の待機と同じ倍率にする。のけぞりはナイフを持っていないので使わない。
 # 4枚目（hero-extra-v1：弓を引く・放つ・ナイフを持ったのけぞり）も同じ。弓が頭より上に出るので背の高さでは測れない。後ろ姿は頭巾の柄が消えたので使わない
 calm_h = height(cv2.imread('assets/game/parts/relax/calm.png', cv2.IMREAD_UNCHANGED))
+# 2026-10-04 かわいさの追加（生成3回）：
+#   faces2（hero-faces2-v1）＝待機の顔をあと4つ（どや・涙目・あくび・びっくり）。頭だけ calm に重ねてある（tools/face-swap.py）ので calm と同じ倍率
+#   gesture（hero-gesture-v1）＝待機のしぐさ（伸び・花びら・ナイフ投げ・頭巾直し）。宙のナイフと花びらは切り抜きで落ちたので、試作で描く
+#   victory2（hero-victory2-v1）＝晩の終わり（主砲を担ぐ・跳んで万歳・お辞儀・しゃがんで犬をなでる）
+#   この2枚は立った人が1割ほど小さく描かれたので、まっすぐ立った1人（花びら・お辞儀）の背を calm にそろえる
 for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), ('motion', 'victory', ('run1', 'run2', 'sweep', 'victory')),
-                          ('action2', None, ('dash', 'rise', 'charge')), ('extra', None, ('aim', 'loose', 'knock'))):
+                          ('action2', None, ('dash', 'rise', 'charge')), ('extra', None, ('aim', 'loose', 'knock')),
+                          ('faces2', None, ('smug', 'teary', 'yawn', 'surprised')),
+                          ('gesture', 'petal', ('stretch', 'petal', 'toss', 'hood')), ('victory2', 'curtsy', ('shoulder', 'cheer', 'curtsy', 'pet'))):
     k = height(p1) / (height(cv2.imread(f'assets/game/parts/{sheet}/{ref}.png', cv2.IMREAD_UNCHANGED)) if ref else calm_h)
     for name in names:
         img = cv2.imread(f'assets/game/parts/{sheet}/{name}.png', cv2.IMREAD_UNCHANGED)
         img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
         f = feet(img)
-        if sheet == 'motion' or name in ('dash', 'rise', 'knock'):
+        if sheet == 'motion' or name in ('dash', 'rise', 'knock', 'cheer'):
             # 足が前後に開いた絵は、足の真ん中ではなくスカートの真ん中（背の高さの62〜72%の行の、不透明な所の端と端の真ん中）を基準にする。
             # 腰の高さはしっぽとナイフが横に出ていてずれる。
             # 一番下の足を基準にすると、走りの2コマで体が左右へ跳んだ
