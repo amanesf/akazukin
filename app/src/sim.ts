@@ -373,7 +373,7 @@ export class Sim {
   private lunge(t: Wolf) {
     const h = this.hero;
     const side = t.x >= h.x ? 1 : -1;
-    const stop = t.x - side * ((t.size + HERO.size) / 2 + 6);
+    const stop = clamp(t.x - side * ((t.size + HERO.size) / 2 + 6), HERO.minX, HERO.maxX);
     if ((stop - h.x) * side > 0) h.lungeTo = stop;
     h.lungeLane = t.lane;
   }
@@ -569,6 +569,8 @@ export class Sim {
     this.moveWolves(dt);
     this.moveDogs(dt);
     this.runHero(dt);
+    // 踏み込み・追いかけ・桜嵐など、どの動きでも右端（裂け目の前）と家の前より外へは出ない
+    this.hero.x = clamp(this.hero.x, HERO.minX, HERO.maxX);
     this.flyArrows(dt);
     this.flyShells(dt);
     this.flyShots(dt);
