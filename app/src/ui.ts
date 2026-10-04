@@ -126,6 +126,6 @@ export class Panel {
     this.ouran.disabled = !s.canOuran();
     this.ouran.classList.toggle('ready', s.canOuran());
     this.ouran.style.setProperty('--fill', String(s.gauge / 100));
-    this.ouran.querySelector('small')!.textContent = s.hero.ouran > 0 ? '乱舞中' : s.gauge >= 100 ? '押せ！' : `${Math.floor(s.gauge)}%`;
+    this.ouran.querySelector('small')!.textContent = s.hero.ouran > 0 ? '満開' : s.gauge >= 100 ? '押せ！' : `${Math.floor(s.gauge)}%`;
   }
 }

@@ -239,7 +239,8 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   background: var(--art) 100% 14% / auto 165% no-repeat, linear-gradient(90deg, transparent, #b3202a 15%, #b3202a 85%, transparent);
   justify-content: flex-start;
   padding-left: 18%;
-  transform: skewY(-6deg);
+  /* 帯の傾きは形で切る（skew だと立ち絵まで平行四辺形に歪んだ・2026-10-04） */
+  clip-path: polygon(0 12%, 100% 0, 100% 88%, 0 100%);
   font: 800 38px/1 var(--mincho);
   letter-spacing: 0.2em;
   color: #fff;
@@ -248,10 +249,10 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   animation: cutin 0.9s ease-out forwards;
 }
 @keyframes cutin {
-  0% { transform: skewY(-6deg) translateX(100%); }
-  20% { transform: skewY(-6deg) translateX(0); }
-  80% { transform: skewY(-6deg) translateX(0); opacity: 1; }
-  100% { transform: skewY(-6deg) translateX(-100%); opacity: 0; }
+  0% { transform: translateX(100%); }
+  20% { transform: translateX(0); }
+  80% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(-100%); opacity: 0; }
 }
 
 /* 音のボタン（最初は切）と、これから来る狼の予告 */
