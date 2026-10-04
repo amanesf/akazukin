@@ -22,6 +22,7 @@ export class Backdrop {
   layers: Layer[] = [];
   front!: Layer; // 手前の草（体より前）
   private moonG = new Graphics();
+  private sunG = new Graphics();
   private moonGlow = new Sprite(glowTexture());
   private lights: { s: Sprite; x: number; y: number; ph: number }[] = [];
   private starList: { x: number; y: number; r: number; ph: number }[] = [];
@@ -29,7 +30,7 @@ export class Backdrop {
   constructor() {
     this.moonGlow.anchor.set(0.5);
     this.moonGlow.blendMode = 'add';
-    this.moon.addChild(this.moonGlow, this.moonG);
+    this.moon.addChild(this.moonGlow, this.moonG, this.sunG);
   }
 
   // 画面の大きさが変わったら作り直す。horizon は地面の奥の端（世界の y）、width は戦場の幅（世界の px）
@@ -55,6 +56,7 @@ export class Backdrop {
     // 月の裂け目
     mg.moveTo(R * 0.1, -R).lineTo(-R * 0.05, -R * 0.4).lineTo(R * 0.15, -R * 0.05).lineTo(-R * 0.1, R * 0.45).lineTo(R * 0.05, R)
       .stroke({ width: 3, color: 0xff9080, alpha: 0.9 });
+    this.sunG.clear().circle(0, 0, R * 0.8).fill(0xfff4d0).circle(0, 0, R * 0.62).fill(0xffffff);
     this.moonGlow.width = this.moonGlow.height = R * 6;
     this.moonGlow.tint = 0xff4050;
     this.moonGlow.alpha = 0.35;
@@ -111,13 +113,16 @@ export class Backdrop {
       if (kind < 0.5) {
         // 桜：幹と枝、花の塊
         const th = h * (0.16 + rm() * 0.08);
-        mid.moveTo(x, horizon + 2).lineTo(x + 6, horizon - th * 0.6).lineTo(x - 2, horizon - th).stroke({ width: 7, color: 0x24141c });
-        mid.moveTo(x + 5, horizon - th * 0.55).lineTo(x + 40, horizon - th * 0.85).stroke({ width: 4, color: 0x24141c });
-        mid.moveTo(x + 3, horizon - th * 0.7).lineTo(x - 36, horizon - th * 0.95).stroke({ width: 4, color: 0x24141c });
-        for (let i = 0; i < 9; i++) {
-          const bx = x + (rm() - 0.5) * 110;
-          const by = horizon - th * (0.85 + rm() * 0.35);
-          mid.circle(bx, by, 18 + rm() * 22).fill({ color: PINK[Math.floor(rm() * 4)], alpha: 0.22 + rm() * 0.12 });
+        mid.moveTo(x, horizon + 2).lineTo(x + 6, horizon - th * 0.6).lineTo(x - 2, horizon - th).stroke({ width: 7, color: 0x3a2028 });
+        mid.moveTo(x + 5, horizon - th * 0.55).lineTo(x + 40, horizon - th * 0.85).stroke({ width: 4, color: 0x3a2028 });
+        mid.moveTo(x + 3, horizon - th * 0.7).lineTo(x - 36, horizon - th * 0.95).stroke({ width: 4, color: 0x3a2028 });
+        // 花の塊：小さな丸をたくさん重ねて、ふわっとした輪郭に（大きな丸だと泡に見えた）
+        for (let i = 0; i < 34; i++) {
+          const a = rm() * Math.PI * 2;
+          const d = Math.sqrt(rm());
+          const bx = x + Math.cos(a) * d * 62;
+          const by = horizon - th * 1.02 + Math.sin(a) * d * 30;
+          mid.circle(bx, by, 6 + rm() * 9).fill({ color: PINK[Math.floor(rm() * 4)], alpha: 0.14 + rm() * 0.14 });
         }
       } else if (kind < 0.8) {
         // 電柱
@@ -193,7 +198,7 @@ export class Backdrop {
     const top = mix(0x0a0610, 0x5a86b8, day);
     const mid = mix(0x24101e, 0x9ab8d8, day);
     const low = mix(0x4a1c2a, 0xf0d0b0, day);
-    const bands = 12;
+    const bands = 36;
     for (let i = 0; i < bands; i++) {
       const k = i / (bands - 1);
       const c = k < 0.6 ? mix(top, mid, k / 0.6) : mix(mid, low, (k - 0.6) / 0.4);
@@ -204,7 +209,8 @@ export class Backdrop {
       for (const p of this.starList) st.circle(p.x, p.y + skyTop, p.r).fill({ color: 0xffffff, alpha: (0.35 + 0.35 * Math.sin(t * 2 + p.ph)) * (1 - day) });
     }
     for (const l of this.lights) l.s.alpha = (0.32 + 0.1 * Math.sin(t * 3 + l.ph) + 0.05 * Math.sin(t * 11 + l.ph)) * (1 - day * 0.8);
-    this.moonG.tint = day > 0.5 ? 0xffe8a0 : 0xffffff;
+    this.moonG.alpha = 1 - day;
+    this.sunG.alpha = day;
     this.moonGlow.tint = mix(0xff4050, 0xfff0c0, day);
     const tint = mix(0xffffff, 0xd8c8d0, day);
     for (const l of this.layers) l.c.tint = tint;

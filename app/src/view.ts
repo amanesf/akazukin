@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { DOGS, FIELD_LENGTH, HOUSE_HP, HOUSE_X, LANE_TOL, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HOUSE_HP, HOUSE_X, LANE_TOL, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -113,10 +113,12 @@ export class View {
 
   // ── 座標 ──
   private wx(x: number) { return x * this.geo.K; }
-  private wy(lane: number) { return this.geo.laneTop + lane * this.geo.laneH; }
+  // 昼は引いて全体を映すので、体と奥行きを盛る（小さい地図と同じ考え）。dayK は昼への移り変わり（0〜1）
+  private dayK = 0;
+  private wy(lane: number) { return this.geo.laneTop + lane * this.geo.laneH * (1 + 2.2 * this.dayK); }
   private ds(lane: number) { return 0.86 + 0.24 * lane; } // 手前ほど大きい
-  private U(lane: number) { return this.geo.Hm * 0.0027 * this.ds(lane); } // 体の大きさ1あたりの画素
-  private heroH(lane: number) { return this.geo.Hm * 0.4 * this.ds(lane); }
+  private U(lane: number) { return this.geo.Hm * 0.0027 * this.ds(lane) * (1 + 1.6 * this.dayK); } // 体の大きさ1あたりの画素
+  private heroH(lane: number) { return this.geo.Hm * 0.4 * this.ds(lane) * (1 + 1.6 * this.dayK); }
   private zk() { return this.geo.K * 0.9; } // 高さ（間合い）→画素
 
   // 画面の点 → 戦場（間合いと奥行き）。小さい地図の上なら sprint
@@ -128,7 +130,7 @@ export class View {
     }
     const wxp = (sx - g.W / 2) / this.cam.z + this.cam.x;
     const wyp = (sy - g.Hm / 2) / this.cam.z + this.cam.y;
-    return { x: wxp / g.K, lane: Math.max(0, Math.min(1, (wyp - g.laneTop) / g.laneH)), mini: false };
+    return { x: wxp / g.K, lane: Math.max(0, Math.min(1, (wyp - g.laneTop) / (g.laneH * (1 + 2.2 * this.dayK)))), mini: false };
   }
 
   // 昼：画面の点の近くにある番犬の持ち場
@@ -153,6 +155,8 @@ export class View {
     const pdt = frozen ? dt * 0.08 : dt; // ヒットストップのあいだは粒もほぼ止める
     const h = sim.hero;
     const day = sim.phase === 'shop' ? 1 : 0;
+    this.dayK += (day - this.dayK) * (1 - Math.exp(-dt * 3));
+    if (Math.abs(day - this.dayK) < 0.002) this.dayK = day;
 
     // ── カメラ ──
     let tz: number;
@@ -160,9 +164,12 @@ export class View {
     let ty: number;
     const fieldW = FIELD_LENGTH * g.K;
     if (day) {
-      tz = (g.W - 16) / (fieldW + 300);
-      tx = (fieldW - 220) / 2;
-      ty = g.laneTop + g.laneH * 0.5 - (g.Hm * 0.1) / tz;
+      // 昼：家から番犬を置ける所の先まで（番犬の持ち場を決める画面）
+      const x0 = -170 * g.K;
+      const x1 = 760 * g.K;
+      tz = g.W / (x1 - x0);
+      tx = (x0 + x1) / 2;
+      ty = g.laneTop + g.laneH * 1.6 - (g.Hm * 0.12) / tz;
     } else {
       const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
       tz = (fast ? 0.9 : 1) * (1 + sim.punch * 0.07);
@@ -191,8 +198,8 @@ export class View {
     const fr = this.backdrop.front;
     fr.c.position.set(this.cam.x * (1 - fr.f), 0); // 世界の中で、さらに速く流す
     const horizonS = g.horizon * z + oy;
-    this.backdrop.update(this.vt, g.W, horizonS, day, 0);
-    this.backdrop.moon.position.set(g.W * 0.8 - this.cam.x * 0.02, g.Hm * 0.17 + (day ? -g.Hm * 0.04 : 0));
+    this.backdrop.update(this.vt, g.W, horizonS, this.dayK, 0);
+    this.backdrop.moon.position.set(g.W * 0.8 - this.cam.x * 0.02, g.Hm * (0.17 - 0.05 * this.dayK));
 
     // ── 新しい出来事から演出を起こす ──
     for (const f of sim.fx) {
@@ -221,7 +228,12 @@ export class View {
     }
     // 昼：番犬の持ち場の目印
     if (day) {
-      for (const p of sim.posts) gr.ellipse(this.wx(p.x), this.wy(p.lane), 34, 9).stroke({ width: 2, color: 0xffe0a0, alpha: 0.6 });
+      // 番犬を置ける所（家の前〜持ち場の限り）と、置いた持ち場の目印
+      const a = this.wx(HOUSE_X + 30);
+      const b = this.wx(DOG_POST_MAX);
+      gr.rect(a, this.wy(0) - 6, b - a, this.wy(1) - this.wy(0) + 12).fill({ color: 0xffe0a0, alpha: 0.1 }).stroke({ width: 3, color: 0xffe0a0, alpha: 0.3 });
+      gr.moveTo(b, this.wy(0) - 6).lineTo(b, this.wy(1) + 6).stroke({ width: 3, color: 0xffe0a0, alpha: 0.35 });
+      for (const p of sim.posts) gr.ellipse(this.wx(p.x), this.wy(p.lane), 60, 16).stroke({ width: 4, color: 0xffe0a0, alpha: 0.7 });
     }
 
     // ── 体（奥から手前へ。主人公より奥は backG、手前は frontG）──

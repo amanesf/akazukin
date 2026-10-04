@@ -72,6 +72,10 @@ async function main() {
   const surge = document.getElementById('surge')!;
   const next = document.getElementById('next')!;
   const card = document.getElementById('card')!;
+  const hint = document.getElementById('hint')!;
+  // 1晩目だけ、指の使い方を順に出す
+  const HINTS: [number, string][] = [[3, '狼をタップ：斬る（連打で連撃）'], [9, '左右にはじく：突進斬り'], [15, '上にはじく：斬り上げ／下：叩き落とし'], [21, '長押し→離す：主砲'], [27, '下の地図をタップ：駆けつける']];
+  let lastHint = '';
   const showCard = (big: string, small: string) => {
     card.innerHTML = `<b>${big}</b><small>${small}</small>`;
     restart(card);
@@ -120,6 +124,13 @@ async function main() {
     // 右端からはみ出さない
     bubble.style.left = `${Math.max(6, Math.min(x, field.clientWidth - bubble.offsetWidth * 0.8 - 6))}px`;
     bubble.style.top = `${Math.max(bubble.offsetHeight + 4, y - 6)}px`;
+    const hx = sim.wave === 0 && sim.phase === 'wave' ? HINTS.filter(([t]) => sim.clock >= t && sim.clock < t + 5.5).pop()?.[1] ?? '' : '';
+    if (hx !== lastHint) {
+      lastHint = hx;
+      hint.textContent = hx;
+      if (hx) restart(hint);
+      else hint.hidden = true;
+    }
     comboEl.hidden = sim.combo < 2;
     if (sim.combo !== lastCombo) {
       comboEl.innerHTML = `${sim.combo}<small>HIT</small>`;

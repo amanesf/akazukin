@@ -262,3 +262,21 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   animation: blink 0.4s steps(2) infinite;
 }
 @keyframes blink { 50% { opacity: 0.55; } }
+
+/* 1晩目の指の使い方 */
+#hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(13% + 14px);
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 224, 240, 0.35);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: hint 5.5s ease-out forwards;
+}
+#hint[hidden] { display: none; }
+@keyframes hint { 0% { opacity: 0; transform: translate(-50%, 8px); } 8% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
