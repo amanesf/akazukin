@@ -1,0 +1,10 @@
+Character sprite sheet for the same game as image 1, drawn in exactly the same art style as image 1: Japanese anime gacha-game illustration, clean outlines, cel shading, rich saturated color. Only the four subjects below are in the picture; the girl in image 1 is only a reference for the art style and does not appear.
+
+Four subjects side by side on one flat light gray background with wide gray space between them, all standing on the same baseline, each at its true size relative to the others.
+
+1. Shiba guard dog: a small brave shiba inu standing alert, facing right, wearing a red knotted neckerchief with a tiny brass bell, cute determined face.
+2. Akita guard dog: a larger fluffy cream-white akita standing firmly, facing right, wearing a red cord collar with a small paper charm (omamori), calm and loyal face.
+3. Tosa guard dog: a big muscular fawn tosa standing ready to fight, facing right, wearing a ceremonial white-and-red rope apron like a sumo yokozuna, fierce face.
+4. Grandmother's house: a small Taisho-era Japanese-Western house at night seen from the front at a slight angle, about three times as tall as the akita: a tiled roof, a white plaster wall with dark wooden beams, a Western-style arched window and a sliding wooden door, warm lamplight glowing in the windows, a little porch with a hanging paper lantern.
+
+Even soft lighting, the floor the same flat gray. All four fully in frame.

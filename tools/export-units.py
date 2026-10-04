@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""狼の絵（assets/game/parts/wolves/*.png。wolves-v1 から切り抜き）を、ゲームで使う大きさに縮めて app/public/wolves/ に書き出す。無料。
+"""狼の絵（assets/game/parts/wolves/*.png。wolves-v1 から切り抜き）と、番犬・家の絵（parts/dogs。dogs-house-v1）を、ゲームで使う大きさに縮めて app/public/wolves/ に書き出す。無料。
 
 - 絵は右向きに描かれた（頼んだのは左向き）。狼は家（左）へ向かうので、左右反転して左向きにする
 - meta.json の h は、絵の中の、ふつうの狼を1とした高さ（参考。画面での大きさは試作の側でゲームの大きさに合わせる。
   絵の大狼はふつうの狼の1.5倍しかなく、ゲームの大きさ（2.1倍）より小さかった）
 - 足もと（脚の下端の真ん中）を基準にする
 
-    python3 tools/export-wolves.py
+    python3 tools/export-units.py
 """
 import json
 import os
@@ -45,6 +45,28 @@ for n, img in imgs.items():
     xs = np.nonzero(a[int(bottom - small.shape[0] * 0.12):bottom + 1].any(axis=0))[0]
     meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [float((xs.min() + xs.max()) / 2), float(bottom)],
                'h': round(float((y1 - y0) / wolf_h), 3)}
+json.dump(meta, open(f'{OUT}/meta.json', 'w'), indent=1)
+total = sum(os.path.getsize(f'{OUT}/{f}') for f in os.listdir(OUT))
+print(meta, f'{total / 1024:.0f}KB')
+
+# 番犬（右向きに描かれた。そのまま）と家。h は秋田を1とした高さ。家は足もと＝土台の下端の真ん中
+OUT = 'app/public/dogs'
+os.makedirs(OUT, exist_ok=True)
+imgs = {n: cv2.imread(f'assets/game/parts/dogs/{n}.png', cv2.IMREAD_UNCHANGED) for n in ('shiba', 'akita', 'tosa', 'house')}
+akita_h = bounds(imgs['akita'])[3] - bounds(imgs['akita'])[1]
+k = 360 / akita_h
+meta = {}
+for n, img in imgs.items():
+    x0, y0, x1, y1 = bounds(img)
+    img = img[max(0, y0 - 4):y1 + 5, max(0, x0 - 4):x1 + 5]
+    kk = k * (0.8 if n == 'house' else 1)  # 家は大きいので少し粗く
+    small = cv2.resize(img, (int(img.shape[1] * kk), int(img.shape[0] * kk)), interpolation=cv2.INTER_AREA)
+    Image.fromarray(cv2.cvtColor(small, cv2.COLOR_BGRA2RGBA)).save(f'{OUT}/{n}.webp', quality=88, method=6)
+    a = small[:, :, 3] > 128
+    bottom = np.nonzero(a.any(axis=1))[0].max()
+    xs = np.nonzero(a[int(bottom - small.shape[0] * 0.12):bottom + 1].any(axis=0))[0]
+    meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [float((xs.min() + xs.max()) / 2), float(bottom)],
+               'h': round(float((y1 - y0) / akita_h), 3)}
 json.dump(meta, open(f'{OUT}/meta.json', 'w'), indent=1)
 total = sum(os.path.getsize(f'{OUT}/{f}') for f in os.listdir(OUT))
 print(meta, f'{total / 1024:.0f}KB')

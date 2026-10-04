@@ -1,15 +1,16 @@
 // 戦場の描画。主人公のアップをカメラで追い、下に戦場全体の小さい地図（minimap.ts）を出す（2026-10-04）。
 // 狼・番犬はまだ灰色の箱（絵は生成で作る・plan.md §6）。動き・演出は箱のままでも作り込む：
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
-import { Application, Container, Graphics, Text } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
 import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
-import { WOLF_REL, WolfArt } from './wolfArt';
+import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 import type { Dog, Fx, Sim, Wolf } from './sim';
+import type { WolfKind } from './config';
 
 const COLOR = {
   heroHp: 0xf06070,
@@ -40,7 +41,12 @@ export class View {
   private wolfBack = new Container(); // 狼の絵（主人公より奥）
   private wolfFront = new Container(); // 狼の絵（主人公より手前）
   private wolfHud = new Graphics(); // 狼の体力の棒（絵の上）
-  private wolves = new WolfArt(this.wolfBack, this.wolfFront);
+  private wolves = new UnitArt<WolfKind>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha'], this.wolfBack, this.wolfFront);
+  private dogBack = new Container();
+  private dogFront = new Container();
+  private dogArt = new UnitArt<DogKind>('dogs', ['shiba', 'akita', 'tosa'], this.dogBack, this.dogFront); // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
+  private house = new Sprite(); // おばあさんの家の絵
+  private houseOver = new Graphics(); // 家のひび（絵の上）
   private overG = new Graphics(); // 矢・砲弾・衝撃波・斬撃の弧・裂け目
   private ghostLayer = new Container();
   private rig = new HeroRig();
@@ -79,7 +85,7 @@ export class View {
     new ResizeObserver(() => this.app.resize()).observe(host);
     const st = this.app.stage;
     st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.moon, this.paraRoot, this.shade, this.world);
-    this.world.addChild(this.ground, this.backG, this.wolfBack, this.ghostLayer, this.rig.root, this.frontG, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
+    this.world.addChild(this.ground, this.house, this.houseOver, this.backG, this.dogBack, this.wolfBack, this.ghostLayer, this.rig.root, this.frontG, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontStyle: 'italic', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -109,6 +115,13 @@ export class View {
     st.addChild(this.mini.root);
     // 狼の絵。読み込めなければ箱のまま
     this.wolves.load().catch((e) => console.warn('wolves', e));
+    this.house.visible = false;
+    this.dogArt.load(['house']).then(() => {
+      const m = this.dogArt.meta['house' as DogKind];
+      this.house.texture = this.dogArt.tex['house' as DogKind];
+      this.house.anchor.set(m.feet[0] / m.size[0], m.feet[1] / m.size[1]);
+      this.house.visible = true;
+    }).catch((e) => console.warn('dogs', e));
     // 赤ずきんの絵。読み込めなければ箱のまま遊べる（?rig=0 で箱：見比べ用）
     if (new URLSearchParams(location.search).get('rig') !== '0') {
       const all = [this.rig, ...Array.from({ length: GHOSTS }, () => new HeroRig())];
@@ -281,6 +294,7 @@ export class View {
     const fg = this.frontG.clear();
     this.wolfHud.clear();
     this.wolves.begin();
+    this.dogArt.begin();
     type Item = { lane: number; draw: (gg: Graphics) => void };
     const items: Item[] = [];
     const dogs: Dog[] = day ? sim.posts.map((p, i) => ({ id: -i - 1, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 })) : sim.dogs;
@@ -293,6 +307,7 @@ export class View {
     items.sort((a, b) => a.lane - b.lane);
     for (const it of items) it.draw(it.lane <= h.lane ? bg : fg);
     this.wolves.end();
+    this.dogArt.end();
 
     // ── 主人公 ──
     const hx = this.wx(h.x);
@@ -636,6 +651,19 @@ export class View {
     const bite = d.bite > 0 ? Math.sin((1 - d.bite / 0.2) * Math.PI) : 0;
     const hit = d.hitFlash / 0.12;
     const bob = Math.abs(Math.sin(t * 5)) * bh * 0.04;
+    if (this.dogArt.ready) {
+      // 番犬の絵：噛むときは前へ飛び出して頭を下げる・噛まれたら赤く。伸び縮みはさせない
+      const hh = this.heroH(d.lane) * 0.42 * DOG_REL[d.kind];
+      const layer: 0 | 1 = g === this.backG ? 0 : 1;
+      this.dogArt.put(layer, d.kind, x + bite * bw * 0.3, ground - bob * 2 - this.dogArt.center(hh), hh, bite * 0.12 - hit * 0.1, 1, d.hitFlash > 0 ? 0xff9a9a : 0xffffff, alpha);
+      if (d.hp < d.maxHp) {
+        const hb = Math.max(bw * 0.8, hh * 0.5);
+        const hy = ground - hh * 1.05;
+        this.wolfHud.rect(x - hb / 2, hy, hb, 3).fill({ color: 0x000000, alpha: 0.6 });
+        this.wolfHud.rect(x - hb / 2, hy, (hb * Math.max(0, d.hp)) / d.maxHp, 3).fill(0xe0b060);
+      }
+      return;
+    }
     place(g, x + bite * bw * 0.25, ground - bob, 0, 1 + bite * 0.12 - hit * 0.15, 1 - bite * 0.08 + hit * 0.12);
     const legH = bh * 0.3;
     for (const lx of [-0.3, -0.15, 0.18, 0.32]) g.roundRect(bw * lx - bw * 0.045, -legH, bw * 0.09, legH, 3).fill({ color: mix(color, 0x000000, 0.3), alpha });
@@ -705,6 +733,25 @@ export class View {
     const top = gx.horizon - gx.Hm * 0.32;
     const left = right - gx.Hm * 0.55;
     const f = Math.max(0, this.houseFlash);
+    if (this.house.visible) {
+      // 家の絵（2026-10-04 生成）。齧られると赤く、傷むほどひびが入る（ひびは絵の上に描く）
+      const hh = this.geo.Hm * 0.5;
+      const hm = this.dogArt.meta['house' as DogKind];
+      const hk = hh / hm.feet[1];
+      this.house.scale.set(hk);
+      this.house.position.set(right - (hm.size[0] - hm.feet[0]) * hk, base); // 家の右の端を、家の位置にそろえる
+      this.house.tint = f > 0 ? mix(0xffffff, 0xff6060, Math.min(1, f * 3)) : 0xffffff;
+      const ho = this.houseOver.clear();
+      const dmg = 1 - sim.houseHp / HOUSE_HP;
+      const hx0 = this.house.x - this.house.width * 0.4;
+      for (let i = 0; i < Math.floor(dmg * 6); i++) {
+        const cx = hx0 + this.house.width * 0.7 * ((i * 0.37 + 0.1) % 0.9);
+        const cy = base - hh * (0.15 + 0.6 * ((i * 0.53 + 0.2) % 0.8));
+        ho.moveTo(cx, cy).lineTo(cx + 10, cy + 14).lineTo(cx + 4, cy + 26).lineTo(cx + 14, cy + 38).stroke({ width: 3, color: 0x1a1010 });
+      }
+      this.houseFlash -= dt;
+      return;
+    }
     const wall = mix(0x5a4636, 0xff4040, f * 2);
     g.rect(left, top, right - left, base - top).fill(wall);
     g.rect(left, top, right - left, (base - top) * 0.12).fill(mix(0x3a2c26, 0xff4040, f));
