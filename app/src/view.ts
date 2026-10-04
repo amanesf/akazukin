@@ -72,6 +72,8 @@ export class View {
   vt = 0; // 画面の時計
   private lastWave = '';
   private ambientT = 0;
+  private gustT = 5; // 次の風のひと吹きまで（負のあいだは吹いている）
+  private fog: Sprite[] = []; // 地面すれすれを流れる夜霧
   heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
   trail: { x: number; y: number; t: number }[] = []; // 指の軌跡（input が足す）
   dragGhost: { kind: DogKind; x: number; lane: number } | null = null; // 昼：置こうとしている番犬
@@ -84,8 +86,14 @@ export class View {
     // resizeTo は窓の大きさしか見ない。下の板（昼と夜で高さが変わる）に合わせて、戦場の大きさを測り直す
     new ResizeObserver(() => this.app.resize()).observe(host);
     const st = this.app.stage;
-    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.moon, this.paraRoot, this.shade, this.world);
-    this.world.addChild(this.ground, this.house, this.houseOver, this.backG, this.dogBack, this.wolfBack, this.ghostLayer, this.rig.root, this.frontG, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
+    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.rays, this.backdrop.moon, this.paraRoot, this.shade, this.world);
+    for (let i = 0; i < 7; i++) {
+      const f = new Sprite(glowTexture());
+      f.anchor.set(0.5);
+      f.tint = 0xa898d0;
+      this.fog.push(f);
+    }
+    this.world.addChild(this.ground, ...this.fog, this.house, this.houseOver, this.backG, this.dogBack, this.wolfBack, this.ghostLayer, this.rig.root, this.frontG, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontStyle: 'italic', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -113,6 +121,11 @@ export class View {
       this.edgeText.push(t);
     }
     st.addChild(this.mini.root);
+    Assets.load<Texture>(`${import.meta.env.BASE_URL}ui/moon.webp`).then((t) => {
+      this.backdrop.moonArt.texture = t;
+      this.backdrop.moonArt.visible = true;
+      this.lastWave = '';
+    }).catch((e) => console.warn('moon', e));
     // 背景の町並みの絵。読み込めたら背景を作り直す（読めなければ影絵のまま）
     Assets.load<Texture>(`${import.meta.env.BASE_URL}bg/town.webp`).then((t) => {
       this.backdrop.town = t;
@@ -258,6 +271,16 @@ export class View {
     // ── 地面・家・裂け目・影 ──
     const gr = this.ground.clear();
     if (!day) this.drawPath(gr, sim);
+    // 夜霧：地面すれすれを、平たい霧の塊がゆっくり左へ流れる
+    const span = FIELD_LENGTH * g.K + g.W * 2;
+    this.fog.forEach((f, i) => {
+      f.visible = !day;
+      f.width = g.W * (1.1 + 0.3 * Math.sin(i * 2.3));
+      f.height = g.Hm * 0.12;
+      f.x = ((((i * 0.37 * span - this.vt * (14 + i * 3)) % span) + span) % span) - g.W;
+      f.y = this.wy(((i * 0.29) % 1) * 1.1 - 0.05) + g.Hm * 0.02;
+      f.alpha = 0.09 + 0.03 * Math.sin(this.vt * 0.5 + i); // 濃いと画面全体が白くかすんだ
+    });
     this.drawHouse(gr, sim, dt);
     this.drawRift(gr, sim);
     const shadow = (x: number, lane: number, w: number, zz: number) => {
@@ -390,6 +413,7 @@ export class View {
       case 'dash': {
         const dir = f.dir ?? 1;
         P.dust(x, y, s * 1.4, 6, 50, 60);
+        for (let i = 0; i < 6; i++) P.petal(x, y - 4, s, -dir * (100 + Math.random() * 200), -120 - Math.random() * 200); // 足もとの花びらを巻き上げる
         P.glow(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 1.1, 0xff6090, 0.2, 0.5);
         for (let i = 0; i < 8; i++) {
           const ly = Math.random() * this.geo.Hm * 0.8 + this.geo.Hm * 0.1;
@@ -401,6 +425,7 @@ export class View {
         P.ring(x, y, 10, (f.r ?? 80) * this.geo.K * 1.6, 6 * s, 0xffe0c0, 0.35, 0.28);
         P.debris(x, y - 4, s, 14, y + 6);
         P.dust(x, y, s * 1.8, 8, 90, 50);
+        for (let i = 0; i < 10; i++) P.petal(x + (Math.random() - 0.5) * 80, y, s, (Math.random() - 0.5) * 300, -200 - Math.random() * 300); // 地面の花びらが舞い上がる
         this.flash = Math.max(this.flash, 0.2);
         break;
       }
@@ -479,8 +504,20 @@ export class View {
     if (this.ambientT <= 0) {
       this.ambientT = 0.05;
       if (h.running > 0 && h.z <= 0 && Math.random() < (h.running > 400 ? 0.9 : 0.45)) P.dust(this.wx(h.x) - h.facing * 14, this.wy(h.lane), this.ds(h.lane) * g.Hm / 600, 1, 20, 30);
-      // 夜風の花びら（画面の右上から）
-      if (Math.random() < 0.35) this.screenParts.petal(g.W * (0.3 + Math.random() * 0.8), -10, 1, -40 - Math.random() * 60, 30 + Math.random() * 40, 5 + Math.random() * 3);
+      // 夜風の花びら（画面の右上から）。奥は小さくゆっくり、手前は大きく速く。ときどき風がひと吹きする
+      this.gustT -= 0.05;
+      if (this.gustT < -1.6) this.gustT = 6 + Math.random() * 7;
+      const gust = this.gustT < 0;
+      const SP = this.screenParts;
+      if (Math.random() < 0.7) SP.petal(g.W * (0.2 + Math.random() * 0.9), -10, 0.6, -30 - Math.random() * 40, 20 + Math.random() * 25, 7 + Math.random() * 4);
+      if (Math.random() < 0.3) SP.petal(g.W * (0.4 + Math.random() * 0.7), -10, 1.5, -90 - Math.random() * 80, 60 + Math.random() * 50, 3 + Math.random() * 2);
+      if (gust) for (let i = 0; i < 4; i++) SP.petal(g.W + 10, Math.random() * g.Hm * 0.8, 0.6 + Math.random(), -380 - Math.random() * 300, (Math.random() - 0.3) * 120, 2.5);
+      // 蛍のような光の粒（夜・画面に映っている地面の上）・裂け目の火の粉
+      if (sim.phase === 'wave' && Math.random() < 0.35) {
+        const x = this.cam.x - g.W / 2 / this.cam.z + Math.random() * (g.W / this.cam.z); // 画面に映っている所
+        P.firefly(x, this.wy(Math.random()) - Math.random() * g.Hm * 0.25, g.Hm / 600);
+      }
+      if (Math.random() < 0.6) P.ember(this.wx(WOLF_SPAWN_X) + (Math.random() - 0.5) * 30, this.wy(Math.random()) - Math.random() * g.Hm * 0.2, g.Hm / 600);
       // 桜嵐：花吹雪
       if (h.ouran > 0) for (let i = 0; i < 6; i++) this.screenParts.petal(g.W + 10, Math.random() * g.Hm, 1.6, -600 - Math.random() * 500, (Math.random() - 0.5) * 200, 1.4);
       // 溜め：まわりから光の粒が集まる

@@ -18,6 +18,10 @@ a = np.asarray(strip).copy()
 h = a.shape[0]
 y = np.arange(h)[:, None]
 alpha = np.clip((y - h * 0.06) / (h * 0.16), 0, 1) * 255  # 上の22%で透明から不透明へ
+# もやの明るい灰色が夜空との境で白く浮いた（2026-10-04 アマネさん「境が明るすぎる」）。上の35%を夜の藍へ沈める
+night = np.array([38, 30, 62], dtype=np.float32)
+k = np.clip(1 - y / (h * 0.35), 0, 1)[:, :, None] * 0.75
+a = (a.astype(np.float32) * (1 - k) + night * k).astype(np.uint8)
 rgba = np.dstack([a, np.broadcast_to(alpha, a.shape[:2]).astype(np.uint8)])
 out = Image.fromarray(rgba, 'RGBA')
 k = 400 / h

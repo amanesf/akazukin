@@ -19,6 +19,7 @@ export class Backdrop {
   sky = new Graphics(); // 画面に固定
   stars = new Graphics();
   moon = new Container();
+  rays = new Graphics(); // 月から斜めに差す光の筋（画面に固定・加算）
   layers: Layer[] = [];
   front!: Layer; // 手前の草（体より前）
   private moonG = new Graphics();
@@ -26,12 +27,16 @@ export class Backdrop {
   private moonGlow = new Sprite(glowTexture());
   private lights: { s: Sprite; x: number; y: number; ph: number }[] = [];
   private starList: { x: number; y: number; r: number; ph: number }[] = [];
+  moonArt = new Sprite(); // 紅い月の絵（メインビジュアルから切り抜き）。あれば図形の月の代わり
   town: Texture | null = null; // 町並みの絵（2026-10-04 生成）。あれば奥の山と町の影絵の代わりに使う
 
   constructor() {
     this.moonGlow.anchor.set(0.5);
+    this.rays.blendMode = 'add';
     this.moonGlow.blendMode = 'add';
-    this.moon.addChild(this.moonGlow, this.moonG, this.sunG);
+    this.moonArt.anchor.set(0.5);
+    this.moonArt.visible = false;
+    this.moon.addChild(this.moonGlow, this.moonG, this.moonArt, this.sunG);
   }
 
   // 画面の大きさが変わったら作り直す。horizon は地面の奥の端（世界の y）、width は戦場の幅（世界の px）
@@ -58,6 +63,7 @@ export class Backdrop {
     mg.moveTo(R * 0.1, -R).lineTo(-R * 0.05, -R * 0.4).lineTo(R * 0.15, -R * 0.05).lineTo(-R * 0.1, R * 0.45).lineTo(R * 0.05, R)
       .stroke({ width: 3, color: 0xff9080, alpha: 0.9 });
     this.sunG.clear().circle(0, 0, R * 0.8).fill(0xfff4d0).circle(0, 0, R * 0.62).fill(0xffffff);
+    this.moonArt.width = this.moonArt.height = R * 2.6; // 絵の縁の柔らかい所のぶん大きめに
     this.moonGlow.width = this.moonGlow.height = R * 6;
     this.moonGlow.tint = 0xff4050;
     this.moonGlow.alpha = 0.35;
@@ -178,9 +184,9 @@ export class Backdrop {
     const rg = rng(57);
     const gx0 = -w * 2;
     const gw = width + w * 4;
-    ground.rect(gx0, horizon, gw, h * 1.2).fill(0x2a1e1e);
-    ground.rect(gx0, horizon + h * 0.06, gw, h * 1.2).fill(0x2e2220);
-    ground.rect(gx0, horizon + h * 0.14, gw, h * 1.2).fill(0x332623);
+    ground.rect(gx0, horizon, gw, h * 1.2).fill(0x342834);
+    ground.rect(gx0, horizon + h * 0.06, gw, h * 1.2).fill(0x3a2d36);
+    ground.rect(gx0, horizon + h * 0.14, gw, h * 1.2).fill(0x40323a);
     ground.rect(gx0, horizon, gw, 2).fill({ color: 0x5a4038, alpha: 0.8 });
     for (let i = 0; i < 160; i++) {
       const x = gx0 + rg() * gw;
@@ -212,9 +218,10 @@ export class Backdrop {
   // 毎フレーム：星のまたたき・灯りのゆらぎ・空の色（昼 day=1）
   update(t: number, w: number, horizon: number, day: number, skyTop: number) {
     const s = this.sky.clear();
-    const top = mix(0x0a0610, 0x5a86b8, day);
-    const mid = mix(0x24101e, 0x9ab8d8, day);
-    const low = mix(0x4a1c2a, 0xf0d0b0, day);
+    // 夜は真っ暗にせず、深い藍から紫へ（2026-10-04 アマネさん「夜もあんまり暗くなくてもいい」）
+    const top = mix(0x161a3c, 0x5a86b8, day);
+    const mid = mix(0x34295a, 0x9ab8d8, day);
+    const low = mix(0x6a3a5c, 0xf0d0b0, day);
     const bands = 36;
     for (let i = 0; i < bands; i++) {
       const k = i / (bands - 1);
@@ -226,7 +233,21 @@ export class Backdrop {
       for (const p of this.starList) st.circle(p.x, p.y + skyTop, p.r).fill({ color: 0xffffff, alpha: (0.35 + 0.35 * Math.sin(t * 2 + p.ph)) * (1 - day) });
     }
     for (const l of this.lights) l.s.alpha = (0.32 + 0.1 * Math.sin(t * 3 + l.ph) + 0.05 * Math.sin(t * 11 + l.ph)) * (1 - day * 0.8);
-    this.moonG.alpha = 1 - day;
+    this.moonG.alpha = this.moonArt.visible ? 0 : 1 - day;
+    this.moonArt.alpha = 1 - day;
+    // 光の筋：月から左下へ、ゆっくり明滅
+    const r = this.rays.clear();
+    if (day < 1) {
+      const mx = this.moon.x;
+      const my = this.moon.y;
+      for (let i = 0; i < 4; i++) {
+        const a = 2.2 + i * 0.13;
+        const len = horizon * 1.6;
+        const wdt = 0.035 + 0.012 * Math.sin(i * 3.1);
+        const al = (0.05 + 0.03 * Math.sin(t * 0.7 + i * 1.9)) * (1 - day);
+        r.poly([mx, my, mx + Math.cos(a - wdt) * len, my + Math.sin(a - wdt) * len, mx + Math.cos(a + wdt) * len, my + Math.sin(a + wdt) * len]).fill({ color: 0xffd0d8, alpha: al });
+      }
+    }
     this.sunG.alpha = day;
     this.moonGlow.tint = mix(0xff4050, 0xfff0c0, day);
     const tint = mix(0xffffff, 0xd8c8d0, day);

@@ -39,8 +39,13 @@ body {
   grid-template-rows: auto auto;
   gap: 8px;
   padding: 8px 16px 12px;
-  background: var(--panel);
-  border-top: 2px solid var(--line);
+  /* 大正ロマン：矢絣の模様をうっすら・金の縁 */
+  background:
+    repeating-linear-gradient(60deg, rgba(200, 168, 96, 0.05) 0 14px, transparent 14px 28px),
+    repeating-linear-gradient(-60deg, rgba(179, 32, 42, 0.06) 0 14px, transparent 14px 28px),
+    var(--panel);
+  border-top: 2px solid var(--brass);
+  box-shadow: inset 0 3px 0 rgba(200, 168, 96, 0.25);
 }
 
 .status { display: flex; align-items: center; gap: 12px; font-size: 15px; }
@@ -74,9 +79,10 @@ body {
 button {
   position: relative;
   overflow: hidden;
-  border: 2px solid var(--line);
+  border: 2px solid #5a4630;
   border-radius: 10px;
-  background: #2a2026;
+  background: linear-gradient(#34262c, #241a1e);
+  box-shadow: inset 0 1px 0 rgba(255, 230, 180, 0.12), 0 2px 0 rgba(0, 0, 0, 0.4);
   color: var(--text);
   font: inherit;
   font-size: 18px;
@@ -112,6 +118,8 @@ button::after {
   text-align: center;
 }
 #overlay[hidden] { display: none; }
+#overlay.title { background: linear-gradient(rgba(10, 6, 12, 0.35), rgba(10, 6, 12, 0.88) 55%), var(--title) center top / cover no-repeat; justify-content: flex-end; padding-bottom: 6vh; }
+#overlay.title h1 { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 60, 90, 0.7); }
 #overlay h1 { margin: 0; font-size: 34px; letter-spacing: 0.15em; display: flex; flex-direction: column; gap: 6px; }
 #overlay h1 small { font-size: 18px; color: var(--brass); letter-spacing: 0.3em; }
 #overlay p { margin: 0; color: var(--dim); }
@@ -205,7 +213,10 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(90deg, transparent, #b3202a 15%, #b3202a 85%, transparent);
+  /* 桜嵐のカットイン：紅い帯の右に立ち絵（2026-10-04） */
+  background: var(--art) 100% 14% / auto 165% no-repeat, linear-gradient(90deg, transparent, #b3202a 15%, #b3202a 85%, transparent);
+  justify-content: flex-start;
+  padding-left: 18%;
   transform: skewY(-6deg);
   font: italic 900 38px/1 system-ui, sans-serif;
   letter-spacing: 0.2em;

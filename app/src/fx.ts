@@ -97,6 +97,16 @@ export class Particles {
     this.add({ kind: 'petal', x, y, vx: vx * s, vy: vy * s, life, size: rnd(3, 5.5) * s, color: pick(PINK), rot: rnd(0, 6.28), vr: rnd(-8, 8), g: 160 * s, drag: 2.2 });
   }
 
+  // 蛍のような光の粒：ゆっくり漂って、ふっと消える（夜の地面の上）
+  firefly(x: number, y: number, s: number) {
+    this.add({ kind: 'glow', x, y, vx: rnd(-14, 14) * s, vy: rnd(-22, -6) * s, life: rnd(2, 3.5), size: rnd(10, 18) * s, grow: -0.3, color: Math.random() < 0.5 ? 0xfff2a8 : 0xd8ffb0, alpha: rnd(0.5, 0.85) });
+  }
+
+  // 火の粉：裂け目から紅く舞い上がる
+  ember(x: number, y: number, s: number) {
+    this.add({ kind: 'glow', x, y, vx: rnd(-30, 30) * s, vy: rnd(-90, -40) * s, life: rnd(0.8, 1.6), size: rnd(8, 14) * s, grow: -0.6, color: Math.random() < 0.6 ? 0xff5040 : 0xffa060, alpha: 0.9 });
+  }
+
   // 斬撃の弧。a0→a1 へ一瞬で振り抜き、尾が細くなって消える
   arc(x: number, y: number, r: number, a0: number, a1: number, w: number, color = 0xffffff, life = 0.2) {
     this.add({ kind: 'arc', x, y, size: r, a0, a1, w, color, life, grow: r * 0.15 });

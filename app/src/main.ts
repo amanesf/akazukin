@@ -69,6 +69,10 @@ async function main() {
   const comboEl = document.getElementById('combo')!;
   const bubble = document.getElementById('bubble')!;
   const cutin = document.getElementById('cutin')!;
+  // 絵の場所は公開先の置き場所で変わるので、ここで渡す
+  const BASE = import.meta.env.BASE_URL;
+  cutin.style.setProperty('--art', `url(${BASE}ui/cutin.webp)`);
+  overlay.style.setProperty('--title', `url(${BASE}ui/title.webp)`);
   const surge = document.getElementById('surge')!;
   const next = document.getElementById('next')!;
   const card = document.getElementById('card')!;
@@ -184,7 +188,8 @@ async function main() {
   const manual = !!params.get('manual');
   let running = false;
   let shown = 'playing';
-  function show(html: string, buttons: [string, () => void][]) {
+  function show(html: string, buttons: [string, () => void][], title = false) {
+    overlay.classList.toggle('title', title); // 題字の画面だけ、メインビジュアルを敷く
     overlay.innerHTML = `${html}<div class="choices"></div>`;
     const box = overlay.querySelector('.choices')!;
     for (const [label, act] of buttons) {
@@ -245,7 +250,7 @@ async function main() {
      <ul><li><b>タップ</b>：斬る（連打で連撃）／遠くの地面：走る</li><li><b>はじく</b>：左右＝突進斬り・上＝斬り上げ・下＝叩き落とし</li><li><b>長押し→離す</b>：主砲</li><li><b>下の地図をタップ</b>：そこへ駆けつける</li><li>当てるとゲージが溜まる。満タンで桜嵐</li><li>昼：鍛える・番犬を戦場に置く</li></ul>`;
   show(title, saved
     ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
-    : [['はじめる', () => {}]]);
+    : [['はじめる', () => {}]], true);
   if (params.get('auto')) {
     overlay.hidden = true;
     running = true;
