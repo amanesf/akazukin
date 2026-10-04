@@ -36,6 +36,9 @@ export class HeroRig {
   private meta!: Meta;
   private lastX = 0;
   private walkT = 0;
+  private lastFrame: FrameName = 'idle';
+  private pop = 0; // ポーズが変わった瞬間の弾み（1→0）
+  private lastClock = 0;
   ready = false;
 
   async load() {
@@ -186,12 +189,13 @@ export class HeroRig {
     const moved = Math.abs(h.x - this.lastX);
     this.lastX = h.x;
     const walking = moved > 0.05 && !h.move && h.down <= 0;
+    let breath = 0;
     if (walking) {
       this.walkT += moved * 0.07;
-      lift = Math.abs(Math.sin(this.walkT)) * 18;
+      lift = Math.abs(Math.sin(this.walkT)) * 22;
       lean = 4 * D;
     } else {
-      lift = Math.sin(sim.clock * 3) * 4; // 息づかい
+      breath = Math.sin(sim.clock * 3.2); // 息づかい：上下に動かさず、ふくらむ・しぼむ
     }
     this.legs.legL && (this.legs.legL.rotation = walking ? Math.sin(this.walkT) * 13 * D : 0);
     this.legs.legR && (this.legs.legR.rotation = walking ? -Math.sin(this.walkT) * 13 * D : 0);
@@ -226,9 +230,21 @@ export class HeroRig {
     for (const hd of this.held) hd.knife.visible = !(far && hd.frame === 'strike');
     this.bow.visible = archer;
     this.drawBow(archer, shot);
+    // 弾み（スクワッシュ＆ストレッチ）：ポーズが変わった瞬間に一度つぶれて伸び戻る。
+    // 絵の差し替えだけだとカクッと切り替わって硬く見える（2026-10-04 アマネさん「かわいさ感じない」）
+    const dt = Math.max(0, Math.min(0.1, sim.clock - this.lastClock));
+    this.lastClock = sim.clock;
+    if (frame !== this.lastFrame && frame !== 'down' && m !== 'kaiten') this.pop = 1;
+    this.lastFrame = frame;
+    this.pop = Math.max(0, this.pop - dt / 0.16);
+    const bounce = Math.sin(this.pop * Math.PI) * 0.09;
+    // 歩き：足が着くたびに少しつぶれ、跳ねる頂点で少し伸びる
+    const step = walking ? (Math.abs(Math.sin(this.walkT)) - 0.5) * 0.05 : 0;
+    const sy = 1 - bounce + step + breath * 0.012;
+    const sx = 1 + bounce * 0.8 - step * 0.6 - breath * 0.006;
     this.body.rotation = lean;
     this.body.position.set(0, -lift);
-    this.body.scale.set(squash, 1);
+    this.body.scale.set(squash * sx, sy);
     const tint = h.hitFlash > 0 ? 0xff8888 : h.ouran > 0 ? (Math.floor(sim.clock * 20) % 2 ? 0xffe6a0 : 0xffffff) : 0xffffff;
     for (const sp of this.sprites) sp.tint = tint;
   }

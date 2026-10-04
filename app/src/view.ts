@@ -43,6 +43,10 @@ export const WOLF_COLOR: Record<WolfKind, number> = {
   alpha: 0x4a4a52,
 };
 
+// 見た目の大きさだけの倍率（当たり判定は間合いのまま）。2026-10-04 アマネさん「キャラ小さい」
+const BODY_ZOOM = 1.25; // 狼・番犬
+const HERO_ZOOM = 1.45; // 主人公はさらに（BODY_ZOOM に掛ける）。顔が読める大きさに
+
 export class View {
   app = new Application();
   private world = new Container(); // 揺らすのはこちら
@@ -86,7 +90,7 @@ export class View {
     const k = (this.w - this.pad() * 2) / FIELD_LENGTH; // 間合い1あたりの画素
     const X = (x: number) => this.pad() + x * k;
     const Y = (lane: number) => ground + lane * depth;
-    const u = this.h * 0.0032; // 体の大きさの倍率（横幅ではなく戦場の高さに合わせる）
+    const u = this.h * 0.0032 * BODY_ZOOM; // 体の大きさの倍率（横幅ではなく戦場の高さに合わせる）
     const zk = u * 0.55; // 高さ1あたりの画素
 
     // 画面の揺れ
@@ -203,8 +207,11 @@ export class View {
 
   private hero(g: Graphics, sim: Sim, X: (x: number) => number, gy: number, u: number) {
     const h = sim.hero;
-    const b = 14 * u; // 体の幅
+    const b = 14 * u * HERO_ZOOM; // 体の幅
     let x = X(h.x);
+    // 足もとの影：地面に立たせる（影が無いと絵が浮いて貼り付けたように見える）
+    const air = h.move === 'launch' || h.move === 'air' ? 0.75 : 1;
+    g.ellipse(x, gy + 2, b * 1.1 * air, b * 0.22 * air).fill({ color: 0x000000, alpha: 0.45 });
     this.heroAt = { x, y: gy - b * 4.3 };
     if (this.rig.ready) {
       // 絵がある：切り絵を動かし、体力の棒だけ描く
@@ -244,6 +251,7 @@ export class View {
   private body(g: Graphics, x: number, y: number, unit: Unit, u: number, color: number, aspect: number) {
     const w = unit.size * u;
     const h = w * aspect;
+    if (!('z' in unit) || !unit.z) g.ellipse(x, y + 1, w * 0.6, w * 0.12).fill({ color: 0x000000, alpha: 0.4 });
     g.rect(x - w / 2, y - h, w, h).fill(unit.hitFlash > 0 ? 0xffffff : color);
     if (unit.hp < unit.maxHp) {
       g.rect(x - w / 2, y - h - 6, w, 3).fill(COLOR.hpBack);
