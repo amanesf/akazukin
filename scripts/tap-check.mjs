@@ -22,7 +22,9 @@ for (const [name, lane, hy] of [['head-sameLane', 0.6, 0.15], ['back-farLane', 0
     const w = s.debugSpawn('wolf', 420, lane); w.cooldown = 99;
     return w.id;
   }, [lane]);
-  await p.waitForTimeout(300);
+  // 狼が画面に描かれて、カメラが落ち着くまで待つ（描画が重いと300ミリ秒ではカメラが追いつかず、狼が画面の外だった）
+  await p.waitForFunction((id) => window.akazukin.view.wolfBoxes.some((b) => b.id === id), box);
+  await p.waitForTimeout(700);
   const r = await p.evaluate(([id, hy]) => {
     const v = window.akazukin.view; const b = v.wolfBoxes.find((b) => b.id === id); const { z, ox, oy } = v.xf;
     const c = document.querySelector('#field canvas').getBoundingClientRect();
