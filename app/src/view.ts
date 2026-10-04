@@ -128,7 +128,7 @@ export class View {
       this.lastWave = '';
     }).catch((e) => console.warn('moon', e));
     // 草と小物の絵（手前の草・道の縁）
-    const PROPS = ['susuki', 'grass', 'flowers', 'higanbana', 'petals', 'stones', 'fence', 'lantern'];
+    const PROPS = ['grass', 'flowers', 'petals', 'stones', 'fence', 'nanohana', 'dandelion', 'azalea', 'sapling'];
     Assets.load(PROPS.map((n) => ({ alias: `prop-${n}`, src: `${import.meta.env.BASE_URL}props/${n}.webp` }))).then((t) => {
       this.backdrop.props = Object.fromEntries(PROPS.map((n) => [n, (t as Record<string, Texture>)[`prop-${n}`]]));
       this.lastWave = '';
@@ -197,8 +197,8 @@ export class View {
     const x0 = this.wx(HOUSE_X + 60);
     const x1 = this.wx(HERO.maxX);
     for (let x = x0; x < x1; x += 60 + r() * 120) {
-      const k = ['flowers', 'stones', 'petals', 'grass', 'flowers', 'petals'][Math.floor(r() * 6)]; // 春の夜にそろえる
-      put(k, x, this.wy(0) - 6, g.Hm * (k === 'grass' ? 0.07 : 0.045));
+      const k = ['nanohana', 'dandelion', 'petals', 'azalea', 'flowers', 'stones', 'sapling'][Math.floor(r() * 7)]; // 春の夜にそろえる
+      put(k, x, this.wy(0) - 6, g.Hm * (k === 'sapling' ? 0.14 : k === 'petals' || k === 'stones' ? 0.045 : 0.065));
     }
   }
 
@@ -267,7 +267,7 @@ export class View {
       // 少し引いて広く映す（2026-10-04 アマネさん「ステージ狭い？」。寄りすぎて主人公と狼2匹で画面がいっぱいだった）
       tz = 0.85 * (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
       tx = this.wx(h.x) + h.facing * g.W * 0.14;
-      tx = Math.max(g.W / 2 / tz - 150, Math.min(fieldW - g.W / 2 / tz + 140, tx));
+      tx = Math.max(g.W / 2 / tz - this.heroH(1) * 1.2, Math.min(fieldW - g.W / 2 / tz + 140, tx)); // 左の端は家全体が映るところまで
       ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
     }
     const kc = 1 - Math.exp(-dt * (day ? 3 : 7));
@@ -822,11 +822,11 @@ export class View {
     const f = Math.max(0, this.houseFlash);
     if (this.house.visible) {
       // 家の絵（2026-10-04 生成）。齧られると赤く、傷むほどひびが入る（ひびは絵の上に描く）
-      const hh = this.geo.Hm * 0.5;
+      const hh = this.heroH(1) * 1.5; // 主人公の1.5倍（二階建て。小さいと守りがいがなかった）
       const hm = this.dogArt.meta['house' as DogKind];
       const hk = hh / hm.feet[1];
       this.house.scale.set(hk);
-      this.house.position.set(right - (hm.size[0] - hm.feet[0]) * hk, base); // 家の右の端を、家の位置にそろえる
+      this.house.position.set(right - (hm.size[0] - hm.feet[0]) * hk * 0.75, base); // 門と石垣は家の位置より少し右へ出す
       this.house.tint = f > 0 ? mix(0xffffff, 0xff6060, Math.min(1, f * 3)) : 0xffffff;
       const ho = this.houseOver.clear();
       const dmg = 1 - sim.houseHp / HOUSE_HP;

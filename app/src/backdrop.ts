@@ -209,7 +209,7 @@ export class Backdrop {
       const fc = new Container();
       const rr = rng(71);
       const fy = horizon + h * 0.4;
-      const kinds = ['grass', 'grass', 'flowers', 'grass', 'flowers', 'fence']; // 春の夜にそろえる（すすき・彼岸花は秋で、季節が混ざった）
+      const kinds = ['grass', 'nanohana', 'azalea', 'grass', 'dandelion', 'fence']; // 春の夜にそろえる（すすき・彼岸花は秋で、季節が混ざった）
       for (let x = gx0; x < gx0 + gw * 1.3; x += 70 + rr() * 150) {
         const k = kinds[Math.floor(rr() * kinds.length)];
         const sp = new Sprite(this.props[k]);
