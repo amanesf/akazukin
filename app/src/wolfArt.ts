@@ -6,6 +6,8 @@ import type { DogKind, WolfKind } from './config';
 // 画面での高さ（ふつうの狼・秋田を1）。ゲームの大きさ（WOLVES.size・DOGS.size）に合わせる。絵の大狼は小さめに描かれた
 export const WOLF_REL: Record<WolfKind, number> = { pup: 0.62, wolf: 1, armored: 1.2, howler: 1.2, alpha: 2.1 };
 export const DOG_REL: Record<DogKind, number> = { shiba: 0.7, akita: 1, tosa: 1.2 };
+// 犬の絵の、なでる所（頭のてっぺん。耳と耳のあいだ）の高さ（足もとからの背の高さの割合。絵の画素で測った）
+export const DOG_CROWN: Record<DogKind, number> = { shiba: 0.92, akita: 0.935, tosa: 0.98 };
 
 interface Meta { size: [number, number]; feet: [number, number]; h?: number }
 

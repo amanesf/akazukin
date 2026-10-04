@@ -66,7 +66,7 @@ const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'hap
 const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
 const TOSS_TOP = 40; // ナイフのいちばん高い所
 const PETAL_AT: [number, number] = [535, 322]; // 手のひらの上の花びら
-const PET_HAND_X = 630; // しゃがんでなでる絵の、伸ばした手のひら（書き出した絵の画素）
+const PET_HAND: [number, number] = [630, 508]; // しゃがんでなでる絵の、伸ばした手のひら（書き出した絵の画素。縦は手のひらの下の縁）
 
 export class HeroRig {
   root = new Container();
@@ -206,10 +206,11 @@ export class HeroRig {
     return sp;
   }
 
-  // しゃがんでなでる絵で、足もとから伸ばした手のひらまでの横の距離（画面の画素。height は背の高さ）
+  // しゃがんでなでる絵で、足もとから伸ばした手のひらまでの横・縦の距離（画面の画素。height は背の高さ。縦は上が正）
   petReach(height: number) {
-    if (!this.ready) return 0;
-    return ((PET_HAND_X - this.meta.frames.pet.feet[0]) / this.meta.height) * height;
+    if (!this.ready) return { x: 0, y: 0 };
+    const f = this.meta.frames.pet.feet;
+    return { x: ((PET_HAND[0] - f[0]) / this.meta.height) * height, y: ((f[1] - PET_HAND[1]) / this.meta.height) * height };
   }
 
   // 主人公の状態から絵と姿勢を決める（Pose）。x, y は足もとの世界の座標、height は背の高さ（画素）。

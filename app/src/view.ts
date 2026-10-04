@@ -7,7 +7,7 @@ import { DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
-import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
+import { DOG_CROWN, DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 import { Sim, type Dog, type Fx, type Wolf } from './sim';
 import type { WolfKind } from './config';
@@ -72,6 +72,7 @@ export class View {
   private claws: { t: number; x: number; y: number; a: number } | null = null; // 噛まれた爪あと
   private lastHeroFlash = 0;
   private petShift = 0; // なでるときに主人公の絵を寄せる量（画面の画素）
+  private petLift = 0; // なでるときに主人公の絵を奥（画面の上）へずらす量（画面の画素）
   private grade = new Graphics(); // 色の仕上げ（夜は藍・昼は暖かく）
   private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
@@ -466,7 +467,7 @@ export class View {
     const vx1 = (g.W - ox) / z + 250;
     const seen = sim.wolves.filter((w) => { const wx = this.wx(w.x); return wx > vx0 && wx < vx1; });
     for (const w of seen) shadow(w.x, w.lane, w.size * this.U(w.lane), w.z);
-    if (h.down <= 0) shadow(h.x + this.petShift / g.K, h.lane, this.heroH(h.lane) * 0.5, h.z); // なでるときは寄せた絵の足もとに
+    if (h.down <= 0) shadow(h.x + this.petShift / g.K, h.lane - this.petLift / (this.wy(1) - this.wy(0)), this.heroH(h.lane) * 0.5, h.z); // なでるときは寄せた絵の足もとに
     // 溜めの足もとの光
     if (h.charge >= 0) {
       const c = Math.min(1, h.charge / sim.chargeFull);
@@ -491,11 +492,13 @@ export class View {
 
     // ── 主人公 ──
     const hx = this.wx(h.x);
-    const hy = this.wy(h.lane);
     // なでる：伸ばした手のひらが犬の頭（犬の絵の、主人公の側の端の少し手前）に届くよう、主人公の絵を少し寄せる。
+    // しゃがんだ絵の手は低く、秋田・土佐では首や胸に当たっていた（2026-10-04 アマネさん「手のひらと犬の頭の高さがズレてる」）。
+    // 足りない高さの分だけ主人公を奥（画面の上）へずらし、犬の向こうから頭の上へ手を伸ばす形にする。
     // sim の並ぶ所は画面の縦横の比を知らないので、ここで合わせる
     const pd = sim.petting;
     let petWant = 0;
+    let liftWant = 0;
     if (pd && this.dogArt.ready && this.rig.ready) {
       const m = this.dogArt.meta[pd.kind];
       const dh = this.heroH(pd.lane) * 0.42 * DOG_REL[pd.kind];
@@ -503,9 +506,16 @@ export class View {
       const dxs = this.wx(pd.x);
       const side = dxs >= hx ? 1 : -1;
       const hand = dxs - side * head * 0.7;
-      petWant = Math.max(-this.heroH(h.lane) * 0.6, Math.min(this.heroH(h.lane) * 0.6, hand - side * this.rig.petReach(this.heroH(h.lane)) - hx));
+      const H = this.heroH(h.lane);
+      const reach = this.rig.petReach(H);
+      petWant = Math.max(-H * 0.6, Math.min(H * 0.6, hand - side * reach.x - hx));
+      // 手のひらの下の縁を頭のてっぺんより少しだけ下に（毛に沈む）
+      const crown = this.wy(h.lane) - this.wy(pd.lane) + dh * DOG_CROWN[pd.kind];
+      liftWant = Math.max(0, Math.min(H * 0.4, crown - dh * 0.03 - reach.y));
     }
     this.petShift += (petWant - this.petShift) * Math.min(1, dt * 12);
+    this.petLift += (liftWant - this.petLift) * Math.min(1, dt * 12);
+    const hy = this.wy(h.lane) - this.petLift;
     const pose = this.rig.pose(sim, hx + this.petShift, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.gunAim(sim, hx, hy));
     if (pose) {
       // ガス灯の近くでは、ほんのり橙に照らされる
@@ -974,7 +984,8 @@ export class View {
     const bite = d.bite > 0 ? Math.sin((1 - d.bite / 0.2) * Math.PI) : 0;
     const hit = d.hitFlash / 0.12;
     // 晩の終わりに赤ずきんのそばへ来たら、うれしくて跳ねる
-    const glad = sim.cheer >= 0 && Math.abs(d.x - sim.hero.x) < 160 ? 1 : 0;
+    // なでてもらっている間はおとなしく（跳ねると頭が手のひらから離れた）
+    const glad = sim.cheer >= 0 && Math.abs(d.x - sim.hero.x) < 160 && sim.petting !== d ? 1 : 0;
     const bob = Math.abs(Math.sin(t * 5)) * bh * 0.04 + glad * Math.abs(Math.sin(t * 9)) * bh * 0.22;
     if (this.dogArt.ready) {
       // 番犬の絵：噛むときは前へ飛び出して頭を下げる・噛まれたら赤く。伸び縮みはさせない
