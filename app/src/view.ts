@@ -67,6 +67,7 @@ export class View {
   private lastCombo = 0;
   private claws: { t: number; x: number; y: number; a: number } | null = null; // 噛まれた爪あと
   private lastHeroFlash = 0;
+  private petShift = 0; // なでるときに主人公の絵を寄せる量（画面の画素）
   private grade = new Graphics(); // 色の仕上げ（夜は藍・昼は暖かく）
   private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
@@ -460,7 +461,7 @@ export class View {
     const vx1 = (g.W - ox) / z + 250;
     const seen = sim.wolves.filter((w) => { const wx = this.wx(w.x); return wx > vx0 && wx < vx1; });
     for (const w of seen) shadow(w.x, w.lane, w.size * this.U(w.lane), w.z);
-    if (h.down <= 0) shadow(h.x, h.lane, this.heroH(h.lane) * 0.5, h.z);
+    if (h.down <= 0) shadow(h.x + this.petShift / g.K, h.lane, this.heroH(h.lane) * 0.5, h.z); // なでるときは寄せた絵の足もとに
     // 溜めの足もとの光
     if (h.charge >= 0) {
       const c = Math.min(1, h.charge / sim.chargeFull);
@@ -486,7 +487,21 @@ export class View {
     // ── 主人公 ──
     const hx = this.wx(h.x);
     const hy = this.wy(h.lane);
-    const pose = this.rig.pose(sim, hx, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.gunAim(sim, hx, hy));
+    // なでる：伸ばした手のひらが犬の頭（犬の絵の、主人公の側の端の少し手前）に届くよう、主人公の絵を少し寄せる。
+    // sim の並ぶ所は画面の縦横の比を知らないので、ここで合わせる
+    const pd = sim.petting;
+    let petWant = 0;
+    if (pd && this.dogArt.ready && this.rig.ready) {
+      const m = this.dogArt.meta[pd.kind];
+      const dh = this.heroH(pd.lane) * 0.42 * DOG_REL[pd.kind];
+      const head = ((m.size[0] - m.feet[0]) / m.feet[1]) * dh; // 犬の足もとの真ん中から鼻先まで
+      const dxs = this.wx(pd.x);
+      const side = dxs >= hx ? 1 : -1;
+      const hand = dxs - side * head * 0.7;
+      petWant = Math.max(-this.heroH(h.lane) * 0.6, Math.min(this.heroH(h.lane) * 0.6, hand - side * this.rig.petReach(this.heroH(h.lane)) - hx));
+    }
+    this.petShift += (petWant - this.petShift) * Math.min(1, dt * 12);
+    const pose = this.rig.pose(sim, hx + this.petShift, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.gunAim(sim, hx, hy));
     if (pose) {
       // ガス灯の近くでは、ほんのり橙に照らされる
       const lamp = this.lamps.find((l) => Math.abs(l.x - h.x) < 80);

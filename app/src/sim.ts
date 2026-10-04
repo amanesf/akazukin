@@ -9,6 +9,8 @@ import {
 } from './config';
 import { hpScale, mood, night, SURGE_WARN, type Mood } from './nights';
 
+const PET_GAP = 45; // なでる犬の体の端から主人公の足もとまで（世界の単位。絵の手の届く所は view が合わせる）
+const PET_STEP = 60; // 2匹目・3匹目はその後ろに並ぶ
 const FINALE = 0.4; // 晩の最後の1匹のあとのスローの長さ（sim の秒。実時間ではこの約3倍）
 const CHEER = 2.6; // スローが明けてから、決めポーズ→寄ってきた番犬をなでて昼になるまで（秒）。なでる分を足した（2026-10-04 かわいさ）
 
@@ -543,6 +545,19 @@ export class Sim {
   }
   private acc = 0;
   finale = -1; // 晩の最後の1匹を倒してから昼になるまでの残り（初めはスロー、あとは決めポーズ）。-1 は始まっていない
+  // 晩の終わりに番犬が並ぶ所（犬の id → 主人公のどちら側の何番目か）。晩の最後の1匹を倒した瞬間に決める
+  private petPlan = new Map<number, { side: 1 | -1; slot: number }>();
+  // いまなでてもらっている犬：決めポーズの1.5秒より後で、並ぶ所に着いた犬のうち、主人公に一番近い1匹
+  get petting(): Dog | undefined {
+    if (this.cheer < 1.5 || this.hero.down > 0) return undefined;
+    return this.dogs
+      .filter((d) => d.down <= 0 && this.petPlan.has(d.id) && Math.abs(d.x - this.petSpot(d)) < 6)
+      .sort((a, b) => Math.abs(a.x - this.hero.x) - Math.abs(b.x - this.hero.x))[0];
+  }
+  private petSpot(d: Dog) {
+    const p = this.petPlan.get(d.id)!;
+    return clamp(this.hero.x + p.side * (PET_GAP + p.slot * PET_STEP + d.size / 2), HOUSE_X + 20, DOG_MAX_X);
+  }
   // 決めポーズに入ってからの秒（入っていなければ -1）
   get cheer() {
     return this.finale > 0 && this.finale <= CHEER ? CHEER - this.finale : -1;
@@ -644,6 +659,18 @@ export class Sim {
     if (this.finale < 0) {
       this.finale = FINALE + CHEER;
       this.punch = 1;
+      // 番犬の並び方：いま犬がいる側（駆け寄ってくる側）に、近い順に並ぶ。主人公を追い越して向こう側へ回ると、
+      // 背中を向けて止まり、なでる手と反対を向いた（2026-10-04 アマネさん「犬なでなでできてない」）。その側に場所がなければ反対側
+      this.petPlan.clear();
+      const h = this.hero;
+      const up = this.dogs.filter((d) => d.down <= 0).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x));
+      const count = { [1]: 0, [-1]: 0 } as Record<1 | -1, number>;
+      for (const d of up) {
+        let side: 1 | -1 = d.x >= h.x ? 1 : -1;
+        const room = (sd: 1 | -1) => { const x = h.x + sd * (PET_GAP + count[sd] * PET_STEP + d.size); return x <= DOG_MAX_X && x >= HOUSE_X + 20; };
+        if (!room(side)) side = side === 1 ? -1 : 1;
+        this.petPlan.set(d.id, { side, slot: count[side]++ });
+      }
       return;
     }
     if (this.finale > 0) {
@@ -869,13 +896,17 @@ export class Sim {
       } else if ((d.role === 'guard' && this.finale <= 0) || h.down > 0) {
         tx = home.x + 60;
         tl = home.lane;
-      } else if (this.finale > 0) {
-        // 晩の最後の1匹を倒したら、守りの犬も赤ずきんの前へ寄ってくる（なでてもらう）
-        // 体に重ならず、しゃがんだ手が届く所。前に場所がなければ（右端・家の前）後ろに並ぶ
-        const off = (HERO.size + d.size) / 2 + 40 + DOG_ORDER.indexOf(d.kind) * 50;
-        const side = h.x + h.facing * off > DOG_MAX_X || h.x + h.facing * off < HOUSE_X + 20 ? -h.facing : h.facing;
-        tx = h.x + side * off;
-        tl = clamp(h.lane + (DOG_ORDER.indexOf(d.kind) - 1) * 0.12, 0, 1);
+      } else if (this.finale > 0 && this.petPlan.has(d.id)) {
+        // 晩の最後の1匹を倒したら、守りの犬も赤ずきんのそばへ寄ってくる（なでてもらう）。着いたら主人公の方を向く
+        const p = this.petPlan.get(d.id)!;
+        tx = this.petSpot(d);
+        tl = clamp(h.lane + (p.slot === 0 ? 0 : p.slot * 0.14 * p.side), 0, 1);
+        if (Math.abs(tx - d.x) <= 4) {
+          d.x = tx;
+          d.facing = h.x >= d.x ? 1 : -1;
+          d.lane += clamp(tl - d.lane, -1.6 * dt, 1.6 * dt);
+          continue;
+        }
       } else {
         tx = h.x - h.facing * (50 + DOG_ORDER.indexOf(d.kind) * 25);
         tl = clamp(h.lane + (DOG_ORDER.indexOf(d.kind) - 1) * 0.3, 0, 1);

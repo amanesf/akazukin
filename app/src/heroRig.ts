@@ -2,7 +2,7 @@
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
 import { Assets, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
-import { HERO, MOVES } from './config';
+import { MOVES } from './config';
 import type { Sim } from './sim';
 
 // idle＝構え（技の振りかぶり）・calm＝力を抜いた待機（2026-10-04 生成。happy・wink・cry は同じ姿勢で顔だけ違う）・
@@ -66,6 +66,7 @@ const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'hap
 const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
 const TOSS_TOP = 40; // ナイフのいちばん高い所
 const PETAL_AT: [number, number] = [535, 322]; // 手のひらの上の花びら
+const PET_HAND_X = 630; // しゃがんでなでる絵の、伸ばした手のひら（書き出した絵の画素）
 
 export class HeroRig {
   root = new Container();
@@ -203,6 +204,12 @@ export class HeroRig {
     sp.anchor.set(g.pivot[0], (g.pivot[1] * t.height) / h);
     sp.scale.set(g.size[0] / t.width);
     return sp;
+  }
+
+  // しゃがんでなでる絵で、足もとから伸ばした手のひらまでの横の距離（画面の画素。height は背の高さ）
+  petReach(height: number) {
+    if (!this.ready) return 0;
+    return ((PET_HAND_X - this.meta.frames.pet.feet[0]) / this.meta.height) * height;
   }
 
   // 主人公の状態から絵と姿勢を決める（Pose）。x, y は足もとの世界の座標、height は背の高さ（画素）。
@@ -370,11 +377,9 @@ export class HeroRig {
     let facing = h.facing;
     if (sim.cheer >= 0 && h.down <= 0) {
       const v = VICTORY[sim.wave % VICTORY.length];
-      // なでるのは、そばまで来て止まった犬だけ（走ってくる途中の犬に手を伸ばすと、何もない所をなでて見えた。2026-10-04 アマネさん「犬がいない」）
-      const dog = sim.dogs
-        .filter((d) => d.down <= 0 && d.run < 20 && Math.abs(d.x - h.x) <= (HERO.size + d.size) / 2 + 60 && Math.abs(d.lane - h.lane) < 0.35)
-        .sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
-      const pet = sim.cheer > 1.5 && dog;
+      // なでる犬は sim が決める（並ぶ所に着いて、主人公の方を向いた犬）。絵の手が犬の頭に届くよう、view が主人公を少し寄せる
+      const dog = sim.petting;
+      const pet = !!dog;
       frame = sim.cheer < 0.12 ? 'idle' : pet ? 'pet' : v;
       lean = 0;
       const k2 = Math.min(1, (sim.cheer - 0.12) / (v === 'cheer' ? 0.45 : 0.3));
