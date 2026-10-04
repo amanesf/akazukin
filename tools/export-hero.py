@@ -71,16 +71,17 @@ frames['back'] = {'size': save('back', back), 'feet': feet(back)}
 # ナイフは絵に描いてあるので、拳に差し込まない。大きさは、まっすぐ立った1人（待機・決めポーズ）の背の高さを構えに合わせ、
 # 同じ1枚の他の絵も同じ倍率で縮める（同じカメラで描かれているので）
 # 3枚目（hero-action2-v1：突進・斬り上げ・溜め）にはまっすぐ立った人がいない。3枚とも同じ頼み方・同じ大きさ（立って約1190画素）で
-# 描かれたので、1枚目の待機と同じ倍率にする。のけぞり（knock）はナイフを持っていないので使わない
+# 描かれたので、1枚目の待機と同じ倍率にする。のけぞりはナイフを持っていないので使わない。
+# 4枚目（hero-extra-v1：弓を引く・放つ・ナイフを持ったのけぞり）も同じ。弓が頭より上に出るので背の高さでは測れない。後ろ姿は頭巾の柄が消えたので使わない
 calm_h = height(cv2.imread('assets/game/parts/relax/calm.png', cv2.IMREAD_UNCHANGED))
 for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), ('motion', 'victory', ('run1', 'run2', 'sweep', 'victory')),
-                          ('action2', None, ('dash', 'rise', 'charge'))):
+                          ('action2', None, ('dash', 'rise', 'charge')), ('extra', None, ('aim', 'loose', 'knock'))):
     k = height(p1) / (height(cv2.imread(f'assets/game/parts/{sheet}/{ref}.png', cv2.IMREAD_UNCHANGED)) if ref else calm_h)
     for name in names:
         img = cv2.imread(f'assets/game/parts/{sheet}/{name}.png', cv2.IMREAD_UNCHANGED)
         img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
         f = feet(img)
-        if sheet == 'motion' or name in ('dash', 'rise'):
+        if sheet == 'motion' or name in ('dash', 'rise', 'knock'):
             # 足が前後に開いた絵は、足の真ん中ではなくスカートの真ん中（背の高さの62〜72%の行の、不透明な所の端と端の真ん中）を基準にする。
             # 腰の高さはしっぽとナイフが横に出ていてずれる。
             # 一番下の足を基準にすると、走りの2コマで体が左右へ跳んだ
@@ -115,7 +116,8 @@ for name, fs in fists.items():
 
 # ナイフと弓（装備の一覧から。cams＝弓の握りから見た上下の滑車の位置。弓の絵の大きさの画素）。長さは主人公の背の高さに対する割合（ナイフは前腕より少し長い）
 p1h = height(p1)
-for name, frac, pivot in (('knife', 0.21, [0.5, 0.84]), ('bow', 0.55, [0.42, 0.5])):
+# 弓は2026-10-04から絵に描いてある（弓を引く・放つ）ので書き出さない。主砲は背中の取り付け部（上の金の継ぎ手）を中心に回す
+for name, frac, pivot in (('knife', 0.21, [0.5, 0.84]), ('cannon', 0.5, [0.55, 0.13])):
     img = cv2.imread(f'assets/game/parts/gear/{name}.png', cv2.IMREAD_UNCHANGED)
     meta = {'pivot': pivot}
     if name == 'knife':

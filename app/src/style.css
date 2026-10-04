@@ -283,10 +283,15 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   border-radius: 16px;
   background: rgba(0, 0, 0, 0.55);
   border: 1px solid rgba(255, 224, 240, 0.35);
-  font-size: 13px;
-  white-space: nowrap;
+  font-size: 14px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  text-align: center;
   pointer-events: none;
-  animation: hint 5.5s ease-out forwards;
+  font-weight: 700;
+  animation: hint-in 0.35s ease-out, hint-pulse 1.6s ease-in-out 0.35s infinite;
 }
+#hint.ok { border-color: #ffe070; color: #ffe070; animation: hint-in 0.25s ease-out; }
 #hint[hidden] { display: none; }
-@keyframes hint { 0% { opacity: 0; transform: translate(-50%, 8px); } 8% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes hint-in { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); } 100% { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes hint-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 160, 200, 0); } 50% { box-shadow: 0 0 0 6px rgba(255, 160, 200, 0.25); } }

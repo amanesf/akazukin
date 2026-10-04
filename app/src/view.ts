@@ -286,7 +286,7 @@ export class View {
     // ── 主人公 ──
     const hx = this.wx(h.x);
     const hy = this.wy(h.lane);
-    const pose = this.rig.pose(sim, hx, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75);
+    const pose = this.rig.pose(sim, hx, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.gunAim(sim, hx, hy));
     if (pose) {
       this.rig.apply(pose);
       this.afterimages(sim, pose, dt);
@@ -678,6 +678,28 @@ export class View {
     g.moveTo(pts[0], pts[1]);
     for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
     g.stroke({ width: 2, color: 0xff6070, alpha: 0.8 });
+  }
+
+  // 背中の主砲を向ける角度（heroRig の aim）。撃ち込みは群れへ、主砲は前のいちばん近い狼へ。いなければ真っすぐ前
+  private gunAim(sim: Sim, hx: number, hy: number) {
+    const h = sim.hero;
+    let tx = hx + h.facing * this.heroH(h.lane) * 2;
+    let ty = hy - this.heroH(h.lane) * 0.7;
+    if (h.move === 'hougeki') {
+      tx = this.wx(h.dashTo);
+      ty = this.wy(h.lane);
+    } else {
+      const t = sim.wolves.filter((w) => (w.x - h.x) * h.facing > 0 && Math.abs(w.lane - h.lane) <= 0.6).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
+      if (t) {
+        tx = this.wx(t.x);
+        ty = this.wy(t.lane) - this.geo.Hm * 0.05 - t.z * this.zk();
+      }
+    }
+    const ax = Math.max(1, (tx - hx) * h.facing); // 前へ（後ろの狼には向けない）
+    const ay = ty - (hy - this.heroH(h.lane) * 0.7); // 肩から見て下が正
+    let a = Math.atan2(-ax, ay); // 砲身（絵では下向き）をこの角度回すと、狙う向きになる
+    if (a < 0) a += Math.PI * 2;
+    return Math.max(Math.PI * 1.1, Math.min(Math.PI * 1.58, a)); // 前の上70度〜前の下15度（下へ向けすぎると腰から出ているように見えた）
   }
 
   // 刃先の通り道を覚える（技の振り抜きのあいだだけ）。古い点は0.12秒で消える

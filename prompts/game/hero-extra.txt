@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size and the same height as each other, standing on the same baseline. Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1.
+
+1. Archer, full draw: she faces right at the same three-quarter angle as image 1, feet apart, holding the red compound bow from image 3 upright in her front hand with that arm stretched straight out to the right at shoulder height; her other hand pulls the string back to her cheek with an arrow nocked, aimed level to the right; a focused, cute face with one eye narrowed.
+2. Archer, just released: the same stance and bow as figure 1 a moment later, the string straight again and the arrow gone, the drawing hand flung open backward past her ear, a confident smile.
+3. Knocked back: she faces right, hit and staggering backward to the left, leaning back with one foot lifted, still gripping one large knife from image 2 tightly in each hand, the arms bent and pulled in; eyes squeezed shut like >_<, mouth open.
+4. Seen from behind: the same standing pose as image 1 turned around, her back toward the viewer at a three-quarter angle, the hood, fur cape, braids and wolf tail seen from the back, holding one large knife from image 2 in each hand.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.

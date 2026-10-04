@@ -73,8 +73,19 @@ async function main() {
   const next = document.getElementById('next')!;
   const card = document.getElementById('card')!;
   const hint = document.getElementById('hint')!;
-  // 1晩目だけ、指の使い方を順に出す
-  const HINTS: [number, string][] = [[3, '狼をタップ：斬る（連打で連撃）'], [9, '左右にはじく：突進斬り'], [15, '上にはじく：斬り上げ／下：叩き落とし'], [21, '長押し→離す：主砲'], [27, '下の地図をタップ：駆けつける']];
+  // 1晩目だけ、指の使い方を「やってみよう」で1つずつ。やるまで次へ進まない（2026-10-04 アマネさん「操作よくわからん」。
+  // 前は時間で流れて消える文字だった）
+  type Did = Sim['did'];
+  const STEPS: { text: string; done: (d: Did, b: Did) => boolean }[] = [
+    { text: '👆 右から来る狼をタップして斬ろう（続けてタップで連撃）', done: (d, b) => d.tap - b.tap >= 3 },
+    { text: '👉 画面を左か右に、さっとはじこう → 突進斬り', done: (d, b) => d.dash > b.dash },
+    { text: '☝ 上か下にはじこう → 斬り上げ／叩き落とし', done: (d, b) => d.launch + d.slam > b.launch + b.slam },
+    { text: '✊ 長押しして、離そう → 背中の主砲', done: (d, b) => d.shiki > b.shiki },
+    { text: '🗺 下の小さい地図をタップ → そこへ駆けつける', done: (d, b) => d.mini > b.mini },
+  ];
+  let step = -1;
+  let base: Did = { ...sim.did };
+  let doneUntil = -1;
   let lastHint = '';
   const showCard = (big: string, small: string) => {
     card.innerHTML = `<b>${big}</b><small>${small}</small>`;
@@ -124,10 +135,26 @@ async function main() {
     // 右端からはみ出さない
     bubble.style.left = `${Math.max(6, Math.min(x, field.clientWidth - bubble.offsetWidth * 0.8 - 6))}px`;
     bubble.style.top = `${Math.max(bubble.offsetHeight + 4, y - 6)}px`;
-    const hx = sim.wave === 0 && sim.phase === 'wave' ? HINTS.filter(([t]) => sim.clock >= t && sim.clock < t + 5.5).pop()?.[1] ?? '' : '';
+    let hx = '';
+    if (sim.wave === 0 && sim.phase === 'wave') {
+      if (step < 0 && sim.wolves.length > 0) { // 狼が出てから（いないのに「狼をタップ」と出すと迷う）
+        step = 0;
+        base = { ...sim.did };
+      }
+      if (step >= 0 && step < STEPS.length) {
+        if (doneUntil < 0 && STEPS[step].done(sim.did, base)) doneUntil = sim.clock + 1;
+        if (doneUntil >= 0 && sim.clock >= doneUntil) {
+          step++;
+          doneUntil = -1;
+          base = { ...sim.did };
+        }
+        hx = step >= STEPS.length ? '' : doneUntil >= 0 ? '✨ できた！' : STEPS[step].text;
+      }
+    } else step = -1;
     if (hx !== lastHint) {
       lastHint = hx;
       hint.textContent = hx;
+      hint.classList.toggle('ok', hx.startsWith('✨'));
       if (hx) restart(hint);
       else hint.hidden = true;
     }

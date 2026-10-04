@@ -240,6 +240,7 @@ export class Sim {
     }
     if (best) {
       const t = best;
+      this.did.tap++;
       return this.queue(() => this.attack(t));
     }
     if (Math.abs(x - h.x) <= 120 && Math.abs(lane - h.lane) > 0.3) {
@@ -260,13 +261,23 @@ export class Sim {
     const h = this.hero;
     if (h.charge >= 0) return;
     h.order = { x: clamp(x, HERO.minX, HERO.maxX), lane: clamp(lane, 0, 1), target: 0, sprint };
-    if (sprint) this.sounds.push('dash');
+    if (sprint) {
+      this.sounds.push('dash');
+      this.did.mini++;
+    }
   }
 
   flick(dir: Flick) {
     if (!this.canAct) return;
-    if (dir === 'left' || dir === 'right') return this.queue(() => this.dash(dir === 'right' ? 1 : -1), true);
-    if (dir === 'up') return this.queue(() => this.launch());
+    if (dir === 'left' || dir === 'right') {
+      this.did.dash++;
+      return this.queue(() => this.dash(dir === 'right' ? 1 : -1), true);
+    }
+    if (dir === 'up') {
+      this.did.launch++;
+      return this.queue(() => this.launch());
+    }
+    this.did.slam++;
     this.queue(() => this.slam());
   }
 
@@ -294,6 +305,7 @@ export class Sim {
     const t = this.nearest(this.wolves.filter((w) => Math.abs(w.lane - h.lane) <= 0.6), h.x);
     if (t) h.facing = t.x >= h.x ? 1 : -1;
     this.startMove('shiki', 0);
+    this.did.shiki++;
     h.dashTo = full ? 2 : 1; // 溜めの段（strike で使う）
     return 'fired';
   }
@@ -482,6 +494,7 @@ export class Sim {
   }
   private acc = 0;
   finale = -1; // 晩の最後の1匹を倒してから昼になるまでの残り（スロー）。-1 は始まっていない
+  did = { tap: 0, dash: 0, launch: 0, slam: 0, shiki: 0, mini: 0 }; // 指で出した操作の回数（1晩目の「やってみよう」）
 
   step(dt: number) {
     for (const f of this.fx) f.t += dt;
