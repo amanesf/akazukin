@@ -22,16 +22,13 @@ out.overlay = await p.evaluate(() => document.getElementById('overlay').innerTex
 await p.click('#overlay button');
 await p.waitForTimeout(800);
 out.resumedClockDelta = await p.evaluate((c) => window.akazukin.sim.clock - c, c0);
-// 昼：番犬を置いて、1回タップ→残る、2回目→外れる
-await p.evaluate(() => { const s = window.akazukin.sim; s.wolves = []; s.spawners = []; s.phase = 'shop'; s.place('akita', 380, 0.5); });
-await p.waitForTimeout(1500); // 昼のカメラに移る
-const at = await p.evaluate(() => { const v = window.akazukin.view; const s = window.akazukin.sim; const c = document.querySelector('#field canvas').getBoundingClientRect(); for (let y = 0; y < v.geo.Hm; y += 3) for (let x = 0; x < c.width; x += 3) { if (v.postAt(s, x, y) === 0) return { x: c.left + x + 6, y: c.top + y + 6 }; } return null; });
-await p.mouse.click(at.x, at.y);
+// 昼：番犬の札をタップすると役目が 守り → 攻撃 → 支援 と変わる
+await p.evaluate(() => { const s = window.akazukin.sim; s.wolves = []; s.spawners = []; s.phase = 'shop'; });
+await p.waitForTimeout(600);
+out.roleBefore = await p.evaluate(() => window.akazukin.sim.roles.shiba);
+await p.click('.dog');
 await p.waitForTimeout(100);
-out.afterOneTap = await p.evaluate(() => ({ posts: window.akazukin.sim.posts.length, picked: window.akazukin.view.picked }));
-await p.mouse.click(at.x, at.y);
-await p.waitForTimeout(100);
-out.afterTwoTaps = await p.evaluate(() => window.akazukin.sim.posts.length);
+out.roleAfter = await p.evaluate(() => window.akazukin.sim.roles.shiba);
 out.errors = errors;
 console.log(JSON.stringify(out));
 await b.close(); srv.close();

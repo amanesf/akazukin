@@ -117,7 +117,8 @@ for name, fs in fists.items():
 # ナイフと弓（装備の一覧から。cams＝弓の握りから見た上下の滑車の位置。弓の絵の大きさの画素）。長さは主人公の背の高さに対する割合（ナイフは前腕より少し長い）
 p1h = height(p1)
 # 弓は2026-10-04から絵に描いてある（弓を引く・放つ）ので書き出さない。主砲は背中の取り付け部（上の金の継ぎ手）を中心に回す
-for name, frac, pivot in (('knife', 0.21, [0.5, 0.84]), ('cannon', 0.5, [0.55, 0.13])):
+# 主砲は背の0.8倍（0.5倍では小さくて見えなかった。2026-10-04）
+for name, frac, pivot in (('knife', 0.21, [0.5, 0.84]), ('cannon', 0.8, [0.55, 0.13])):
     img = cv2.imread(f'assets/game/parts/gear/{name}.png', cv2.IMREAD_UNCHANGED)
     meta = {'pivot': pivot}
     if name == 'knife':

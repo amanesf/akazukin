@@ -1,11 +1,12 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は銭・家・日付と桜嵐だけ（技は戦場を指で出す）。昼は体力・近接・主砲の鍛えと、番犬の札（戦場へ引っぱって置く）。
-import { DAYS_TO_CLEAR, DOG_MAX, DOGS, HOUSE_HP, TRACKS, type DogKind, type Track } from './config';
+// 夜（戦闘中）は銭・家・日付と主砲・桜嵐。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
+import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, TRACKS, type DogKind, type DogRole, type Track } from './config';
 import type { Sim } from './sim';
 
 // アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
 export const ICON = (n: string) => `<img class="ic" src="${import.meta.env.BASE_URL}ui/icons/${n}.webp" alt="">`;
 const TRACK_ICON: Record<Track, string> = { body: 'heart', near: 'knife', far: 'cannon' };
+const ROLE_ICON: Record<DogRole, string> = { guard: 'house', attack: 'knife', support: 'heart' };
 
 export class Panel {
   private coins: HTMLElement;
@@ -16,14 +17,14 @@ export class Panel {
   private ouran: HTMLButtonElement;
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [Track, HTMLButtonElement][] = [];
-  private posts: HTMLElement;
+  private shiki: HTMLButtonElement;
   private next: HTMLButtonElement;
   private dawn: HTMLElement;
   private sim: () => Sim;
   private lastCoins = -1;
   private lastWave = '';
 
-  constructor(host: HTMLElement, sim: () => Sim, onDogDrag: (kind: DogKind, e: PointerEvent) => void) {
+  constructor(host: HTMLElement, sim: () => Sim) {
     this.sim = sim;
     host.innerHTML = `
       <div class="status">
@@ -32,12 +33,13 @@ export class Panel {
         <span class="wave"></span>
       </div>
       <div class="battle">
+        <button class="shiki"><span class="row">${ICON('cannon')}主砲</span><small>押して溜め・離して撃つ</small></button>
         <button class="ouran"><span class="row">${ICON('sakura')}桜嵐</span><small></small></button>
       </div>
       <div class="shop" hidden>
         <p class="dawn"></p>
         <div class="ups"></div>
-        <div class="dogrow"><div class="dogs"></div><p class="posts"></p></div>
+        <div class="dogrow"><p class="dogtitle">番犬の役目 <span>（タップで切り替え）</span></p><div class="dogs"></div></div>
         <button class="next">夜を迎える</button>
       </div>
     `;
@@ -48,20 +50,25 @@ export class Panel {
     this.battle = q('.battle');
     this.shop = q('.shop');
     this.ouran = q('.ouran');
-    this.posts = q('.posts');
+    this.shiki = q('.shiki');
     this.next = q('.next');
     this.dawn = q('.dawn');
     this.ouran.addEventListener('pointerdown', () => this.sim().ouran());
     this.next.addEventListener('click', () => this.sim().nextWave());
-    for (const kind of Object.keys(DOGS) as DogKind[]) {
+    // 主砲のボタン：押しているあいだ溜め、離すと撃つ（戦場の長押しと同じ。2026-10-04 アマネさん「主砲の撃ち方わからない」）
+    this.shiki.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.shiki.setPointerCapture(e.pointerId);
+      this.sim().holdStart();
+    });
+    const release = () => this.sim().hero.charge >= 0 && this.sim().holdEnd(true);
+    this.shiki.addEventListener('pointerup', release);
+    this.shiki.addEventListener('pointercancel', release);
+    for (const kind of DOG_ORDER) {
       const b = document.createElement('button');
       b.className = 'dog';
-      b.innerHTML = `<img class="pic" src="${import.meta.env.BASE_URL}dogs/${kind}.webp" alt=""><span>${DOGS[kind].name}<small>${DOGS[kind].cost}銭／晩</small></span>`;
-      b.addEventListener('pointerdown', (e) => {
-        if (!this.sim().canPlace()) return;
-        e.preventDefault();
-        onDogDrag(kind, e);
-      });
+      b.innerHTML = `<img class="pic" src="${import.meta.env.BASE_URL}dogs/${kind}.webp" alt=""><span><i>${DOGS[kind].name}<small>${DOGS[kind].breed}</small></i><b class="role"></b></span>`;
+      b.addEventListener('click', () => this.sim().cycleRole(kind));
       q('.dogs').appendChild(b);
       this.dogs.push([kind, b]);
     }
@@ -102,7 +109,7 @@ export class Panel {
     if (shop) {
       this.dawn.textContent = s.nightKills
         ? `夜が明けた。${s.nightKills}匹を倒し、${s.nightEarned}銭を得た`
-        : '昼。鍛えて、番犬を置く';
+        : '昼。鍛えて、番犬の役目を決める';
       for (const [t, b] of this.ups) {
         const cost = s.trackCost(t);
         const next = s.nextPerk(t);
@@ -111,14 +118,22 @@ export class Panel {
         b.querySelector('small')!.textContent = next ? `次：${next.note}` : 'これ以上は上がらない';
         b.querySelector('em')!.textContent = cost === undefined ? '最大' : `${cost}銭`;
       }
-      for (const [, b] of this.dogs) b.disabled = !s.canPlace();
-      const cost = s.postCost;
-      const short = cost > s.coins;
-      this.posts.innerHTML = s.posts.length
-        ? `今夜の番犬 ${s.posts.length}/${DOG_MAX}匹・<b class="${short ? 'short' : ''}">${cost}銭</b>${short ? '（足りない分は出ない）' : ''}<br><span>戦場の犬を引っぱって動かす・タップで選んで、もう一度タップで外す</span>`
-        : `札を戦場へ引っぱって番犬を置く（毎晩 銭がかかる）`;
+      for (const [kind, b] of this.dogs) {
+        const r = s.roles[kind];
+        if (b.dataset.role === r) continue;
+        b.dataset.role = r;
+        b.querySelector('.role')!.innerHTML = `${ICON(ROLE_ICON[r])}${DOG_ROLES[r].name}<small>${DOG_ROLES[r].note}</small>`;
+      }
       return;
     }
+    const ch = s.hero.charge;
+    const full = ch >= s.chargeFull;
+    this.shiki.classList.toggle('charging', ch >= 0);
+    this.shiki.classList.toggle('full', full);
+    this.shiki.style.setProperty('--fill', String(ch >= 0 ? Math.min(1, ch / s.chargeFull) : 0));
+    const label = ch < 0 ? '押して溜め・離して撃つ' : full ? '満タン！離して撃て' : '溜めている…';
+    const sm = this.shiki.querySelector('small')!;
+    if (sm.textContent !== label) sm.textContent = label;
     this.ouran.disabled = !s.canOuran();
     this.ouran.classList.toggle('ready', s.canOuran());
     this.ouran.style.setProperty('--fill', String(s.gauge / 100));

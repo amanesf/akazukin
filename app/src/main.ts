@@ -4,6 +4,7 @@ import { WOLVES, type WolfKind } from './config';
 import { Input } from './input';
 import { Sim, type Event, type Save } from './sim';
 import { ICON, Panel } from './ui';
+import { openStory } from './story';
 import { View } from './view';
 
 const params = new URLSearchParams(location.search);
@@ -16,7 +17,7 @@ const store = {
   read(): Save | null {
     try {
       const d = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
-      return d && (d.v === 1 || d.v === 2) ? d : null;
+      return d && (d.v === 1 || d.v === 2 || d.v === 3) ? d : null;
     } catch {
       return null;
     }
@@ -41,8 +42,8 @@ async function main() {
   const field = document.getElementById('field')!;
   const overlay = document.getElementById('overlay')!;
   await view.init(field);
-  const input = new Input(view.app.canvas, view, () => sim);
-  const panel = new Panel(document.getElementById('panel')!, () => sim, (kind, e) => input.startNewDog(kind, e));
+  new Input(view.app.canvas, view, () => sim);
+  const panel = new Panel(document.getElementById('panel')!, () => sim);
 
   // 音：最初は切。押すと入る
   const sound = document.getElementById('sound') as HTMLButtonElement;
@@ -85,7 +86,7 @@ async function main() {
     { text: '右から来る狼をタップして斬ろう（続けてタップで連撃）', done: (d, b) => d.tap - b.tap >= 3 },
     { text: '画面を左か右に、さっとはじこう → 突進斬り', done: (d, b) => d.dash > b.dash },
     { text: '上か下にはじこう → 斬り上げ／叩き落とし', done: (d, b) => d.launch + d.slam > b.launch + b.slam },
-    { text: '長押しして、離そう → 背中の主砲', done: (d, b) => d.shiki > b.shiki },
+    { text: '長押しして離す（または下の「主砲」ボタン）→ 背中の主砲', done: (d, b) => d.shiki > b.shiki },
     { text: '下の小さい地図をタップ → そこへ駆けつける', done: (d, b) => d.mini > b.mini },
   ];
   let step = -1;
@@ -246,12 +247,18 @@ async function main() {
   document.addEventListener('visibilitychange', () => document.hidden && !manual && pause());
 
   const saved = store.read();
-  const title = `<h1><small>鋼桜奇譚</small>大正赤ずきん</h1>
-     <p>月の裂け目から狼が来る。99日、おばあさんの家を守り抜け。</p>
+  const title = `<h1><small>桜狼異聞</small>大正赤ずきん</h1>
+     <p>紅い月の裂け目から狼が来る。99夜、おばあさんの家を守り抜け。</p>
      <p class="how">操作は1晩目に「やってみよう」で</p>`; // 操作の一覧は、絵が見えるように外した（2026-10-04 アマネさん「画像しっかり見えるように」）
   show(title, saved
     ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
     : [['はじめる', () => {}]], true);
+  // ストーリー・キャラクター・ゲーム概要（題字の画面だけ。押しても始まらない）
+  const sb = document.createElement('button');
+  sb.className = 'storybtn';
+  sb.textContent = 'ストーリー';
+  sb.addEventListener('click', () => openStory());
+  overlay.querySelector('.choices')!.appendChild(sb);
   if (params.get('auto')) {
     overlay.hidden = true;
     running = true;

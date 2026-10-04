@@ -59,7 +59,7 @@ const SCENES = {
   ouran: { setup: `s.hero.x=300; s.hero.lane=0.5; for (let i=0;i<6;i++) s.debugSpawn(i%2?'wolf':'pup',340+i*40,0.2+i*0.12); s.gauge=100;`, acts: { 1: `s.ouran()` } },
   idle: { setup: `s.hero.x=300; s.hero.lane=0.5; s.debugSpawn('armored',990,0.5).stun=999; s.hero.bowT=999;`, acts: {} },
   run: { setup: `s.hero.x=150; s.hero.lane=0.5; s.debugSpawn('armored',990,0.5).stun=999; s.hero.bowT=999;`, acts: { 1: `s.runTo(700,0.5)` } },
-  day: { setup: `s.wave=1; s.phase='shop'; s.place('akita',380,0.5); s.place('shiba',300,0.2);`, acts: {} },
+  day: { setup: `s.wave=1; s.phase='shop';`, acts: {} },
 };
 const sc = SCENES[SCENE];
 // 夜を始め、最初の狼が出る前に場面を置く

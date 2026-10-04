@@ -2,6 +2,7 @@
 // アニメ的な差し替えと切り絵の組み合わせでよい。きれいな方がいい）。
 // 絵は右向き。左を向くときは左右反転する。座標は元の絵の画素で組み、最後に縮める（tools/export-hero.py）。
 import { Assets, Container, MeshPlane, Rectangle, Sprite, Texture } from 'pixi.js';
+import { MOVES } from './config';
 import type { Sim } from './sim';
 
 // idle＝構え（技の振りかぶり）・calm＝力を抜いた待機（2026-10-04 生成。happy・wink・cry は同じ姿勢で顔だけ違う）・
@@ -221,7 +222,7 @@ export class HeroRig {
     // 振りかぶり（溜めの姿勢・後ろへ傾く）→ 振り抜き（前へ傾きすぎてから戻る）で、ため→解放を見せる
     const m = h.move;
     if (m) {
-      const dur = { slash: 0.18, launch: 0.26, air: 0.18, slam: 0.3, shiki: 0.42, kaiten: 0.36, tosshin: 0.26, bow: 0.42, ame: 0.6, hougeki: 0.7 }[m];
+      const dur = MOVES[m].dur;
       const p = Math.min(1, h.moveT / dur);
       const wind = p < 0.4 ? p / 0.4 : 1; // 振りかぶりの進み
       const after = p >= 0.4 ? (p - 0.4) / 0.6 : 0; // 振り抜いてからの進み
@@ -288,8 +289,13 @@ export class HeroRig {
     if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && this.face) frame = this.face.name;
     // 宙にいるあいだ（技のあと落ちてくるところ）は跳んだ姿。立った姿のまま浮くとおかしかった
     if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0) { frame = 'rise'; lean = h.vz < 0 ? 4 * D : -4 * D; }
-    // 晩の最後の1匹を倒したスローのあいだは決めポーズ
-    if (sim.finale > 0 && !m && h.down <= 0) { frame = 'victory'; lean = 0; }
+    // 晩の最後の1匹：スローのあいだは振り抜いたまま見せ、スローが明けてから拳を上げる（2026-10-04 アマネさん「拳あげる早すぎ」）。
+    // 上げる瞬間に少し沈んで跳ねる
+    if (sim.cheer >= 0 && h.down <= 0) {
+      frame = sim.cheer < 0.12 ? 'idle' : 'victory';
+      lean = 0;
+      lift = sim.cheer < 0.12 ? 0 : Math.sin(Math.min(1, (sim.cheer - 0.12) / 0.3) * Math.PI) * 26;
+    }
     if (h.down > 0) { frame = 'down'; lean = 0; lift = 0; sx = sy = 1; }
     // 昼：ときどき小さく跳ねる（くつろいでいる）
     if (sim.phase === 'shop') {

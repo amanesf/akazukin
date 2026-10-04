@@ -40,7 +40,7 @@ export class UnitArt<K extends string> {
   }
 
   // layer：0＝主人公より奥・1＝手前。x, y は体の真ん中（回るときの中心）、height は画面での背の高さ
-  put(layer: 0 | 1, kind: K, x: number, y: number, height: number, rot: number, scale: number, tint: number, alpha: number) {
+  put(layer: 0 | 1, kind: K, x: number, y: number, height: number, rot: number, scale: number, tint: number, alpha: number, flip = false) {
     const p = this.pools[layer];
     let sp = p.root.children[p.used] as Sprite | undefined;
     if (!sp) {
@@ -52,7 +52,7 @@ export class UnitArt<K extends string> {
     sp.texture = this.tex[kind];
     sp.anchor.set(m.feet[0] / m.size[0], (m.feet[1] * 0.55) / m.size[1]); // 足もとの真上、背の高さの半ばあたり
     const k = (height / m.feet[1]) * scale;
-    sp.scale.set(k);
+    sp.scale.set(flip ? -k : k, k);
     sp.position.set(x, y);
     sp.rotation = rot;
     sp.tint = tint;

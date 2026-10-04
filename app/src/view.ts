@@ -3,13 +3,13 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Assets, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
-import type { Dog, Fx, Sim, Wolf } from './sim';
+import { Sim, type Dog, type Fx, type Wolf } from './sim';
 import type { WolfKind } from './config';
 
 const COLOR = {
@@ -77,9 +77,9 @@ export class View {
   private fog: Sprite[] = []; // 地面すれすれを流れる夜霧
   heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
   trail: { x: number; y: number; t: number }[] = []; // 指の軌跡（input が足す）
-  dragGhost: { kind: DogKind; x: number; lane: number } | null = null; // 昼：置こうとしている番犬
-  picked = -1; // 昼：外すために選んだ番犬（もう一度タップで外す）
-  private pickText!: Text;
+  private roleText: Text[] = []; // 昼：番犬の頭の上の役目
+  private wolfBoxes: { id: number; lane: number; x0: number; x1: number; y0: number; y1: number }[] = []; // 描いた狼の絵の範囲（世界の座標）。タップで狼を選ぶ
+  private xf = { z: 1, ox: 0, oy: 0 }; // 世界→画面
 
   async init(host: HTMLElement) {
     await this.app.init({ preference: 'webgl', resizeTo: host, background: 0x2a1e1e, antialias: true, resolution: Math.min(devicePixelRatio, 2), autoDensity: true });
@@ -110,10 +110,13 @@ export class View {
       this.world.addChild(t);
       this.markText.push(t);
     }
-    this.pickText = new Text({ text: 'もう一度タップで外す', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 16, fill: 0xffe0a0, stroke: { color: 0x000000, width: 4 } } });
-    this.pickText.anchor.set(0.5, 1);
-    this.pickText.visible = false;
-    this.world.addChild(this.pickText);
+    for (let i = 0; i < DOG_ORDER.length; i++) {
+      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 22, fill: 0xffe0a0, stroke: { color: 0x000000, width: 5 } } });
+      t.anchor.set(0.5, 1);
+      t.visible = false;
+      this.world.addChild(t);
+      this.roleText.push(t);
+    }
     st.addChild(this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
@@ -225,16 +228,18 @@ export class View {
     return { x: wxp / g.K, lane: Math.max(0, Math.min(1, raw)), mini: false, sky: raw < -0.15 }; // sky：地面より上（空）に触れた
   }
 
-  // 昼：画面の点の近くにある番犬の持ち場
-  postAt(sim: Sim, sx: number, sy: number) {
-    const f = this.toField(sx, sy);
-    if (!f || f.mini) return -1;
-    let best = -1;
-    let bd = 60;
-    sim.posts.forEach((p, i) => {
-      const d = Math.abs(p.x - f.x) + Math.abs(p.lane - f.lane) * 200;
-      if (d < bd) { bd = d; best = i; }
-    });
+  // 画面の点にある狼（絵の範囲で決める。重なっていれば手前の狼）。無ければ 0
+  wolfAt(sx: number, sy: number) {
+    const { z, ox, oy } = this.xf;
+    const x = (sx - ox) / z;
+    const y = (sy - oy) / z;
+    const pad = 14 / z;
+    let best = 0;
+    let bl = -1;
+    for (const b of this.wolfBoxes) {
+      if (x < b.x0 - pad || x > b.x1 + pad || y < b.y0 - pad || y > b.y1 + pad) continue;
+      if (b.lane > bl) { bl = b.lane; best = b.id; }
+    }
     return best;
   }
 
@@ -258,7 +263,7 @@ export class View {
     if (day) {
       // 昼：家から番犬を置ける所の先まで（番犬の持ち場を決める画面）
       const x0 = -170 * g.K;
-      const x1 = 760 * g.K;
+      const x1 = 520 * g.K; // 家と番犬3匹が見える所まで
       tz = g.W / (x1 - x0);
       tx = (x0 + x1) / 2;
       ty = g.laneTop + g.laneH * 1.6 - (g.Hm * 0.12) / tz;
@@ -267,7 +272,12 @@ export class View {
       // 少し引いて広く映す（2026-10-04 アマネさん「ステージ狭い？」。寄りすぎて主人公と狼2匹で画面がいっぱいだった）
       tz = 0.85 * (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
       tx = this.wx(h.x) + h.facing * g.W * 0.14;
-      tx = Math.max(g.W / 2 / tz - this.heroH(1) * 1.2, Math.min(fieldW - g.W / 2 / tz + 140, tx)); // 左の端は家全体が映るところまで
+      // 左の端は家の右半分（戸口と二階）が映るところまで
+      const houseL = this.house.visible ? this.house.x - this.house.width * 0.28 : -this.heroH(1) * 1.2;
+      // 家の前では、主人公を右へ寄せて家を広く映す（家が画面の外で、守っている感じがしなかった）
+      const nearHome = Math.max(0, Math.min(1, (240 - h.x) / 150));
+      if (nearHome > 0) tx += (Math.max(houseL + g.W / 2 / tz, this.wx(h.x) - (g.W / 2 / tz) * 0.5) - tx) * nearHome;
+      tx = Math.max(houseL + g.W / 2 / tz, Math.min(fieldW - g.W / 2 / tz + 140, tx));
       ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
     }
     const kc = 1 - Math.exp(-dt * (day ? 3 : 7));
@@ -284,6 +294,7 @@ export class View {
     const oy = g.Hm / 2 - this.cam.y * z + sy;
     this.world.scale.set(z);
     this.world.position.set(ox, oy);
+    this.xf = { z, ox, oy };
     for (const l of this.backdrop.layers) {
       l.c.scale.set(z);
       l.c.position.set(g.W / 2 - this.cam.x * l.f * z + sx * l.f, oy);
@@ -321,7 +332,26 @@ export class View {
       const k = Math.max(0.35, 1 - zz / 300);
       gr.ellipse(this.wx(x), this.wy(lane) + 2, w * 0.55 * k, w * 0.13 * k).fill({ color: 0x000000, alpha: 0.42 * k });
     };
-    for (const d of sim.dogs) shadow(d.x, d.lane, d.size * this.U(d.lane), 0);
+    const dogs: Dog[] = day ? DOG_ORDER.map((kind, i) => {
+      const home = Sim.dogHome(kind);
+      return { id: -i - 1, x: 230 + i * 75, lane: home.lane, hp: 1, maxHp: 1, size: DOGS[kind].size, cooldown: 0, hitFlash: 0, kind, role: sim.roles[kind], bite: 0, target: 0, down: 0, facing: 1 as const };
+    }) : sim.dogs;
+    // 番犬の足もとの輪：役目の色（守り＝青・攻撃＝赤・支援＝緑）
+    for (const d of dogs) {
+      if (d.down > 0) continue;
+      shadow(d.x, d.lane, d.size * this.U(d.lane), 0);
+      const r = d.size * this.U(d.lane) * 0.6;
+      gr.ellipse(this.wx(d.x), this.wy(d.lane) + 2, r, r * 0.25).stroke({ width: 3, color: ROLE_COLOR[d.role], alpha: 0.75 });
+    }
+    this.roleText.forEach((t, i) => {
+      const d = dogs[i];
+      t.visible = !!day && !!d;
+      if (!t.visible) return;
+      t.text = DOG_ROLES[d.role].name;
+      t.style.fill = ROLE_COLOR[d.role];
+      t.scale.set(1 / this.cam.z); // 引いた昼の画面でも読める大きさ
+      t.position.set(this.wx(d.x), this.wy(d.lane) - this.heroH(d.lane) * 0.42 * DOG_REL[d.kind] * 1.05);
+    });
     // 画面の外の狼は描かない（狼が150匹の晩で、描画の半分が狼だった）
     const vx0 = -ox / z - 250;
     const vx1 = (g.W - ox) / z + 250;
@@ -334,23 +364,6 @@ export class View {
       const r = this.heroH(h.lane) * (0.35 + 0.25 * c);
       gr.ellipse(this.wx(h.x), this.wy(h.lane), r, r * 0.25).stroke({ width: 3 + 3 * c, color: c >= 1 ? 0xffe070 : 0xff9050, alpha: 0.5 + 0.4 * Math.sin(this.vt * 30) * c });
     }
-    // 昼：番犬の持ち場の目印
-    if (day) {
-      // 番犬を置ける所（家の前〜持ち場の限り）と、置いた持ち場の目印
-      const a = this.wx(HOUSE_X + 30);
-      const b = this.wx(DOG_POST_MAX);
-      gr.rect(a, this.wy(0) - 6, b - a, this.wy(1) - this.wy(0) + 12).fill({ color: 0xffe0a0, alpha: 0.1 }).stroke({ width: 3, color: 0xffe0a0, alpha: 0.3 });
-      gr.moveTo(b, this.wy(0) - 6).lineTo(b, this.wy(1) + 6).stroke({ width: 3, color: 0xffe0a0, alpha: 0.35 });
-      sim.posts.forEach((p, i) => {
-        const on = i === this.picked;
-        gr.ellipse(this.wx(p.x), this.wy(p.lane), 60, 16).stroke({ width: on ? 6 : 4, color: on ? 0xff7060 : 0xffe0a0, alpha: on ? 0.6 + 0.3 * Math.sin(this.vt * 10) : 0.7 });
-      });
-    }
-    if (!day || !sim.posts[this.picked]) this.picked = -1;
-    const pk = sim.posts[this.picked];
-    this.pickText.visible = !!pk;
-    if (pk) this.pickText.position.set(this.wx(pk.x), this.wy(pk.lane) - this.geo.Hm * 0.13);
-
     // ── 体（奥から手前へ。主人公より奥は backG、手前は frontG）──
     const bg = this.backG.clear();
     const fg = this.frontG.clear();
@@ -359,12 +372,8 @@ export class View {
     this.dogArt.begin();
     type Item = { lane: number; draw: (gg: Graphics) => void };
     const items: Item[] = [];
-    const dogs: Dog[] = day ? sim.posts.map((p, i) => ({ id: -i - 1, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 })) : sim.dogs;
     for (const d of dogs) items.push({ lane: d.lane, draw: (gg) => this.drawDog(gg, d, sim) });
-    if (this.dragGhost) {
-      const p = this.dragGhost;
-      items.push({ lane: p.lane, draw: (gg) => this.drawDog(gg, { id: -99, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 }, sim, 0.6) });
-    }
+    this.wolfBoxes.length = 0;
     for (const w of seen) items.push({ lane: w.lane, draw: (gg) => this.drawWolf(gg, w, sim) });
     items.sort((a, b) => a.lane - b.lane);
     for (const it of items) it.draw(it.lane <= h.lane ? bg : fg);
@@ -545,9 +554,10 @@ export class View {
       if (this.gustT < -1.6) this.gustT = 6 + Math.random() * 7;
       const gust = this.gustT < 0;
       const SP = this.screenParts;
-      if (Math.random() < 0.7) SP.petal(g.W * (0.2 + Math.random() * 0.9), -10, 0.6, -30 - Math.random() * 40, 20 + Math.random() * 25, 7 + Math.random() * 4);
-      if (Math.random() < 0.3) SP.petal(g.W * (0.4 + Math.random() * 0.7), -10, 1.5, -90 - Math.random() * 80, 60 + Math.random() * 50, 3 + Math.random() * 2);
-      if (gust) for (let i = 0; i < 4; i++) SP.petal(g.W + 10, Math.random() * g.Hm * 0.8, 0.6 + Math.random(), -380 - Math.random() * 300, (Math.random() - 0.3) * 120, 2.5);
+      const few = sim.phase === 'shop' ? 0.25 : 1; // 昼は花びらを4分の1に（多すぎた。2026-10-04 アマネさん）
+      if (Math.random() < 0.7 * few) SP.petal(g.W * (0.2 + Math.random() * 0.9), -10, 0.6, -30 - Math.random() * 40, 20 + Math.random() * 25, 7 + Math.random() * 4);
+      if (Math.random() < 0.3 * few) SP.petal(g.W * (0.4 + Math.random() * 0.7), -10, 1.5, -90 - Math.random() * 80, 60 + Math.random() * 50, 3 + Math.random() * 2);
+      if (gust && Math.random() < few) for (let i = 0; i < 4; i++) SP.petal(g.W + 10, Math.random() * g.Hm * 0.8, 0.6 + Math.random(), -380 - Math.random() * 300, (Math.random() - 0.3) * 120, 2.5);
       // 蛍のような光の粒（夜・画面に映っている地面の上）・裂け目の火の粉
       if (sim.phase === 'wave' && Math.random() < 0.35) {
         const x = this.cam.x - g.W / 2 / this.cam.z + Math.random() * (g.W / this.cam.z); // 画面に映っている所
@@ -718,6 +728,8 @@ export class View {
       else if (w.vx === 0 && Math.sin((sim.clock + w.id * 0.37) * 7) < 0) art = 'wolf_walk2';
     }
     this.wolves.put(layer, art, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born);
+    const top = o.ground - o.lift - hh;
+    this.wolfBoxes.push({ id: w.id, lane: w.lane, x0: o.x - hh * 0.7, x1: o.x + hh * 0.7, y0: top, y1: o.ground - o.lift + hh * 0.05 });
     if (w.hp < w.maxHp && w.age > 0.4) {
       const hb = Math.max(o.bw * 0.8, hh * 0.5);
       const hy = o.ground - o.lift - hh * 1.05;
@@ -742,7 +754,14 @@ export class View {
       // 番犬の絵：噛むときは前へ飛び出して頭を下げる・噛まれたら赤く。伸び縮みはさせない
       const hh = this.heroH(d.lane) * 0.42 * DOG_REL[d.kind];
       const layer: 0 | 1 = g === this.backG ? 0 : 1;
-      this.dogArt.put(layer, d.kind, x + bite * bw * 0.3, ground - bob * 2 - this.dogArt.center(hh), hh, bite * 0.12 - hit * 0.1, 1, d.hitFlash > 0 ? 0xff9a9a : 0xffffff, alpha);
+      const f = d.facing;
+      if (d.down > 0) {
+        // 倒れた：横になって薄く、家の前で休む
+        this.dogArt.put(layer, d.kind, x, ground - hh * 0.25, hh, -f * 1.3, 1, 0xb0a0a0, 0.55, f < 0);
+        return;
+      }
+      const run = sim.phase === 'wave' && d.bite <= 0 ? Math.abs(Math.sin(t * 12)) * hh * 0.05 : 0;
+      this.dogArt.put(layer, d.kind, x + f * bite * bw * 0.3, ground - bob * 2 - run - this.dogArt.center(hh), hh, f * (bite * 0.12 - hit * 0.1), 1, d.hitFlash > 0 ? 0xff9a9a : 0xffffff, alpha, f < 0);
       if (d.hp < d.maxHp) {
         const hb = Math.max(bw * 0.8, hh * 0.5);
         const hy = ground - hh * 1.05;
@@ -816,13 +835,14 @@ export class View {
   private drawHouse(g: Graphics, sim: Sim, dt: number) {
     const gx = this.geo;
     const right = this.wx(HOUSE_X) + 8;
-    const base = this.wy(1) + 8;
+    // 足もとは道の奥の縁（手前の縁に置くと、奥の道に立つ主人公のほうが高く見えた。2026-10-04 アマネさん「家が主人公より低く見える」）
+    const base = this.wy(0.1);
     const top = gx.horizon - gx.Hm * 0.32;
     const left = right - gx.Hm * 0.55;
     const f = Math.max(0, this.houseFlash);
     if (this.house.visible) {
       // 家の絵（2026-10-04 生成）。齧られると赤く、傷むほどひびが入る（ひびは絵の上に描く）
-      const hh = this.heroH(1) * 1.5; // 主人公の1.5倍（二階建て。小さいと守りがいがなかった）
+      const hh = this.heroH(1) * 1.9; // 主人公の1.9倍（二階建て。1.5倍で手前の縁に置くと、主人公より低く見えた）
       const hm = this.dogArt.meta['house' as DogKind];
       const hk = hh / hm.feet[1];
       this.house.scale.set(hk);
@@ -1228,9 +1248,7 @@ export class View {
   }
 }
 
-function dogSize(k: DogKind) {
-  return DOGS[k].size;
-}
+const ROLE_COLOR = { guard: 0x70b8ff, attack: 0xff6070, support: 0x80e090 };
 
 // 少し行きすぎて戻る（出てくる・置く）
 function backOut(t: number) {

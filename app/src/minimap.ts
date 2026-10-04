@@ -3,10 +3,10 @@
 // 主人公は同じ絵の縮小。狼・番犬は箱を大きめに盛る。当たった光・斬撃・爆発・打ち上げ・煙・家の点滅・いま映している枠。
 // タップするとそこへ駆けつける。
 import { Container, Graphics } from 'pixi.js';
-import { DOGS, FIELD_LENGTH, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
+import { DOG_ORDER, DOGS, FIELD_LENGTH, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
 import { place } from './fx';
 import { HeroRig } from './heroRig';
-import type { Sim } from './sim';
+import { Sim } from './sim';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 
 export class Minimap {
@@ -77,8 +77,9 @@ export class Minimap {
 
     const u = 0.22; // 体の大きさ1あたりの画素（位置より盛る）
     // 番犬
-    const dogs = day ? sim.posts.map((p) => ({ x: p.x, lane: p.lane, kind: p.kind, size: DOGS[p.kind].size, hitFlash: 0 })) : sim.dogs;
+    const dogs = day ? DOG_ORDER.map((kind) => ({ ...Sim.dogHome(kind), kind, size: DOGS[kind].size, hitFlash: 0, down: 0 })) : sim.dogs;
     for (const d of dogs) {
+      if (d.down > 0) continue;
       const w = d.size * u;
       g.rect(this.mx(d.x) - w / 2, this.my(d.lane) - w * 0.6, w, w * 0.6).fill(d.hitFlash > 0 ? 0xffffff : DOG_COLOR[d.kind]);
     }

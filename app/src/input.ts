@@ -1,9 +1,8 @@
 // 指一本の操作（2026-10-04）。戦場の上で：
 //   タップ＝斬り（狼に触れればその狼へ・遠くの地面ならそこへ走る）／はじく＝左右：突進斬り・上：斬り上げ・下：叩き落とし／
 //   長押し→離す＝主砲。小さい地図のタップ＝そこへ駆けつける。
-// 昼は番犬の持ち場を指で動かす（札から引っぱって置く・置いた犬を引っぱる・タップで選んでもう一度タップで外す）。
+// 昼は戦場では何もしない（番犬は自分で動く。役目は下の板で決める）。
 // はじきは指を離すのを待たず、動いた瞬間に出す（手応えを早く返す）。
-import type { DogKind } from './config';
 import type { Sim } from './sim';
 import type { View } from './view';
 
@@ -14,8 +13,6 @@ const TAP_SLOP = 12;
 
 export class Input {
   private down: { id: number; x: number; y: number; t: number; mini: boolean; done: boolean; holding: boolean } | null = null;
-  private drag: { i: number; moved: boolean; x: number; y: number } | null = null;
-  private newDog: DogKind | null = null;
   private holdTimer = 0;
 
   private canvas: HTMLCanvasElement;
@@ -46,23 +43,10 @@ export class Input {
     return performance.now() / 1000;
   }
 
-  // 昼：札から番犬を引っぱり出す（ui から呼ぶ）
-  startNewDog(kind: DogKind, e: PointerEvent) {
-    this.newDog = kind;
-    const p = this.local(e);
-    const f = this.view.toField(p.x, p.y);
-    this.view.dragGhost = f && !f.mini ? { kind, x: f.x, lane: f.lane } : null;
-  }
-
   private onDown(e: PointerEvent) {
     const s = this.sim();
     const p = this.local(e);
-    if (s.phase === 'shop') {
-      const i = this.view.postAt(s, p.x, p.y);
-      if (i >= 0) this.drag = { i, moved: false, x: p.x, y: p.y };
-      else this.view.picked = -1; // ほかの所に触れたら選ぶのをやめる
-      return;
-    }
+    if (s.phase === 'shop') return;
     if (this.down) {
       // 2本目の指は見ない。ただし最初の指（isPrimary）が来たなら、前の指の離した合図を取りこぼしている
       if (!e.isPrimary) return;
@@ -85,17 +69,6 @@ export class Input {
   private onMove(e: PointerEvent) {
     const s = this.sim();
     const p = this.local(e);
-    if (this.newDog) {
-      const f = this.view.toField(p.x, p.y);
-      this.view.dragGhost = f && !f.mini && p.y >= 0 ? { kind: this.newDog, x: f.x, lane: f.lane } : null;
-      return;
-    }
-    if (this.drag && s.phase === 'shop') {
-      if (Math.hypot(p.x - this.drag.x, p.y - this.drag.y) > TAP_SLOP) this.drag.moved = true;
-      const f = this.view.toField(p.x, p.y);
-      if (f && !f.mini && this.drag.moved) s.movePost(this.drag.i, f.x, f.lane);
-      return;
-    }
     const d = this.down;
     if (!d || e.pointerId !== d.id) return;
     this.view.trail.push({ ...p, t: this.viewTime() });
@@ -114,24 +87,6 @@ export class Input {
   private onUp(e: PointerEvent) {
     const s = this.sim();
     const p = this.local(e);
-    if (this.newDog) {
-      const f = this.view.toField(p.x, p.y);
-      if (f && !f.mini && p.y >= 0 && p.y <= this.canvas.clientHeight) s.place(this.newDog, f.x, f.lane);
-      this.newDog = null;
-      this.view.dragGhost = null;
-      return;
-    }
-    if (this.drag) {
-      // タップで選び、選んだ犬をもう一度タップで外す（1回で外れると、触っただけで消えた）
-      if (!this.drag.moved) {
-        if (this.view.picked === this.drag.i) {
-          s.removePost(this.drag.i);
-          this.view.picked = -1;
-        } else this.view.picked = this.drag.i;
-      } else this.view.picked = -1;
-      this.drag = null;
-      return;
-    }
     const d = this.down;
     if (!d || e.pointerId !== d.id) return;
     this.down = null;
@@ -147,7 +102,7 @@ export class Input {
     const f = this.view.toField(d.x, d.y);
     if (!f) return;
     if (f.mini) s.runTo(f.x, f.lane, true);
-    else s.tap(f.x, f.sky ? s.hero.lane : f.lane); // 空に触れたら奥行きはそのまま（一番奥まで走っていた）
+    else s.tap(f.x, f.sky ? s.hero.lane : f.lane, this.view.wolfAt(d.x, d.y)); // 空に触れたら奥行きはそのまま（一番奥まで走っていた）。狼の絵に触れたらその狼
   }
 
   // 押していた指を忘れる（溜めていたら撃たずに止める）

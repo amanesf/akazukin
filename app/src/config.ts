@@ -4,8 +4,6 @@
 export const FIELD_LENGTH = 1000;
 export const HOUSE_X = 40; // 狼はここまで来ると家を齧る
 export const GIRL_X = 70; // 赤ずきんは左に固定
-// 番犬の持ち場は昼に置く（2026-10-04）。裂け目の前には置けない（出てきた端から狩られて簡単すぎた。撮影で実測）
-export const DOG_POST_MAX = 640;
 export const WOLF_SPAWN_X = FIELD_LENGTH - 10;
 
 export const STEP = 1 / 60; // 固定ステップ
@@ -35,7 +33,7 @@ export const HERO = {
   lunge: 130, // タップした狼がこれより近ければ、踏み込んで斬る（遠ければ走って行って斬る）
   buffer: 0.4, // 技の途中の入力を覚えておく秒数（先行入力）
 };
-export const AUTO = { slash: 0.5, bow: 1.3, bowRange: 460 }; // 触っていないとき：斬りの間隔・弓の間隔・弓の届く距離
+export const AUTO = { slash: 0.5, bow: 0.85, bowRange: 520 }; // 弓は速く・遠くまで（2026-10-04 アマネさん「弓矢もっと役に立たせたい」） // 触っていないとき：斬りの間隔・弓の間隔・弓の届く距離
 // 突進斬り：その方向へ突き抜け、通り道の狼を全部斬る。2026-10-04 連発でほぼ無敵だった（狼がひるみ続けて噛めない）ので、
 // 無敵は出始めだけ・斬られた狼のひるみは短く・次の突進まで間を空ける・威力は下げる（突進は動くための技。削るのは斬り）
 export const DASH = { dist: 230, iframes: 0.12, cd: 1.0, stun: 0.1 };
@@ -72,12 +70,12 @@ export const MOVES: Record<MoveId, MoveSpec> = {
   shiki: { name: '主砲', dur: 0.42, reach: 70, damage: 40, kb: 650, area: 180, stop: 0.13, shake: 11 },
   kaiten: { name: '回転斬り', dur: 0.36, reach: 0, damage: 16, kb: 280, area: 150, stop: 0.05, shake: 4 },
   tosshin: { name: '突進斬り', dur: 0.26, reach: 30, damage: 7, kb: 120, stop: 0.04, shake: 3 },
-  bow: { name: '弓', dur: 0.42, reach: 0, damage: 13 },
+  bow: { name: '弓', dur: 0.36, reach: 0, damage: 16 },
   ame: { name: '矢の雨', dur: 0.6, reach: 0, damage: 11 },
   hougeki: { name: '主砲の撃ち込み', dur: 0.7, reach: 0, damage: 32, area: 75, shake: 5 },
 };
 // 矢はほぼまっすぐ速く（2026-10-04 アマネさん「弓矢がもっとまっすぐ飛ぶように。しょぼい」）。矢の雨だけ空から降る（RAIN）
-export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40 };
+export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
 export const MOVE_CD = { kaiten: 2.5, tosshin: DASH.cd, ame: 5, hougeki: 0 };
 export const OURAN = { time: 3, tick: 0.15, damage: 22, reach: 190, final: 90, finalArea: 420, gain: { hit: 1.6, hurt: 0.6 } };
@@ -137,11 +135,23 @@ export const DAWN_REPAIR = 100; // 夜が明けると家が直る（家の修繕
 export const COMBO_BASE = 4; // 斬り・斬り・斬り上げ・叩き落とし
 
 export const DOG_BLOCK = 2; // 番犬1匹が足止めできる狼の数
-export const DOG_MAX = 5; // 番犬は同時にこれまで（並べるほど狼が止まって簡単すぎた。計測で実測）
+// 番犬は3匹（柴・秋田・土佐）が自分で動く（2026-10-04 アマネさん「5匹固定配置じゃなく3匹が自律的に動くように」）。
+// 昼に1匹ずつ役目を決める（3匹とも同じ役目でもよい）。銭はかからない（銭は鍛えるだけに使う）
 export type DogKind = 'shiba' | 'akita' | 'tosa';
+export type DogRole = 'guard' | 'attack' | 'support';
+export const DOG_ORDER: DogKind[] = ['shiba', 'akita', 'tosa'];
+export const DOG_ROLES: Record<DogRole, { name: string; note: string }> = {
+  guard: { name: '守り', note: '家にいちばん近い狼を噛む' },
+  attack: { name: '攻撃', note: 'いちばん強い狼を噛む' },
+  support: { name: '支援', note: '赤ずきんのまわりの狼を噛む' },
+};
+export const DOG_ROLE_ORDER: DogRole[] = ['guard', 'attack', 'support'];
+export const DOG_DEFAULT_ROLES: Record<DogKind, DogRole> = { shiba: 'guard', akita: 'support', tosa: 'attack' };
+export const DOG_REVIVE = 10; // 倒れた番犬は家で休んで、これだけたつと戻る
+export const DOG_MAX_X = 800; // 番犬が出ていく先（主人公と同じ。裂け目の前には行かない）
 export interface DogSpec {
   name: string;
-  cost: number; // 毎晩の費用（2026-10-04・アマネさん「毎ウェーブコスト制」）
+  breed: string;
   hp: number;
   damage: number;
   interval: number;
@@ -149,9 +159,9 @@ export interface DogSpec {
   size: number;
 }
 export const DOGS: Record<DogKind, DogSpec> = {
-  shiba: { name: '柴', cost: 20, hp: 70, damage: 8, interval: 0.55, speed: 140, size: 40 },
-  akita: { name: '秋田', cost: 50, hp: 260, damage: 10, interval: 0.8, speed: 90, size: 58 },
-  tosa: { name: '土佐', cost: 100, hp: 340, damage: 38, interval: 1.0, speed: 80, size: 70 },
+  shiba: { name: '豆助', breed: '柴', hp: 110, damage: 9, interval: 0.5, speed: 230, size: 40 },
+  akita: { name: '白雪', breed: '秋田', hp: 300, damage: 12, interval: 0.75, speed: 170, size: 58 },
+  tosa: { name: '鉄丸', breed: '土佐', hp: 360, damage: 34, interval: 1.0, speed: 150, size: 70 },
 };
 
 export type WolfKind = 'pup' | 'wolf' | 'armored' | 'howler' | 'alpha';
