@@ -167,7 +167,7 @@ export class View {
     const MM = Math.round(Math.max(64, Math.min(96, H * 0.13)));
     const Hm = H - MM;
     const K = W / VIEW_UNITS;
-    this.geo = { W, H, Hm, MM, K, horizon: Hm * 0.58, laneTop: Hm * 0.66, laneH: Hm * 0.22 };
+    this.geo = { W, H, Hm, MM, K, horizon: Hm * 0.58, laneTop: Hm * 0.63, laneH: Hm * 0.27 }; // 奥行きの帯を広く（奥と手前の差が読めなかった）
     this.backdrop.build(W, Hm, this.geo.horizon, FIELD_LENGTH * K);
     this.paraRoot.removeChildren();
     for (const l of this.backdrop.layers) this.paraRoot.addChild(l.c);
@@ -197,8 +197,8 @@ export class View {
     const x0 = this.wx(HOUSE_X + 60);
     const x1 = this.wx(HERO.maxX);
     for (let x = x0; x < x1; x += 60 + r() * 120) {
-      const k = ['flowers', 'stones', 'petals', 'grass', 'flowers', 'higanbana'][Math.floor(r() * 6)];
-      put(k, x, this.wy(0) - 6, g.Hm * (k === 'grass' || k === 'higanbana' ? 0.07 : 0.045));
+      const k = ['flowers', 'stones', 'petals', 'grass', 'flowers', 'petals'][Math.floor(r() * 6)]; // 春の夜にそろえる
+      put(k, x, this.wy(0) - 6, g.Hm * (k === 'grass' ? 0.07 : 0.045));
     }
   }
 
@@ -264,7 +264,8 @@ export class View {
       ty = g.laneTop + g.laneH * 1.6 - (g.Hm * 0.12) / tz;
     } else {
       const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
-      tz = (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
+      // 少し引いて広く映す（2026-10-04 アマネさん「ステージ狭い？」。寄りすぎて主人公と狼2匹で画面がいっぱいだった）
+      tz = 0.85 * (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
       tx = this.wx(h.x) + h.facing * g.W * 0.14;
       tx = Math.max(g.W / 2 / tz - 150, Math.min(fieldW - g.W / 2 / tz + 140, tx));
       ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
@@ -507,8 +508,10 @@ export class View {
         break;
       }
       case 'poof':
-        // 倒した狼：煙と一緒に桜の花びらが散る（煙だけで消えると味気なかった）
+        // 倒した狼：影の狼なので、黒い煙と紅い火の粉になって昇り、桜の花びらが散る
         P.pop(x, y - zy - this.geo.Hm * 0.05, s, f.r ?? 30);
+        P.smoke(x, y - zy - this.geo.Hm * 0.06, s, 7);
+        for (let i = 0; i < 8; i++) P.ember(x + (Math.random() - 0.5) * 40 * s, y - zy - this.geo.Hm * 0.06, s);
         for (let i = 0; i < 6; i++) P.petal(x, y - zy - this.geo.Hm * 0.05, s, (Math.random() - 0.5) * 500 + (f.dir ?? 0) * 200, -150 - Math.random() * 300);
         break;
       case 'miss':
@@ -695,13 +698,15 @@ export class View {
 
   // 狼の絵を置く。伸び縮みはさせず、位置・傾き・色で動かす。体力の棒は絵の上に
   private wolfSprite(g: Graphics, w: Wolf, sim: Sim, o: { x: number; ground: number; lift: number; bob: number; rot: number; biteK: number; hit: number; flash: boolean; bw: number }) {
-    const hh = this.heroH(w.lane) * 0.46 * WOLF_REL[w.kind];
+    const hh = this.heroH(w.lane) * 0.6 * WOLF_REL[w.kind]; // 狼は主人公の0.6倍（0.46倍だと小さな犬に見えた）
     let rot = o.rot;
     if (o.biteK) rot -= o.biteK * 0.18; // 噛みつき：頭を上げて飛び出す
     if (w.z <= 0 && w.stun > 0.05 && !o.hit) rot += 0.08; // 落ちたあと、へたりこむ
     // 裂け目から出てくる：ふわっと現れる（大きさは少しだけ）
     const born = w.age < 0.45 ? w.age / 0.45 : 1;
-    const tint = o.flash ? 0xff9a9a : w.hasted ? 0xfff0a0 : 0xffffff;
+    const tint = o.flash ? 0xff9a9a : 0xffffff;
+    // 遠吠えで速くなった狼は、足もとの黄色い輪で示す（色を塗ると病気のように濁って見えた）
+    if (w.hasted) this.wolfHud.ellipse(o.x, o.ground, hh * 0.45, hh * 0.08).stroke({ width: 3, color: 0xffe060, alpha: 0.55 + 0.3 * Math.sin(this.vt * 12) });
     const layer: 0 | 1 = g === this.backG ? 0 : 1;
     const cy = o.ground - o.lift - o.bob * 0.6 - this.wolves.center(hh);
     // ふつうの狼は、動きに合わせて絵を差し替える。差し替えた絵は姿勢そのものなので、傾けすぎない
@@ -1043,19 +1048,37 @@ export class View {
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
       const hh = this.heroH(a.fromLane);
-      const x0 = this.wx(a.fromX);
-      const y0 = this.wy(a.fromLane) - hh * 0.6;
+      const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.25;
+      const y0 = this.wy(a.fromLane) - hh * 0.55;
       const x1 = this.wx(a.toX);
       const y1 = this.wy(a.lane) - this.geo.Hm * 0.05;
-      const arc = Math.abs(x1 - x0) * 0.3;
+      // ふつうの矢はほぼまっすぐ。矢の雨だけ高い放物線
+      const arc = Math.abs(x1 - x0) * (a.rain ? 0.3 : 0.04);
       const x = x0 + (x1 - x0) * a.t;
       const y = y0 + (y1 - y0) * a.t - Math.sin(Math.PI * a.t) * arc;
       const vx = x1 - x0;
       const vy = y1 - y0 - Math.cos(Math.PI * a.t) * Math.PI * arc;
       const len = Math.hypot(vx, vy) || 1;
-      const L = hh * 0.14;
-      o.moveTo(x - (vx / len) * L * 2.2, y - (vy / len) * L * 2.2).lineTo(x, y).stroke({ width: 2, color: 0xffffff, alpha: 0.25 }); // 尾
-      o.moveTo(x - (vx / len) * L, y - (vy / len) * L).lineTo(x, y).stroke({ width: 3, color: COLOR.arrow });
+      const ux = vx / len;
+      const uy = vy / len;
+      const L = hh * 0.3; // 矢の長さ
+      // 光の尾（桜色）：飛んだ道に沿って長く
+      const tail = Math.min(a.t, 0.35) * Math.hypot(x1 - x0, y1 - y0);
+      o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 7, color: 0xff7aa8, alpha: 0.18, cap: 'round' });
+      o.moveTo(x - ux * (L + tail * 0.5), y - uy * (L + tail * 0.5)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 3, color: 0xffd8e8, alpha: 0.5, cap: 'round' });
+      // 矢柄・矢じり・矢羽
+      o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 4.5, color: 0x3a2018, cap: 'round' });
+      o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 2.2, color: 0xc89060, cap: 'round' });
+      const hx = x + ux * 12;
+      const hy = y + uy * 12;
+      o.poly([hx, hy, x - uy * 6, y + ux * 6, x + uy * 6, y - ux * 6]).fill(0xe8eef8).stroke({ width: 1.5, color: 0x2a1a20 });
+      for (const sg of [1, -1]) {
+        const fx = x - ux * L;
+        const fy = y - uy * L;
+        o.poly([fx, fy, fx + ux * 16 - uy * 7 * sg, fy + uy * 16 + ux * 7 * sg, fx + ux * 20, fy + uy * 20]).fill(0xffe8f0).stroke({ width: 1.2, color: 0x2a1a20 });
+      }
+      // 放った瞬間の光
+      if (a.t < 0.12) this.parts.glow(x0, y0, hh * 0.5 * (1 - a.t / 0.12), 0xffc0d8, 0.08, 0.8, 0.5);
     }
     // 砲弾（放物線と火の尾）
     for (const sh of sim.shells) {

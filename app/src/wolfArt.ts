@@ -4,7 +4,7 @@ import { Assets, Container, Sprite, Texture } from 'pixi.js';
 import type { DogKind, WolfKind } from './config';
 
 // 画面での高さ（ふつうの狼・秋田を1）。ゲームの大きさ（WOLVES.size・DOGS.size）に合わせる。絵の大狼は小さめに描かれた
-export const WOLF_REL: Record<WolfKind, number> = { pup: 0.62, wolf: 1, armored: 1.15, howler: 1.2, alpha: 1.9 };
+export const WOLF_REL: Record<WolfKind, number> = { pup: 0.62, wolf: 1, armored: 1.2, howler: 1.2, alpha: 2.1 };
 export const DOG_REL: Record<DogKind, number> = { shiba: 0.7, akita: 1, tosa: 1.2 };
 
 interface Meta { size: [number, number]; feet: [number, number] }

@@ -76,7 +76,9 @@ export const MOVES: Record<MoveId, MoveSpec> = {
   ame: { name: '矢の雨', dur: 0.6, reach: 0, damage: 11 },
   hougeki: { name: '主砲の撃ち込み', dur: 0.7, reach: 0, damage: 32, area: 75, shake: 5 },
 };
-export const BOW_FLIGHT = { base: 0.3, perUnit: 0.0005, hitRadius: 40 };
+// 矢はほぼまっすぐ速く（2026-10-04 アマネさん「弓矢がもっとまっすぐ飛ぶように。しょぼい」）。矢の雨だけ空から降る（RAIN）
+export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40 };
+export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
 export const MOVE_CD = { kaiten: 2.5, tosshin: DASH.cd, ame: 5, hougeki: 0 };
 export const OURAN = { time: 3, tick: 0.15, damage: 22, reach: 190, final: 90, finalArea: 420, gain: { hit: 1.6, hurt: 0.6 } };
 export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る

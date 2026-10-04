@@ -81,7 +81,7 @@ export class Particles {
 
   // 当たった瞬間の火花：向き dir へ飛び散る線と、白い光
   hit(x: number, y: number, dir: number, s: number, big: boolean) {
-    const n = big ? 16 : 9;
+    const n = big ? 22 : 12; // 当たった手応えを強く
     for (let i = 0; i < n; i++) {
       const a = (dir >= 0 ? 0 : Math.PI) + rnd(-1.1, 1.1);
       const sp = rnd(300, big ? 1100 : 750) * s;
@@ -97,9 +97,14 @@ export class Particles {
     this.add({ kind: 'petal', x, y, vx: vx * s, vy: vy * s, life, size: rnd(3, 5.5) * s, color: pick(PINK), rot: rnd(0, 6.28), vr: rnd(-8, 8), g: 160 * s, drag: 2.2 });
   }
 
-  // 蛍のような光の粒：ゆっくり漂って、ふっと消える（夜の地面の上）
+  // 光る桜の粒：ゆっくり漂って、ふっと消える（夜の地面の上）。蛍だと夏になって季節が混ざった
   firefly(x: number, y: number, s: number) {
-    this.add({ kind: 'glow', x, y, vx: rnd(-14, 14) * s, vy: rnd(-22, -6) * s, life: rnd(2, 3.5), size: rnd(10, 18) * s, grow: -0.3, color: Math.random() < 0.5 ? 0xfff2a8 : 0xd8ffb0, alpha: rnd(0.5, 0.85) });
+    this.add({ kind: 'glow', x, y, vx: rnd(-14, 14) * s, vy: rnd(-22, -6) * s, life: rnd(2, 3.5), size: rnd(10, 18) * s, grow: -0.3, color: Math.random() < 0.5 ? 0xffd0e4 : 0xfff4f8, alpha: rnd(0.5, 0.85) });
+  }
+
+  // 黒い煙（影の狼が消えるとき）。ゆっくり昇って広がる
+  smoke(x: number, y: number, s: number, n = 6) {
+    for (let i = 0; i < n; i++) this.add({ kind: 'dust', x: x + rnd(-20, 20) * s, y: y + rnd(-15, 15) * s, vx: rnd(-30, 30) * s, vy: rnd(-90, -40) * s, life: rnd(0.6, 1.1), size: rnd(10, 18) * s, grow: 26 * s, color: Math.random() < 0.5 ? 0x24182e : 0x3a2440, alpha: 0.75, drag: 1.5 });
   }
 
   // 火の粉：裂け目から紅く舞い上がる

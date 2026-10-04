@@ -2,7 +2,7 @@
 // 指一本アクション（2026-10-04）：プレイヤーの指で技を出す。触っていないときは軽く自動で斬り、弓で補助する。
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
-  AUTO, BODY, BOW_FLIGHT, CHARGE, COMBO_BASE, COMBO_RESET, COIN_START, DASH, DOG_BLOCK, DOG_MAX, DOG_POST_MAX, DOGS,
+  AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO_BASE, COMBO_RESET, COIN_START, DASH, DOG_BLOCK, DOG_MAX, DOG_POST_MAX, DOGS,
   FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SHOCKWAVE, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, TRACK_COSTS, TRACKS, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type DogKind, type MoveId, type Perk, type SkillId, type Track, type WolfKind,
@@ -36,7 +36,7 @@ export interface Wolf extends Unit {
 }
 export interface Post { kind: DogKind; x: number; lane: number } // 番犬の持ち場（昼に置く）
 export interface Dog extends Unit { kind: DogKind; post: Post; bite: number }
-export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number }
+export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean }
 export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number }
 export interface Shot { x: number; lane: number } // 狼の衝撃波（左へ飛ぶ）
 export type FxKind = 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge';
@@ -1007,7 +1007,7 @@ export class Sim {
       return;
     }
     if (id === 'ame') {
-      for (let i = 0; i < 8; i++) this.loose(h.dashTo + (this.rand() - 0.5) * 160, this.rand(), dmg, i * 0.04);
+      for (let i = 0; i < 8; i++) this.loose(h.dashTo + (this.rand() - 0.5) * 160, this.rand(), dmg, i * 0.04, true);
       return;
     }
     // 主砲：溜めの段（dashTo：1 ふつう・2 満タン）で威力と範囲が伸びる。満タンで撃ち込みを覚えていれば群れへ4発
@@ -1120,10 +1120,11 @@ export class Sim {
   }
 
   // ── 飛び道具 ──
-  private loose(toX: number, lane: number, damage: number, delay = 0) {
+  private loose(toX: number, lane: number, damage: number, delay = 0, rain = false) {
     const h = this.hero;
-    const flight = BOW_FLIGHT.base + Math.abs(toX - h.x) * BOW_FLIGHT.perUnit;
-    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage });
+    const F = rain ? RAIN_FLIGHT : BOW_FLIGHT;
+    const flight = F.base + Math.abs(toX - h.x) * F.perUnit;
+    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain });
     this.sounds.push('bow');
   }
 

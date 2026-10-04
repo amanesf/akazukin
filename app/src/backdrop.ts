@@ -65,7 +65,7 @@ export class Backdrop {
     mg.moveTo(R * 0.1, -R).lineTo(-R * 0.05, -R * 0.4).lineTo(R * 0.15, -R * 0.05).lineTo(-R * 0.1, R * 0.45).lineTo(R * 0.05, R)
       .stroke({ width: 3, color: 0xff9080, alpha: 0.9 });
     this.sunG.clear().circle(0, 0, R * 0.8).fill(0xfff4d0).circle(0, 0, R * 0.62).fill(0xffffff);
-    this.moonArt.width = this.moonArt.height = R * 2.1;
+    this.moonArt.width = this.moonArt.height = R * 1.7; // 大きいと画面の主役を食った
     this.moonGlow.width = this.moonGlow.height = R * 6;
     this.moonGlow.tint = 0xff4050;
     this.moonGlow.alpha = 0.35;
@@ -209,12 +209,12 @@ export class Backdrop {
       const fc = new Container();
       const rr = rng(71);
       const fy = horizon + h * 0.4;
-      const kinds = ['susuki', 'grass', 'higanbana', 'grass', 'flowers', 'susuki', 'fence'];
+      const kinds = ['grass', 'grass', 'flowers', 'grass', 'flowers', 'fence']; // 春の夜にそろえる（すすき・彼岸花は秋で、季節が混ざった）
       for (let x = gx0; x < gx0 + gw * 1.3; x += 70 + rr() * 150) {
         const k = kinds[Math.floor(rr() * kinds.length)];
         const sp = new Sprite(this.props[k]);
         sp.anchor.set(0.5, 1);
-        const hh = h * (k === 'fence' ? 0.16 : k === 'flowers' ? 0.1 : 0.2 + rr() * 0.08);
+        const hh = h * (k === 'fence' ? 0.16 : k === 'flowers' ? 0.1 : 0.15 + rr() * 0.07);
         sp.scale.set((hh / sp.texture.height) * (rr() < 0.5 ? -1 : 1), hh / sp.texture.height);
         sp.position.set(x, fy + 26);
         sp.tint = 0x6a5a80; // 手前はうす暗く（主人公と狼に目が行くように）
