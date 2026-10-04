@@ -158,7 +158,7 @@ async function main() {
       if (ev === 'night') {
         const n = Object.values(sim.pending()).reduce((a, b) => a + (b ?? 0), 0);
         const m = sim.mood ? MOODS[sim.mood] : null;
-        showCard(m ? m.name : `${sim.wave + 1}日目の夜`, m ? `${sim.wave + 1}日目・${m.note}・狼 ${n}匹` : `狼 ${n}匹`);
+        showCard(m ? m.name : `${sim.wave + 1}日目の夜`, m ? `${sim.wave + 1}日目・狼 ${n}匹<br>${m.note}` : `狼 ${n}匹`);
         document.body.dataset.mood = sim.mood ?? '';
       }
       say(ev);

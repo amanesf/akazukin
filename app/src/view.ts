@@ -1,10 +1,10 @@
 // 戦場の描画。主人公のアップをカメラで追い、下に戦場全体の小さい地図（minimap.ts）を出す（2026-10-04）。
 // 狼・番犬はまだ灰色の箱（絵は生成で作る・plan.md §6）。動き・演出は箱のままでも作り込む：
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
-import { Application, Assets, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
 import { DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
-import { crescent, easeOut, glowTexture, Particles, place } from './fx';
+import { crescent, easeOut, glowTexture, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
@@ -42,12 +42,27 @@ export class View {
   private wolfBack = new Container(); // 狼の絵（主人公より奥）
   private wolfFront = new Container(); // 狼の絵（主人公より手前）
   private wolfHud = new Graphics(); // 狼の体力の棒（絵の上）
+  // 月明かりの縁取り（狼・番犬は wolfArt の rim、主人公は rimRig）。体の後ろに、紅く光る同じ絵を右上へずらして置く
+  private rimBack = new Container();
+  private rimFront = new Container();
+  private rimRig = new HeroRig();
+  private cloudRoot = new Container(); // 月の前を流れる雲
+  private clouds: { c: Container; x: number; y: number; sp: number; w: number }[] = [];
+  private lampRoot = new Container(); // ガス灯の光（加算）
+  private lamps: { x: number; head: Sprite; pool: Sprite }[] = [];
+  private groundPetals: { x: number; lane: number; r: number; c: number; rot: number }[] = []; // 道に積もった花びら
+  private steps: { x: number; lane: number; t: number; side: number }[] = []; // 走った足あと
+  private stepT = 0;
+  private mono = 0; // 締めの一撃の一瞬のモノクロ
+  private monoFilter = new ColorMatrixFilter();
+  private grade = new Graphics(); // 色の仕上げ（夜は藍・昼は暖かく）
+  private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
   // ほかの4種類は噛みつき、遠吠えと大狼はのけぞりも（pack-motion-v1）
-  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit'], this.wolfBack, this.wolfFront);
+  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
   private dogBack = new Container();
   private dogFront = new Container();
-  private dogArt = new UnitArt<DogArt>('dogs', ['shiba', 'akita', 'tosa', 'shiba_run', 'akita_run', 'tosa_run', 'shiba_bite', 'akita_bite', 'tosa_bite'], this.dogBack, this.dogFront); // 走り・噛みつきの絵は dogs-motion-v1 // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
+  private dogArt = new UnitArt<DogArt>('dogs', ['shiba', 'akita', 'tosa', 'shiba_run', 'akita_run', 'tosa_run', 'shiba_bite', 'akita_bite', 'tosa_bite'], this.dogBack, this.dogFront, [this.rimBack, this.rimFront]); // 走り・噛みつきの絵は dogs-motion-v1 // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
   private house = new Sprite(); // おばあさんの家の絵
   private houseOver = new Graphics(); // 家のひび（絵の上）
   private overG = new Graphics(); // 矢・砲弾・衝撃波・斬撃の弧・裂け目
@@ -91,7 +106,35 @@ export class View {
     // resizeTo は窓の大きさしか見ない。下の板（昼と夜で高さが変わる）に合わせて、戦場の大きさを測り直す
     new ResizeObserver(() => this.app.resize()).observe(host);
     const st = this.app.stage;
-    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.rays, this.backdrop.moon, this.paraRoot, this.dayLift, this.shade, this.world);
+    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.rays, this.backdrop.moon, this.cloudRoot, this.paraRoot, this.dayLift, this.shade, this.world);
+    // 雲：やわらかい丸いぼかしを横に重ねた塊。月の前を、奥（ゆっくり）と手前（少し速く）でゆっくり流れる
+    for (let i = 0; i < 7; i++) {
+      const c = new Container();
+      const n = 5 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < n; j++) {
+        const b = new Sprite(glowTexture());
+        b.anchor.set(0.5);
+        const k = 1 - Math.abs(j - (n - 1) / 2) / n;
+        b.width = 120 + Math.random() * 80;
+        b.height = (40 + Math.random() * 30) * (0.6 + k);
+        b.position.set((j - (n - 1) / 2) * 52 + Math.random() * 20, -k * 14 + Math.random() * 8);
+        c.addChild(b);
+      }
+      this.cloudRoot.addChild(c);
+      this.clouds.push({ c, x: Math.random(), y: 0.05 + Math.random() * 0.3, sp: 0.004 + Math.random() * 0.008, w: 0.8 + Math.random() * 0.8 });
+    }
+    // ガス灯（道の奥の縁に3本）。灯りと、地面に落ちる光だまり
+    this.lampRoot.blendMode = 'add';
+    for (const x of [200, 470, 740]) {
+      const head = new Sprite(glowTexture());
+      head.anchor.set(0.5);
+      head.tint = 0xffb060;
+      const pool = new Sprite(glowTexture());
+      pool.anchor.set(0.5);
+      pool.tint = 0xffa050;
+      this.lampRoot.addChild(pool, head);
+      this.lamps.push({ x, head, pool });
+    }
     this.dayLift.blendMode = 'add';
     for (let i = 0; i < 7; i++) {
       const f = new Sprite(glowTexture());
@@ -99,7 +142,8 @@ export class View {
       f.tint = 0xa898d0;
       this.fog.push(f);
     }
-    this.world.addChild(this.ground, ...this.fog, this.house, this.houseOver, this.backG, this.dogBack, this.wolfBack, this.ghostLayer, this.rig.root, this.frontG, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
+    this.rimRig.root.blendMode = 'add';
+    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontStyle: 'italic', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -122,7 +166,8 @@ export class View {
       this.world.addChild(t);
       this.roleText.push(t);
     }
-    st.addChild(this.screenParts.root, this.screen);
+    this.grade.blendMode = 'multiply';
+    st.addChild(this.grade, this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
       t.anchor.set(0.5);
@@ -158,7 +203,7 @@ export class View {
     // 赤ずきんの絵。読み込めなければ箱のまま遊べる（?rig=0 で箱：見比べ用）
     if (new URLSearchParams(location.search).get('rig') !== '0') {
       const all = [this.rig, ...Array.from({ length: GHOSTS }, () => new HeroRig())];
-      Promise.all([...all.map((r) => r.load()), this.mini.load()]).then(() => {
+      Promise.all([...all.map((r) => r.load()), this.rimRig.load(), this.mini.load()]).then(() => {
         for (let i = 1; i < all.length; i++) {
           this.ghostLayer.addChild(all[i].root);
           all[i].root.visible = false;
@@ -214,6 +259,7 @@ export class View {
   private wx(x: number) { return x * this.geo.K; }
   // 昼は引いて全体を映すので、体と奥行きを盛る（小さい地図と同じ考え）。dayK は昼への移り変わり（0〜1）
   private dayK = 0;
+  private moonProg = 0;
   private wy(lane: number) { return this.geo.laneTop + lane * this.geo.laneH * (1 + 2.2 * this.dayK); }
   private ds(lane: number) { return 0.86 + 0.24 * lane; } // 手前ほど大きい
   private U(lane: number) { return this.geo.Hm * 0.0027 * this.ds(lane) * (1 + 1.6 * this.dayK); } // 体の大きさ1あたりの画素
@@ -264,7 +310,6 @@ export class View {
     let tz: number;
     let tx: number;
     let ty: number;
-    const fieldW = FIELD_LENGTH * g.K;
     if (day) {
       // 昼：家から番犬を置ける所の先まで（番犬の持ち場を決める画面）
       const x0 = -170 * g.K;
@@ -284,7 +329,11 @@ export class View {
       // 家の前では、主人公を右へ寄せて家を広く映す（家が画面の外で、守っている感じがしなかった）
       const nearHome = Math.max(0, Math.min(1, (240 - h.x) / 150));
       if (nearHome > 0) tx += (Math.max(houseL + g.W / 2 / tz, this.wx(h.x) - (g.W / 2 / tz) * 0.5) - tx) * nearHome;
-      tx = Math.max(houseL + g.W / 2 / tz, Math.min(fieldW - g.W / 2 / tz + 140, tx));
+      // 裂け目の近くでは、裂け目が画面の右に入るように寄せる（前はカメラが手前で止まり、裂け目が見えなかった）
+      const nearRift = Math.max(0, Math.min(1, (h.x - 600) / 160));
+      const riftR = this.wx(WOLF_SPAWN_X) + 170;
+      if (nearRift > 0) tx += (Math.min(riftR - g.W / 2 / tz, this.wx(h.x) + (g.W / 2 / tz) * 0.55) - tx) * nearRift;
+      tx = Math.max(houseL + g.W / 2 / tz, Math.min(riftR - g.W / 2 / tz, tx));
       ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
     }
     const kc = 1 - Math.exp(-dt * (day ? 3 : 7));
@@ -314,8 +363,19 @@ export class View {
       dl.rect(0, horizonS - g.Hm * 0.3 * z, g.W, g.Hm * 0.3 * z).fill({ color: 0x302820, alpha: this.dayK });
       dl.rect(0, horizonS, g.W, g.Hm - horizonS).fill({ color: 0x584838, alpha: this.dayK });
     }
-    this.backdrop.update(this.vt, g.W, horizonS, this.dayK, 0);
-    this.backdrop.moon.position.set(g.W * 0.8 - this.cam.x * 0.02, g.Hm * (0.17 - 0.05 * this.dayK));
+    // 空：夜が進むと月が左へ傾いていき、最後の1匹を倒すと空の端が白み始める（決めポーズのあいだに夜明けへ）
+    const pend = sim.phase === 'wave' ? Object.values(sim.pending()).reduce((a, b) => a + (b ?? 0), 0) : 0;
+    const total = sim.nightKills + sim.wolves.length + pend;
+    const prog = sim.phase === 'wave' && total > 0 ? sim.nightKills / total : this.moonProg;
+    this.moonProg += (prog - this.moonProg) * Math.min(1, dt * 0.8);
+    const dawn = sim.cheer >= 0 ? 0.45 * Math.min(1, sim.cheer / 1.5) : 0;
+    const skyK = Math.max(this.dayK, dawn);
+    this.backdrop.update(this.vt, g.W, horizonS, skyK, 0);
+    const mx = g.W * (0.84 - 0.3 * this.moonProg * (1 - this.dayK)) - this.cam.x * 0.02;
+    const my = g.Hm * (0.17 - 0.05 * this.dayK + 0.03 * this.moonProg * (1 - this.dayK));
+    this.backdrop.moon.position.set(mx, my);
+    this.drawClouds(sim, dt, mx, my);
+    UnitArt.rimK = 0.5 * (1 - skyK);
 
     // ── 新しい出来事から演出を起こす ──
     for (const f of sim.fx) {
@@ -328,6 +388,10 @@ export class View {
     // ── 地面・家・裂け目・影 ──
     const gr = this.ground.clear();
     if (!day) this.drawPath(gr, sim);
+    if (sim.phase === 'wave' && this.lastPhase !== 'wave') this.groundPetals = []; // 晩の始まりに道をきれいに
+    this.lastPhase = sim.phase;
+    this.drawGroundMarks(gr, sim, dt);
+    this.drawLamps(gr, sim);
     // 夜霧：地面すれすれを、平たい霧の塊がゆっくり左へ流れる
     const span = FIELD_LENGTH * g.K + g.W * 2;
     this.fog.forEach((f, i) => {
@@ -397,7 +461,14 @@ export class View {
     const hy = this.wy(h.lane);
     const pose = this.rig.pose(sim, hx, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.gunAim(sim, hx, hy));
     if (pose) {
+      // ガス灯の近くでは、ほんのり橙に照らされる
+      const lamp = this.lamps.find((l) => Math.abs(l.x - h.x) < 80);
+      if (lamp && pose.tint === 0xffffff && !day) pose.tint = 0xfff0dc;
       this.rig.apply(pose);
+      if (this.rimRig.ready) {
+        this.rimRig.root.visible = skyK < 0.99;
+        this.rimRig.apply({ ...pose, x: pose.x + 3, y: pose.y - 3 }, 0xff4060, 0.5 * (1 - skyK) * pose.alpha);
+      }
       this.afterimages(sim, pose, dt);
       this.trackBlade(sim);
     } else this.boxHero(fg, sim, hx, hy);
@@ -432,6 +503,18 @@ export class View {
       o.roundRect(hx - w / 2, top, (w * Math.max(0, h.hp)) / sim.maxHp, 5, 2).fill(h.hp < sim.maxHp * 0.3 ? 0xff4050 : COLOR.heroHp);
     }
 
+    // 締めの一撃：一瞬だけ世界の色が抜け、斬撃と花びら（演出の粒は色のまま）が残る
+    if (sim.events.includes('finisher')) this.mono = 0.22;
+    this.mono = Math.max(0, this.mono - dt);
+    const monoOn = this.mono > 0;
+    if (monoOn) {
+      this.monoFilter.desaturate();
+      this.monoFilter.alpha = Math.min(1, this.mono / 0.12);
+    }
+    for (const c of [this.paraRoot, this.ground, this.house, this.dogBack, this.dogFront, this.wolfBack, this.wolfFront, this.rig.root, this.backdrop.sky]) c.filters = monoOn ? [this.monoFilter] : null;
+    // 色の仕上げ：画面全体に、夜は藍・昼は暖かい色を薄く掛ける
+    const gd = this.grade.clear();
+    gd.rect(0, 0, g.W, g.Hm).fill({ color: mix(0xbcb4ec, 0xfff0d8, skyK), alpha: 0.35 });
     this.parts.update(pdt);
     this.parts.draw();
     this.screenParts.update(dt);
@@ -528,6 +611,9 @@ export class View {
         P.glow(x + dir * hh * 0.25, my, hh * (f.big ? 1.6 : 1.1), 0xffe0a0, 0.18, 1, 0.3);
         for (let i = 0; i < 10; i++) P.line(x, my + (Math.random() - 0.5) * hh * 0.2, dir * hh * (0.6 + Math.random() * 0.8), 0, 0xfff0c0, 0.9, 0.12, 3);
         P.dust(x - dir * hh * 0.3, y, s * 1.6, 6, 60, 30); // 反動の土煙
+        P.gunSmoke(x + dir * hh * 0.3, my, s, dir); // 砲口からたなびく白い煙
+        P.casing(x - dir * hh * 0.1, my, s, dir, y + 4); // 金の薬莢が跳ねる
+        if (f.big) P.casing(x - dir * hh * 0.15, my + 6, s, dir, y + 6);
         break;
       }
       case 'full':
@@ -550,6 +636,9 @@ export class View {
         P.smoke(x, y - zy - this.geo.Hm * 0.06, s, 7);
         for (let i = 0; i < 8; i++) P.ember(x + (Math.random() - 0.5) * 40 * s, y - zy - this.geo.Hm * 0.06, s);
         for (let i = 0; i < 6; i++) P.petal(x, y - zy - this.geo.Hm * 0.05, s, (Math.random() - 0.5) * 500 + (f.dir ?? 0) * 200, -150 - Math.random() * 300);
+        // 道に花びらが積もる（夜が進むほど道が桜色に）
+        for (let i = 0; i < 5; i++) this.groundPetals.push({ x: f.x + (Math.random() - 0.5) * 60, lane: Math.max(0, Math.min(1, f.lane + (Math.random() - 0.5) * 0.25)), r: 2.5 + Math.random() * 3, c: PINK[Math.floor(Math.random() * 4)], rot: Math.random() * 3 });
+        if (this.groundPetals.length > 500) this.groundPetals.splice(0, this.groundPetals.length - 500);
         break;
       case 'miss':
         P.dust(x, y, s * 0.7, 2, 20, 20);
@@ -604,6 +693,8 @@ export class View {
         P.firefly(x, this.wy(Math.random()) - Math.random() * g.Hm * 0.25, g.Hm / 600);
       }
       if (Math.random() < 0.6) P.ember(this.wx(WOLF_SPAWN_X) + (Math.random() - 0.5) * 30, this.wy(Math.random()) - Math.random() * g.Hm * 0.2, g.Hm / 600);
+      // 裂け目から黒い瘴気が漏れて昇る
+      if (sim.phase === 'wave' && Math.random() < 0.35) P.smoke(this.wx(WOLF_SPAWN_X) + 30 + (Math.random() - 0.5) * 40, g.horizon - g.Hm * (Math.random() * 0.6) + g.Hm * 0.1, g.Hm / 600, 1);
       // 桜嵐：花吹雪
       // 桜嵐：竜巻に沿って花びらが渦を巻いて昇る（画面を横切る花吹雪は少しだけ）
       if (h.ouran > 0) {
@@ -859,7 +950,7 @@ export class View {
   }
 
   // 主人公が動ける道（2026-10-04 アマネさん「移動範囲がメイン画面でわかるように」）：奥行きの帯を土の道として明るく塗り、
-  // 奥と手前の縁に小石を並べる。右の端（それより先へは行けない）には、しめ縄と紙垂を張る。走って行く先には輪
+  // 奥と手前の縁に小石を並べる。右の端（それより先へは行けない）は裂け目の紅い瘴気。走って行く先には輪
   private drawPath(g: Graphics, sim: Sim) {
     const x0 = this.wx(HOUSE_X);
     const x1 = this.wx(HERO.maxX);
@@ -873,21 +964,14 @@ export class View {
         g.ellipse(x + j, y + (j % 3), 6 + (j % 4), 3).fill({ color: 0x9a8a7a, alpha: a });
       }
     }
-    // しめ縄（右の端）：2本の杭のあいだに縄を渡し、紙垂を下げる
-    const h = this.geo.Hm * 0.16;
-    for (const y of [top, bot]) {
-      g.rect(x1 - 4, y - h, 8, h).fill(0x4a3428);
-      g.rect(x1 - 4, y - h, 8, 4).fill(0x6a4c3a);
+    // 右の端（それより先へは行けない）：しめ縄はやめ、裂け目から滲む紅い瘴気が道を染める所を行けない所にする（2026-10-04 アマネさん「しめ縄要る？」）
+    const rx = this.wx(WOLF_SPAWN_X);
+    for (let i = 0; i < 8; i++) {
+      const k = i / 8;
+      const xa = x1 + (rx - x1) * k;
+      g.rect(xa, top - 4, (rx - x1) / 8 + 1, bot - top + 8).fill({ color: 0x8a0818, alpha: 0.05 + 0.22 * k });
     }
-    const sag = (q: number) => Math.sin(q * Math.PI) * 14;
-    g.moveTo(x1, top - h + 6);
-    for (let q = 0.1; q <= 1.0001; q += 0.1) g.lineTo(x1, top - h + 6 + (bot - top) * q + sag(q));
-    g.stroke({ width: 6, color: 0xd8c08a });
-    for (let q = 0.2; q < 0.9; q += 0.2) {
-      const y = top - h + 6 + (bot - top) * q + sag(q);
-      const sway = Math.sin(this.vt * 3 + q * 9) * 3;
-      g.poly([x1, y, x1 + 9 + sway, y + 6, x1 + 2 + sway, y + 12, x1 + 11 + sway, y + 19, x1 + 4 + sway, y + 26]).stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
-    }
+    g.moveTo(x1, top - 4).lineTo(x1, bot + 4).stroke({ width: 2, color: 0xff4050, alpha: 0.25 + 0.1 * Math.sin(this.vt * 3) });
     // 走って行く先
     const o = sim.hero.order;
     if (o) {
@@ -947,29 +1031,102 @@ export class View {
     this.houseFlash -= dt; // 1コマごとに減らすと、画面の速さで長さが変わった
   }
 
-  // 異界の裂け目（戦場の右の端）。狼はここから出てくる
+  // 異界の裂け目（戦場の右の端）。狼はここから出てくる。
+  // 空の高くから地面まで裂けた、ぎざぎざの黒い割れ目。縁が紅く脈打ち、枝分かれしたひび・紅い稲妻・中に光る目・地面の裂け目
+  // （2026-10-04 アマネさん「裂け目がださい。もっと大きくて禍々しいのがいい」）
+  private riftBolt = { t: 0, seed: 1 };
   private drawRift(g: Graphics, sim: Sim) {
     const gx = this.geo;
-    const x = this.wx(WOLF_SPAWN_X) + 20;
-    const top = gx.horizon - gx.Hm * 0.2;
-    const bot = this.wy(1) + 6;
+    const x = this.wx(WOLF_SPAWN_X) + 30;
+    const top = gx.horizon - gx.Hm * 0.62;
+    const bot = this.wy(1) + 14;
     const t = this.vt;
-    const pts: number[] = [];
-    const n = 12;
+    const live = sim.phase === 'wave' ? 1 : 0.45;
+    const pulse = 0.85 + 0.15 * Math.sin(t * 3.2) + 0.05 * Math.sin(t * 11);
+    // 背の光（紅いにじみ）
+    for (let i = 0; i < 4; i++) {
+      const yy = top + (bot - top) * (0.15 + i * 0.25);
+      g.ellipse(x, yy, gx.Hm * 0.24 * pulse * live, (bot - top) * 0.24).fill({ color: 0xc01028, alpha: 0.08 * live });
+    }
+    // 割れ目の背骨：決まったぎざぎざ（毎コマ同じ形）に、少しのゆらぎ
+    const n = 18;
+    const spine: [number, number][] = [];
     for (let i = 0; i <= n; i++) {
       const k = i / n;
-      pts.push(x + Math.sin(k * 9 + t * 2) * 6 + Math.sin(k * 23) * 5, top + (bot - top) * k);
+      const zig = ((i * 7919) % 13) / 13 - 0.5;
+      spine.push([x + zig * 34 + Math.sin(k * 7 + t * 1.5) * 4, top + (bot - top) * k]);
     }
-    const width = (sim.phase === 'wave' ? 1 : 0.4) * (22 + Math.sin(t * 4) * 4);
-    const half = (i: number) => width * Math.sin((Math.PI * i) / n) ** 0.6;
-    const poly: number[] = [];
-    for (let i = 0; i <= n; i++) poly.push(pts[i * 2] - half(i), pts[i * 2 + 1]);
-    for (let i = n; i >= 0; i--) poly.push(pts[i * 2] + half(i), pts[i * 2 + 1]);
-    g.poly(poly).fill({ color: 0xff3040, alpha: 0.25 });
-    g.poly(poly.map((v, i) => (i % 2 === 0 ? x + (v - x) * 0.5 : v))).fill({ color: 0x200008, alpha: 0.95 });
-    g.moveTo(pts[0], pts[1]);
-    for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
-    g.stroke({ width: 2, color: 0xff6070, alpha: 0.8 });
+    const width = (50 + 10 * Math.sin(t * 2.3)) * pulse * (0.6 + 0.4 * live);
+    const half = (i: number) => width * Math.sin((Math.PI * i) / n) ** 0.5 * (0.75 + 0.25 * (((i * 31) % 7) / 7));
+    const outline = (k: number) => {
+      const pts: number[] = [];
+      for (let i = 0; i <= n; i++) pts.push(spine[i][0] - half(i) * k, spine[i][1]);
+      for (let i = n; i >= 0; i--) pts.push(spine[i][0] + half(i) * k * 0.8, spine[i][1]);
+      return pts;
+    };
+    g.poly(outline(1.6)).fill({ color: 0xff2040, alpha: 0.18 * pulse });
+    g.poly(outline(1.15)).fill({ color: 0xff3048, alpha: 0.55 });
+    g.poly(outline(1)).fill(0x12000a);
+    // 中の渦と、光る目（ときどき瞬く）
+    for (let i = 0; i < 4; i++) {
+      const k = 0.25 + i * 0.17;
+      const sx = spine[Math.round(k * n)][0];
+      const sy = top + (bot - top) * k;
+      const blink = Math.sin(t * 1.3 + i * 2.1) > -0.6 ? 1 : 0;
+      if (blink && live > 0.5) {
+        g.circle(sx - 5, sy, 2.2).fill({ color: 0xff5060, alpha: 0.9 });
+        g.circle(sx + 5, sy, 2.2).fill({ color: 0xff5060, alpha: 0.9 });
+      }
+    }
+    // 縁の光る線
+    g.poly(outline(1)).stroke({ width: 2.5, color: 0xff7080, alpha: 0.9 * pulse });
+    // 枝分かれしたひび（空へ・地面へ）
+    const branches: [number, number, number][] = [[0.08, -1, 0.9], [0.18, 1, 1.1], [0.35, -1, 0.7], [0.55, 1, 0.8], [0.8, -1, 0.6]];
+    for (const [k, dir, len] of branches) {
+      const i = Math.round(k * n);
+      let [bx, by] = spine[i];
+      g.moveTo(bx, by);
+      for (let j = 1; j <= 5; j++) {
+        bx += dir * (14 + ((i + j) * 17 % 9)) * len;
+        by += (((i * 3 + j * 5) % 9) - 4) * 3 - 6;
+        g.lineTo(bx, by);
+      }
+      g.stroke({ width: 2, color: 0xff3048, alpha: 0.55 * pulse * live });
+    }
+    // 地面の裂け目：足もとから放射状に
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI * (0.55 + i * 0.18);
+      let gx0 = x;
+      let gy0 = bot - 6;
+      g.moveTo(gx0, gy0);
+      for (let j = 1; j <= 4; j++) {
+        gx0 += Math.cos(a) * 26 * j * 0.5;
+        gy0 -= Math.sin(a) * 6 * j * 0.5 - (((i + j) % 3) - 1) * 3;
+        g.lineTo(gx0, gy0);
+      }
+      g.stroke({ width: 2, color: 0xff2840, alpha: 0.45 * live });
+    }
+    // 紅い稲妻：ときどき割れ目のまわりに走る
+    if (live > 0.5) {
+      this.riftBolt.t -= 1 / 60;
+      if (this.riftBolt.t < -0.15) { this.riftBolt.t = 1 + Math.random() * 2.5; this.riftBolt.seed = Math.random() * 1000; }
+      if (this.riftBolt.t < 0) {
+        const al = 1 + this.riftBolt.t / 0.15;
+        let r = this.riftBolt.seed;
+        const rnd = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
+        let bx = x + (rnd() - 0.5) * 30;
+        let by = top + (bot - top) * rnd() * 0.5;
+        g.moveTo(bx, by);
+        const dir = rnd() < 0.5 ? -1 : 1;
+        for (let j = 0; j < 7; j++) {
+          bx += dir * (10 + rnd() * 26);
+          by += 8 + rnd() * 22;
+          g.lineTo(bx, by);
+        }
+        g.stroke({ width: 3, color: 0xffa0b0, alpha: al });
+        if (al > 0.6) this.flash = Math.max(this.flash, 0.04);
+      }
+    }
   }
 
   // 背中の主砲を向ける角度（heroRig の aim）。撃ち込みは群れへ、主砲は前のいちばん近い狼へ。いなければ真っすぐ前
@@ -983,8 +1140,10 @@ export class View {
     } else {
       const t = sim.wolves.filter((w) => (w.x - h.x) * h.facing > 0 && Math.abs(w.lane - h.lane) <= 0.6).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
       if (t) {
-        tx = this.wx(t.x);
-        ty = this.wy(t.lane) - this.geo.Hm * 0.05 - t.z * this.zk();
+        // 狼の頭を狙う（足もとを狙っていた。2026-10-04 アマネさん）
+        const hd = this.wolfHead(t.x, t.lane, t.z, WOLF_REL[t.kind]);
+        tx = hd.x;
+        ty = hd.y;
       }
     }
     const ax = Math.max(1, (tx - hx) * h.facing); // 前へ（後ろの狼には向けない）
@@ -1122,6 +1281,71 @@ export class View {
         o.poly(pts).fill(0xffe070).stroke({ width: 2, color: ink });
       }
     }
+  }
+
+  // 雲：月のそばほど紅く縁が光る。夜は藍、昼は白。月にかかると少し暗くなる
+  private drawClouds(sim: Sim, dt: number, mx: number, my: number) {
+    const g = this.geo;
+    let cover = 0;
+    for (const cl of this.clouds) {
+      cl.x -= cl.sp * dt * (sim.phase === 'wave' ? 1 : 0.6);
+      if (cl.x < -0.4) { cl.x = 1.3; cl.y = 0.05 + Math.random() * 0.3; }
+      const x = cl.x * g.W * 1.6 - g.W * 0.2 - this.cam.x * 0.01;
+      const y = g.Hm * cl.y;
+      cl.c.position.set(x, y);
+      cl.c.scale.set(cl.w * (g.W / 390));
+      const d = Math.hypot(x - mx, y - my) / g.W;
+      const near = Math.max(0, 1 - d * 2.2);
+      cl.c.tint = mix(mix(0x3a2c58, 0x8a3a58, near), 0xffffff, this.dayK);
+      cl.c.alpha = 0.55 + 0.25 * this.dayK;
+      if (Math.abs(x - mx) < 90 * cl.w && Math.abs(y - my) < 30) cover = Math.max(cover, 1 - Math.abs(x - mx) / (90 * cl.w));
+    }
+    this.moonCover += (cover - this.moonCover) * Math.min(1, dt * 2);
+  }
+  private moonCover = 0;
+
+  // 道に積もった花びらと、走った足あと
+  private drawGroundMarks(gr: Graphics, sim: Sim, dt: number) {
+    for (const p of this.groundPetals) {
+      gr.ellipse(this.wx(p.x), this.wy(p.lane) + 2, p.r * 1.4, p.r * 0.6).fill({ color: p.c, alpha: 0.55 });
+    }
+    const h = sim.hero;
+    this.stepT -= dt;
+    if (h.running > 0 && h.z <= 0 && h.down <= 0 && this.stepT <= 0) {
+      this.stepT = h.running > 400 ? 0.07 : 0.12;
+      this.steps.push({ x: h.x, lane: h.lane, t: 0, side: this.steps.length % 2 ? 1 : -1 });
+    }
+    for (const st of this.steps) st.t += dt;
+    this.steps = this.steps.filter((st) => st.t < 1.2);
+    for (const st of this.steps) {
+      const y = this.wy(st.lane) + st.side * 4;
+      gr.ellipse(this.wx(st.x), y, 6, 2.5).fill({ color: 0x1a1018, alpha: 0.35 * (1 - st.t / 1.2) });
+    }
+  }
+
+  // ガス灯：柱と灯り、地面の光だまり。灯りは少しゆらぐ。昼は消える
+  private drawLamps(gr: Graphics, sim: Sim) {
+    const g = this.geo;
+    const night = 1 - this.dayK;
+    for (const l of this.lamps) {
+      const x = this.wx(l.x);
+      const base = this.wy(0) - 12;
+      const top = base - g.Hm * 0.24;
+      gr.rect(x - 3, top, 6, base - top).fill(0x2a2028);
+      gr.rect(x - 6, base - 6, 12, 6).fill(0x2a2028);
+      gr.poly([x - 11, top, x + 11, top, x + 7, top - 20, x - 7, top - 20]).fill(0x3a2c30);
+      gr.rect(x - 7, top - 18, 14, 16).fill({ color: 0xffd090, alpha: 0.4 + 0.5 * night });
+      gr.poly([x - 13, top - 20, x + 13, top - 20, x, top - 30]).fill(0x2a2028);
+      const flick = 0.85 + 0.1 * Math.sin(this.vt * 7 + l.x) + 0.05 * Math.sin(this.vt * 23 + l.x);
+      l.head.position.set(x, top - 10);
+      l.head.width = l.head.height = g.Hm * 0.16;
+      l.head.alpha = 0.7 * night * flick;
+      l.pool.position.set(x, this.wy(0.35));
+      l.pool.width = g.Hm * 0.5;
+      l.pool.height = g.Hm * 0.16;
+      l.pool.alpha = 0.32 * night * flick;
+    }
+    void sim;
   }
 
   // 狼の頭の位置（狼は左を向く）。矢はここを狙う（2026-10-04 アマネさん「弓矢は頭狙ってほしい」）
@@ -1300,12 +1524,13 @@ export class View {
     // 桜嵐：背景を暗く。夜の様子：紅月は赤く、霧は白くかすむ
     const sh = this.shade.clear();
     if (sim.phase === 'wave' && sim.mood === 'beni') sh.rect(0, 0, g.W, g.Hm).fill({ color: 0xa01020, alpha: 0.16 });
+    if (this.moonCover > 0.02 && this.dayK < 0.5) sh.rect(0, 0, g.W, g.Hm).fill({ color: 0x000008, alpha: 0.12 * this.moonCover }); // 雲が月にかかると少し暗く
     if (sim.phase === 'wave' && sim.mood === 'kiri') sh.rect(0, g.horizon * 0.5, g.W, g.Hm).fill({ color: 0xb8b0d0, alpha: 0.12 });
     if (h.ouran > 0) sh.rect(0, 0, g.W, g.Hm).fill({ color: 0x100008, alpha: 0.45 });
     // 周辺の暗がり（ずっと薄く。体力が少ないと赤く脈打つ）
     const low = sim.phase === 'wave' && h.down <= 0 && h.hp < sim.maxHp * 0.3;
     const vc = low ? 0x800010 : h.ouran > 0 ? 0x601020 : 0x000000;
-    const va = low ? 0.35 + 0.2 * Math.sin(this.vt * 6) : 0.3;
+    const va = low ? 0.35 + 0.2 * Math.sin(this.vt * 6) : 0.3 + 0.12 * (1 - this.dayK); // 夜は四隅を少し濃く
     const edge = Math.min(g.W, g.Hm) * 0.12;
     for (let i = 0; i < 6; i++) {
       const k = i / 6;

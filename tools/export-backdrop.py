@@ -44,6 +44,9 @@ night = np.array([30, 24, 52], dtype=np.float32)
 upper = (np.arange(h)[:, None] < h * 0.42) & (sat < 40) & (lum < 120)
 k = (upper * 0.45)[:, :, None]
 a = (a.astype(np.float32) * (1 - k) + night * k).astype(np.uint8)
+# 奥行き：遠い町並みを少しだけぼかして、手前の主人公と狼を際立たせる（2026-10-04。試作で毎コマぼかすと重いので、絵の側で）
+a = cv2.GaussianBlur(a, (0, 0), 1.6)
+alpha = cv2.GaussianBlur(alpha, (0, 0), 1.0)
 out = Image.fromarray(np.dstack([a, alpha]), 'RGBA')
 k = 400 / h
 out = out.resize((int(w * k), 400), Image.LANCZOS)

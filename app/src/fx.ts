@@ -129,6 +129,16 @@ export class Particles {
     }
   }
 
+  // 主砲の薬莢：金色で、くるくる回って跳ねる
+  casing(x: number, y: number, s: number, dir: number, floor: number) {
+    this.add({ kind: 'debris', x, y, vx: -dir * rnd(120, 220) * s, vy: -rnd(260, 380) * s, life: 1.1, size: 7 * s, color: 0xe0b860, rot: rnd(0, 6), vr: rnd(-18, 18), g: 1500 * s, floor });
+  }
+
+  // 主砲の白い煙：砲口からたなびいて昇る
+  gunSmoke(x: number, y: number, s: number, dir: number) {
+    for (let i = 0; i < 7; i++) this.add({ kind: 'dust', x: x + dir * rnd(0, 30) * s, y: y + rnd(-8, 8) * s, vx: dir * rnd(20, 90) * s, vy: rnd(-60, -20) * s, life: rnd(0.9, 1.5), size: rnd(8, 14) * s, grow: 30 * s, color: 0xd8d0d8, alpha: 0.45, drag: 1.2 });
+  }
+
   ring(x: number, y: number, r0: number, r1: number, w: number, color: number, life: number, flat = 1) {
     const p = this.add({ kind: 'ring', x, y, size: r0, grow: (r1 - r0) / life, w, color, life });
     p.vr = flat; // 縦のつぶれ（地面の輪）

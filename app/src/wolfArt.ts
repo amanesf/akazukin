@@ -14,13 +14,21 @@ export class UnitArt<K extends string> {
   tex = {} as Record<K, Texture>;
   meta = {} as Record<K, Meta>;
   private pools: { root: Container; used: number }[];
+  private rims: { root: Container; used: number }[] = [];
+  // 月明かりの縁取り（リムライト）：同じ絵を紅く光らせて、月のある右上へ少しずらして体の後ろに置く。0 で消す
+  static rimK = 0;
+  static rimOff = 3;
   private dir: string;
   private kinds: K[];
 
-  constructor(dir: string, kinds: K[], back: Container, front: Container) {
+  constructor(dir: string, kinds: K[], back: Container, front: Container, rims?: [Container, Container]) {
     this.dir = `${import.meta.env.BASE_URL}${dir}/`;
     this.kinds = kinds;
     this.pools = [back, front].map((root) => ({ root, used: 0 }));
+    if (rims) {
+      this.rims = rims.map((root) => ({ root, used: 0 }));
+      for (const r of rims) r.blendMode = 'add';
+    }
   }
 
   async load(extra: string[] = []) {
@@ -32,11 +40,11 @@ export class UnitArt<K extends string> {
   }
 
   begin() {
-    for (const p of this.pools) p.used = 0;
+    for (const p of [...this.pools, ...this.rims]) p.used = 0;
   }
 
   end() {
-    for (const p of this.pools) for (let i = p.used; i < p.root.children.length; i++) p.root.children[i].visible = false;
+    for (const p of [...this.pools, ...this.rims]) for (let i = p.used; i < p.root.children.length; i++) p.root.children[i].visible = false;
   }
 
   // layer：0＝主人公より奥・1＝手前。x, y は体の真ん中（回るときの中心）、height は画面での背の高さ
@@ -58,6 +66,22 @@ export class UnitArt<K extends string> {
     sp.tint = tint;
     sp.alpha = alpha;
     sp.visible = true;
+    const rp = this.rims[layer];
+    if (!rp || UnitArt.rimK <= 0) return;
+    let r = rp.root.children[rp.used] as Sprite | undefined;
+    if (!r) {
+      r = new Sprite();
+      rp.root.addChild(r);
+    }
+    rp.used++;
+    r.texture = sp.texture;
+    r.anchor.copyFrom(sp.anchor);
+    r.scale.copyFrom(sp.scale);
+    r.rotation = rot;
+    r.position.set(x + UnitArt.rimOff, y - UnitArt.rimOff);
+    r.tint = 0xff4060;
+    r.alpha = alpha * UnitArt.rimK;
+    r.visible = true;
   }
 
   // 体の真ん中は足もとからどれだけ上か（put の y を決める）
