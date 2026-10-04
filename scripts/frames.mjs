@@ -56,6 +56,8 @@ const SCENES = {
   charge: { setup: `s.hero.x=300; s.hero.lane=0.5; for (let i=0;i<4;i++) s.debugSpawn('wolf',350+i*25,0.3+i*0.12);`, acts: { 1: `s.holdStart()`, 42: `s.holdEnd()` } },
   pounce: { setup: `s.hero.x=300; s.hero.lane=0.5; const w=s.debugSpawn('pup',400,0.5); w.skillCd=0;`, acts: {} },
   ouran: { setup: `s.hero.x=300; s.hero.lane=0.5; for (let i=0;i<6;i++) s.debugSpawn(i%2?'wolf':'pup',340+i*40,0.2+i*0.12); s.gauge=100;`, acts: { 1: `s.ouran()` } },
+  idle: { setup: `s.hero.x=300; s.hero.lane=0.5; s.debugSpawn('armored',990,0.5).stun=999; s.hero.bowT=999;`, acts: {} },
+  run: { setup: `s.hero.x=150; s.hero.lane=0.5; s.debugSpawn('armored',990,0.5).stun=999; s.hero.bowT=999;`, acts: { 1: `s.runTo(700,0.5)` } },
   day: { setup: `s.wave=1; s.phase='shop'; s.place('akita',380,0.5); s.place('shiba',300,0.2);`, acts: {} },
 };
 const sc = SCENES[SCENE];
