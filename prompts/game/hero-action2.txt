@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right at the same three-quarter angle as in image 1. She holds one large knife from image 2 in each hand in every figure. Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1.
+
+1. Dash: a low, long lunge to the right, her body leaning far forward, the front knee deeply bent, the back leg stretched straight behind; both knives held back low behind her, ready to cut; the skirt, braids and tail streaming back; a fierce, focused face.
+2. Rising slash: she leaps upward off the ground, both feet in the air with knees tucked, one arm swung high overhead with its knife pointing up, the other knife held low; the skirt flares; a bright, energetic face.
+3. Knocked back: she is hit and staggers backward to the left, leaning back, one foot lifted, arms flung out; eyes squeezed shut like >_<, mouth open.
+4. Charging: she crouches low with knees bent and feet wide, both knives held crossed in front of her chest, gathering power; a determined face with a small confident smile.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.

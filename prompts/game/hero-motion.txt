@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right at the same three-quarter angle as in image 1. She holds one large knife from image 2 in each hand in every figure. Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1, cheerful determined face.
+
+1. Running, contact pose: leaning forward, her front leg reaching forward with the heel about to land, the back leg pushing off behind; her arms swing in opposition, elbows bent; the skirt, braids and tail stream back.
+2. Running, passing pose: the opposite moment of the same run, the other leg forward with the knee raised high, the arms swung the other way.
+3. Horizontal slash, follow-through: her upper body twisted toward the right, both arms swept across in front of her at chest height, the knives held level, the skirt and tail swirling with the turn.
+4. Victory pose: a little hop with one foot kicked up behind her, one hand making a peace sign beside her winking eye, the other hand holding its knife up, a big bright smile.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.

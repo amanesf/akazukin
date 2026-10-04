@@ -67,6 +67,31 @@ k = height(p1) / height(back)
 back = cv2.resize(back, (int(back.shape[1] * k), int(back.shape[0] * k)), interpolation=cv2.INTER_AREA)
 frames['back'] = {'size': save('back', back), 'feet': feet(back)}
 
+# 力を抜いた待機と表情（hero-idle-faces-v1）・走り2コマ・横なぎ・決めポーズ（hero-motion-v1）。2026-10-04 生成。
+# ナイフは絵に描いてあるので、拳に差し込まない。大きさは、まっすぐ立った1人（待機・決めポーズ）の背の高さを構えに合わせ、
+# 同じ1枚の他の絵も同じ倍率で縮める（同じカメラで描かれているので）
+# 3枚目（hero-action2-v1：突進・斬り上げ・溜め）にはまっすぐ立った人がいない。3枚とも同じ頼み方・同じ大きさ（立って約1190画素）で
+# 描かれたので、1枚目の待機と同じ倍率にする。のけぞり（knock）はナイフを持っていないので使わない
+calm_h = height(cv2.imread('assets/game/parts/relax/calm.png', cv2.IMREAD_UNCHANGED))
+for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), ('motion', 'victory', ('run1', 'run2', 'sweep', 'victory')),
+                          ('action2', None, ('dash', 'rise', 'charge'))):
+    k = height(p1) / (height(cv2.imread(f'assets/game/parts/{sheet}/{ref}.png', cv2.IMREAD_UNCHANGED)) if ref else calm_h)
+    for name in names:
+        img = cv2.imread(f'assets/game/parts/{sheet}/{name}.png', cv2.IMREAD_UNCHANGED)
+        img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
+        f = feet(img)
+        if sheet == 'motion' or name in ('dash', 'rise'):
+            # 足が前後に開いた絵は、足の真ん中ではなくスカートの真ん中（背の高さの62〜72%の行の、不透明な所の端と端の真ん中）を基準にする。
+            # 腰の高さはしっぽとナイフが横に出ていてずれる。
+            # 一番下の足を基準にすると、走りの2コマで体が左右へ跳んだ
+            a = img[:, :, 3] > 128
+            ys = np.nonzero(a.any(axis=1))[0]
+            top, bottom = ys.min(), ys.max()
+            band = a[int(top + (bottom - top) * 0.62):int(top + (bottom - top) * 0.72)]
+            xs = np.nonzero(band.any(axis=0))[0]
+            f = [float((xs.min() + xs.max()) / 2), f[1]]
+        frames[name] = {'size': save(name, img), 'feet': f}
+
 # 拳（ナイフを差し込む所）と、ナイフの刃の向き（度。0＝真上、正＝時計回り＝前へ倒す）
 # 向きは、指が巻いている筒の向き（拳の穴の通る向き）に合わせ、前腕にほぼ直角（手首で曲がるのは±20°まで）。
 # 腕の向きに沿わせると拳から刃が生えて見え、直角から大きく外すと手首が折れて見える（2026-10-04・アマネさん「傾きがイマイチ」）
