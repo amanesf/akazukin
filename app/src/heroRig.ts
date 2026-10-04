@@ -44,6 +44,7 @@ for (const n of ['calm', 'happy', 'wink', 'cry'] as const) {
 // 絵に描いてあるナイフの刃先（書き出した絵の画素）。刃の軌跡に使う
 const TIPS: Partial<Record<FrameName, [number, number][]>> = { sweep: [[78, 148], [205, 305]], dash: [[75, 30], [212, 10]], rise: [[8, 148], [425, 239]] };
 const EAR_R = 52;
+const REST = 0.3; // 主砲をたたんだ向き（真下から後ろへ少し）
 const MOVES_HALF = { shiki: 0.21, hougeki: 0.35 }; // 主砲を撃つ時刻（sim と同じ：技の長さの半ば）
 const MESH_STEP = 12; // 網目の細かさ（画素）
 
@@ -448,14 +449,14 @@ export class HeroRig {
     this.legs.legR && (this.legs.legR.rotation = -p.legSwing);
     // 主砲：肩の後ろを中心に回す。撃つと砲身の向きと逆へ跳ねる
     const c = this.cannon;
-    c.visible = p.gun > 0.02;
+    // 初期装備なので、ふだんも背中にたたんで背負っている（2026-10-04 アマネさん「主砲どこいったん」）。倒れた姿・回転の後ろ姿では隠す
+    c.visible = p.frame !== 'down' && p.frame !== 'back';
     if (c.visible) {
       const H = this.meta.height;
-      const a = p.aim * p.gun; // たたんだ向き（真下）から、後ろ・上を回って狙う向きへ
+      const a = REST + (p.aim - REST) * p.gun; // たたんだ向き（少し後ろへ倒した下向き）から、後ろ・上を回って狙う向きへ
       const shoulderY = p.frame === 'charge' ? -0.62 * H : -0.78 * H; // 肩の上（低いと腰から出ているように見えた）
       c.rotation = a;
       c.position.set(-0.1 * H + Math.sin(a) * p.recoil * 40, shoulderY - Math.cos(a) * p.recoil * 40);
-      c.alpha = Math.min(1, p.gun * 3);
     }
     this.body.rotation = p.lean;
     this.body.position.set(0, -p.lift);

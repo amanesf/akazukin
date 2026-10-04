@@ -277,7 +277,7 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
 #hint {
   position: absolute;
   left: 50%;
-  bottom: calc(13% + 14px);
+  top: 52px; /* 下だと狼が歩く地面に重なった */
   transform: translateX(-50%);
   padding: 6px 14px;
   border-radius: 16px;
@@ -293,5 +293,6 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
 }
 #hint.ok { border-color: #ffe070; color: #ffe070; animation: hint-in 0.25s ease-out; }
 #hint[hidden] { display: none; }
+body.tutorial #next { display: none; }
 @keyframes hint-in { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); } 100% { opacity: 1; transform: translate(-50%, 0) scale(1); } }
 @keyframes hint-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 160, 200, 0); } 50% { box-shadow: 0 0 0 6px rgba(255, 160, 200, 0.25); } }

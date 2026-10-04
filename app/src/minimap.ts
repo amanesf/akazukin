@@ -106,7 +106,7 @@ export class Minimap {
     const h = sim.hero;
     const px = this.mx(h.x);
     const py = this.my(h.lane);
-    const pose = this.rig.pose(sim, px, py, H * 0.62, t, 0.12);
+    const pose = this.rig.pose(sim, px, py, H * 0.46, t, 0.12); // 大きすぎて狼が点に見えた
     if (pose) {
       this.rig.apply(pose);
     } else g.rect(px - 2, py - H * 0.5, 4, H * 0.5).fill(0xc0303a);

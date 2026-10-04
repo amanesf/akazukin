@@ -155,6 +155,7 @@ async function main() {
       lastHint = hx;
       hint.textContent = hx;
       hint.classList.toggle('ok', hx.startsWith('✨'));
+      document.body.classList.toggle('tutorial', !!hx); // 説明のあいだは右上の「これから」を隠す（重なる）
       if (hx) restart(hint);
       else hint.hidden = true;
     }
@@ -198,6 +199,23 @@ async function main() {
       box.appendChild(b);
     }
     overlay.hidden = false;
+    // 主人公の絵が揃うまでは押せない（揃う前に始めると、仮の細い姿で戦った。2026-10-04 アマネさん「棒みたい」）
+    if (!view.ready) {
+      const bs = Array.from(box.querySelectorAll('button'));
+      const labels = bs.map((b) => b.textContent);
+      for (const b of bs) {
+        b.disabled = true;
+        b.textContent = '読み込み中…';
+      }
+      const wait = () => {
+        if (!view.ready) return void requestAnimationFrame(wait);
+        bs.forEach((b, i) => {
+          b.disabled = false;
+          b.textContent = labels[i];
+        });
+      };
+      wait();
+    }
   }
   const fresh = () => {
     store.clear();

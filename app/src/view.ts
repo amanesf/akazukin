@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -232,6 +232,7 @@ export class View {
 
     // ── 地面・家・裂け目・影 ──
     const gr = this.ground.clear();
+    if (!day) this.drawPath(gr, sim);
     this.drawHouse(gr, sim, dt);
     this.drawRift(gr, sim);
     const shadow = (x: number, lane: number, w: number, zz: number) => {
@@ -418,7 +419,9 @@ export class View {
         break;
       }
       case 'poof':
+        // 倒した狼：煙と一緒に桜の花びらが散る（煙だけで消えると味気なかった）
         P.pop(x, y - zy - this.geo.Hm * 0.05, s, f.r ?? 30);
+        for (let i = 0; i < 6; i++) P.petal(x, y - zy - this.geo.Hm * 0.05, s, (Math.random() - 0.5) * 500 + (f.dir ?? 0) * 200, -150 - Math.random() * 300);
         break;
       case 'miss':
         P.dust(x, y, s * 0.7, 2, 20, 20);
@@ -621,6 +624,44 @@ export class View {
       const hy = ground - bh - legH - bh * 0.3;
       g.rect(x - hb / 2, hy, hb, 3).fill({ color: 0x000000, alpha: 0.6 });
       g.rect(x - hb / 2, hy, (hb * Math.max(0, d.hp)) / d.maxHp, 3).fill(0xe0b060);
+    }
+  }
+
+  // 主人公が動ける道（2026-10-04 アマネさん「移動範囲がメイン画面でわかるように」）：奥行きの帯を土の道として明るく塗り、
+  // 奥と手前の縁に小石を並べる。右の端（それより先へは行けない）には、しめ縄と紙垂を張る。走って行く先には輪
+  private drawPath(g: Graphics, sim: Sim) {
+    const x0 = this.wx(HOUSE_X);
+    const x1 = this.wx(HERO.maxX);
+    const top = this.wy(0) - 10;
+    const bot = this.wy(1) + 12;
+    g.rect(x0, top, x1 - x0, bot - top).fill({ color: 0x8a6a4e, alpha: 0.16 });
+    for (const [y, a] of [[top, 0.5], [bot, 0.6]] as const) {
+      g.rect(x0, y - 1, x1 - x0, 2).fill({ color: 0xc8a888, alpha: 0.18 });
+      for (let x = x0 + 14; x < x1; x += 46) {
+        const j = ((x * 13) % 17) - 8;
+        g.ellipse(x + j, y + (j % 3), 6 + (j % 4), 3).fill({ color: 0x9a8a7a, alpha: a });
+      }
+    }
+    // しめ縄（右の端）：2本の杭のあいだに縄を渡し、紙垂を下げる
+    const h = this.geo.Hm * 0.16;
+    for (const y of [top, bot]) {
+      g.rect(x1 - 4, y - h, 8, h).fill(0x4a3428);
+      g.rect(x1 - 4, y - h, 8, 4).fill(0x6a4c3a);
+    }
+    const sag = (q: number) => Math.sin(q * Math.PI) * 14;
+    g.moveTo(x1, top - h + 6);
+    for (let q = 0.1; q <= 1.0001; q += 0.1) g.lineTo(x1, top - h + 6 + (bot - top) * q + sag(q));
+    g.stroke({ width: 6, color: 0xd8c08a });
+    for (let q = 0.2; q < 0.9; q += 0.2) {
+      const y = top - h + 6 + (bot - top) * q + sag(q);
+      const sway = Math.sin(this.vt * 3 + q * 9) * 3;
+      g.poly([x1, y, x1 + 9 + sway, y + 6, x1 + 2 + sway, y + 12, x1 + 11 + sway, y + 19, x1 + 4 + sway, y + 26]).stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
+    }
+    // 走って行く先
+    const o = sim.hero.order;
+    if (o) {
+      const pulse = 1 + 0.15 * Math.sin(this.vt * 10);
+      g.ellipse(this.wx(o.x), this.wy(o.lane), 34 * pulse, 10 * pulse).stroke({ width: 3, color: o.sprint ? 0xffe070 : 0xffffff, alpha: 0.7 });
     }
   }
 
@@ -987,6 +1028,11 @@ export class View {
     }
     g.rect(x - b / 2, y - b * 3.6 - lift, b, b * 3.6).fill(col);
     g.circle(x, y - b * 4.1 - lift, b * 0.6).fill(0x201818);
+  }
+
+  // 主人公の絵が揃ったか（揃うまでは仮の細い姿になるので、始めるボタンを止めておく）
+  get ready() {
+    return this.rig.ready;
   }
 
   // 撮影・点検用：主人公の今の姿勢（残像を作るのと同じ値）
