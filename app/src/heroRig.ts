@@ -76,8 +76,8 @@ export class HeroRig {
   private held: { frame: FrameName; slot: number; knife: Sprite }[] = [];
   // 背中の主砲（2026-10-04）：ふだんは背中にたたみ、溜め・主砲のときに後ろ・上を回って肩越しに狙う狼へ向く。撃つと反動で跳ねる
   private cannon!: Sprite;
-  // 反対側（手前の肩）の主砲（2026-10-04 アマネさん「主砲って反対側にもあるよな」）。たたんでいるときは体の後ろで前の側に少し覗き、
-  // 構えると手前の肩越しに体の前へ出て、奥の主砲と並んで狙う
+  // 手前の主砲（2026-10-04 アマネさん「主砲って反対側にもある」「手前のキャノンはキャラの手前、奥のキャノンは奥」）。
+  // cannon が奥（体の後ろ）、cannon2 が手前（体の前）。どちらも背中から少し離し、手前の砲は付け根を頭より後ろに置いて顔を隠さない
   private cannon2!: Sprite;
   private gun = 0; // 起きている度合い（0＝たたむ・1＝構える）
   private recoil = 0;
@@ -159,7 +159,7 @@ export class HeroRig {
     this.body.addChildAt(this.cannon, 0); // 体の後ろ
     this.cannon2 = gear('cannon');
     this.cannon2.visible = false;
-    this.body.addChildAt(this.cannon2, 0);
+    this.body.addChild(this.cannon2); // 手前の主砲は体の前
     this.root.addChild(this.body);
     this.ready = true;
   }
@@ -461,31 +461,24 @@ export class HeroRig {
     this.legs.legL && (this.legs.legL.rotation = p.legSwing);
     this.legs.legR && (this.legs.legR.rotation = -p.legSwing);
     // 主砲：肩の後ろを中心に回す。撃つと砲身の向きと逆へ跳ねる
-    const c = this.cannon;
     // 初期装備なので、ふだんも背中にたたんで背負っている（2026-10-04 アマネさん「主砲どこいったん」）。倒れた姿・回転の後ろ姿では隠す
-    c.visible = p.frame !== 'down' && p.frame !== 'back';
-    if (c.visible) {
-      const H = this.meta.height;
-      const a = REST + (p.aim - REST) * p.gun; // たたんだ向き（少し後ろへ倒した下向き）から、後ろ・上を回って狙う向きへ
-      const shoulderY = p.frame === 'charge' ? -0.62 * H : -0.78 * H; // 肩の上（低いと腰から出ているように見えた）
+    const H = this.meta.height;
+    const show = p.frame !== 'down' && p.frame !== 'back';
+    const shoulderY = p.frame === 'charge' ? -0.62 * H : -0.78 * H; // 肩の上（低いと腰から出ているように見えた）
+    const g = p.gun;
+    const place2 = (c: Sprite, rest: number, aimOff: number, x0: number, x1: number, y0: number, y1: number, kick: number) => {
+      c.visible = show;
+      if (!show) return;
+      const a = rest + (p.aim + aimOff - rest) * g; // たたんだ向き（少し後ろへ倒した下向き）から、後ろ・上を回って狙う向きへ
       c.rotation = a;
-      c.position.set(-0.1 * H + Math.sin(a) * p.recoil * 40, shoulderY - Math.cos(a) * p.recoil * 40);
-    }
-    // 2本目：たたむと1本目の後ろに少し開いて並び（背中に2本見える）、構えると1本目の少し下で並んで狙う。
-    // いつも体の後ろ（体の前に出すと、構えたときに顔を隠した）
-    const c2 = this.cannon2;
-    c2.visible = c.visible;
-    if (c2.visible) {
-      const H = this.meta.height;
-      const g = p.gun;
-      const shoulderY = p.frame === 'charge' ? -0.62 * H : -0.78 * H;
-      const a = REST + 0.2 + (p.aim + 0.05 - REST - 0.2) * g;
-      const x = -0.22 * H + 0.2 * H * g;
-      const y = shoulderY - 0.03 * H * (1 - g) + 0.13 * H * g;
-      c2.rotation = a;
-      c2.position.set(x + Math.sin(a) * p.recoil * 46, y - Math.cos(a) * p.recoil * 46);
-      c2.tint = mixTint(tint, 0x8a7a88, 0.3); // 奥にあるので少し暗く
-    }
+      c.position.set(x0 + (x1 - x0) * g + Math.sin(a) * p.recoil * kick, y0 + (y1 - y0) * g - Math.cos(a) * p.recoil * kick);
+    };
+    // 奥：少し中央寄り。構えると肩の上から、手前より少し上を狙う。奥にあるので少し暗く
+    place2(this.cannon, REST, -0.04, -0.14 * H, -0.08 * H, shoulderY, shoulderY - 0.02 * H, 40);
+    this.cannon.tint = mixTint(tint, 0x8a7a88, 0.3);
+    // 手前：背中から後ろへ離して体の前に。構えると付け根は体より後ろのまま、腰の高さで前を向く
+    place2(this.cannon2, REST + 0.12, 0.06, -0.34 * H, -0.3 * H, shoulderY + 0.02 * H, shoulderY + 0.3 * H, 46); // 胸の高さだと胴と手を隠したので、腰の高さ
+    this.cannon2.tint = tint;
     this.body.rotation = p.lean;
     this.body.position.set(0, -p.lift);
     this.body.scale.set(p.sx, p.sy);
