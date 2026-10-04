@@ -126,6 +126,12 @@ export class View {
       this.backdrop.moonArt.visible = true;
       this.lastWave = '';
     }).catch((e) => console.warn('moon', e));
+    // 草と小物の絵（手前の草・道の縁）
+    const PROPS = ['susuki', 'grass', 'flowers', 'higanbana', 'petals', 'stones', 'fence', 'lantern'];
+    Assets.load(PROPS.map((n) => ({ alias: `prop-${n}`, src: `${import.meta.env.BASE_URL}props/${n}.webp` }))).then((t) => {
+      this.backdrop.props = Object.fromEntries(PROPS.map((n) => [n, (t as Record<string, Texture>)[`prop-${n}`]]));
+      this.lastWave = '';
+    }).catch((e) => console.warn('props', e));
     // 背景の町並みの絵。読み込めたら背景を作り直す（読めなければ影絵のまま）
     Assets.load<Texture>(`${import.meta.env.BASE_URL}bg/town.webp`).then((t) => {
       this.backdrop.town = t;
@@ -165,8 +171,34 @@ export class View {
     this.paraRoot.removeChildren();
     for (const l of this.backdrop.layers) this.paraRoot.addChild(l.c);
     this.world.addChildAt(this.backdrop.front.c, this.world.children.length);
+    this.buildPathProps();
     this.mini.layout(W, Hm, MM);
     this.lastWave = `${W}x${H}`;
+  }
+
+  // 道の縁の小物：奥の縁に花・小石・花びらの山、手前の縁に小さな草（決まった並び。作り直しても同じ）
+  private pathProps = new Container();
+  private buildPathProps() {
+    this.pathProps.removeChildren();
+    const P = this.backdrop.props;
+    if (!P) return;
+    if (!this.pathProps.parent) this.world.addChildAt(this.pathProps, this.world.getChildIndex(this.house));
+    let seed = 99;
+    const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const g = this.geo;
+    const put = (k: string, x: number, y: number, hh: number) => {
+      const sp = new Sprite(P[k]);
+      sp.anchor.set(0.5, 1);
+      sp.scale.set((hh / sp.texture.height) * (r() < 0.5 ? -1 : 1), hh / sp.texture.height);
+      sp.position.set(x, y);
+      this.pathProps.addChild(sp);
+    };
+    const x0 = this.wx(HOUSE_X + 60);
+    const x1 = this.wx(HERO.maxX);
+    for (let x = x0; x < x1; x += 60 + r() * 120) {
+      const k = ['flowers', 'stones', 'petals', 'grass', 'flowers', 'higanbana'][Math.floor(r() * 6)];
+      put(k, x, this.wy(0) - 6, g.Hm * (k === 'grass' || k === 'higanbana' ? 0.07 : 0.045));
+    }
   }
 
   // ── 座標 ──

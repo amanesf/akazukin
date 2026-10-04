@@ -28,7 +28,9 @@ export class Backdrop {
   private lights: { s: Sprite; x: number; y: number; ph: number }[] = [];
   private starList: { x: number; y: number; r: number; ph: number }[] = [];
   moonArt = new Sprite(); // 紅い月の絵（メインビジュアルから切り抜き）。あれば図形の月の代わり
-  town: Texture | null = null; // 町並みの絵（2026-10-04 生成）。あれば奥の山と町の影絵の代わりに使う
+  town: Texture | null = null;
+  props: Record<string, Texture> | null = null; // 草と小物の絵（2026-10-04 生成 grass-v1）。あれば手前の影絵の代わり
+  private sway: { s: Sprite; ph: number; amp: number }[] = []; // 町並みの絵（2026-10-04 生成）。あれば奥の山と町の影絵の代わりに使う
 
   constructor() {
     this.moonGlow.anchor.set(0.5);
@@ -201,6 +203,28 @@ export class Backdrop {
     this.layers.push({ c: wrap(ground), f: 1 });
 
     // 手前の草と柵（体より前。ぼかす代わりに暗く）
+    this.sway = [];
+    if (this.props) {
+      // 草と花の絵を並べ、根元を中心に風で揺らす（2026-10-04 アマネさん「草もリアルに」）
+      const fc = new Container();
+      const rr = rng(71);
+      const fy = horizon + h * 0.4;
+      const kinds = ['susuki', 'grass', 'higanbana', 'grass', 'flowers', 'susuki', 'fence'];
+      for (let x = gx0; x < gx0 + gw * 1.3; x += 70 + rr() * 150) {
+        const k = kinds[Math.floor(rr() * kinds.length)];
+        const sp = new Sprite(this.props[k]);
+        sp.anchor.set(0.5, 1);
+        const hh = h * (k === 'fence' ? 0.16 : k === 'flowers' ? 0.1 : 0.2 + rr() * 0.08);
+        sp.scale.set((hh / sp.texture.height) * (rr() < 0.5 ? -1 : 1), hh / sp.texture.height);
+        sp.position.set(x, fy + 26);
+        sp.tint = 0x6a5a80; // 手前はうす暗く（主人公と狼に目が行くように）
+        fc.addChild(sp);
+        if (k !== 'fence') this.sway.push({ s: sp, ph: rr() * 6, amp: k === 'flowers' ? 0.03 : 0.07 });
+      }
+      this.front = { c: fc, f: 1.3 };
+      return;
+    }
+    // 手前の草と柵（体より前。ぼかす代わりに暗く）
     const fg = new Graphics();
     const rr = rng(71);
     const fy = horizon + h * 0.4;
@@ -252,6 +276,9 @@ export class Backdrop {
     this.moonGlow.tint = mix(0xff4050, 0xfff0c0, day);
     const tint = mix(0xffffff, 0xd8c8d0, day);
     for (const l of this.layers) l.c.tint = tint;
+    // 手前の草が風で揺れる（ときどき強く）
+    const gust = Math.max(0, Math.sin(t * 0.45)) ** 6;
+    for (const g of this.sway) g.s.rotation = Math.sin(t * 1.7 + g.ph) * g.amp * (1 + gust * 2) - gust * g.amp;
   }
 }
 
