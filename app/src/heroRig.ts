@@ -480,6 +480,19 @@ export class HeroRig {
     m.mesh.geometry.getBuffer('aPosition').update();
   }
 
+  // いま見えているナイフの刃先（space の座標）。斬撃の軌跡を刃の通り道に描く（2026-10-04 レビュー A4）
+  tips(space: Container): ({ x: number; y: number } | null)[] {
+    const out: ({ x: number; y: number } | null)[] = [null, null];
+    if (!this.ready) return out;
+    for (const hd of this.held) {
+      if (!this.frames[hd.frame].visible || !hd.knife.visible) continue;
+      const k = hd.knife;
+      const g = k.toGlobal({ x: 0, y: -k.anchor.y * k.texture.height });
+      out[hd.slot] = space.toLocal(g);
+    }
+    return out;
+  }
+
   apply(p: Pose, tint = p.tint, alpha = p.alpha) {
     if (!this.ready) return;
     this.root.position.set(p.x, p.y);

@@ -35,7 +35,7 @@ await p.evaluate(() => {
 out.flick = await st();
 await p.waitForTimeout(500);
 // 長押し → 溜め → 離す → 主砲
-await p.mouse.move(200, 450); await p.mouse.down(); await p.waitForTimeout(700);
+await p.mouse.move(200, 450); await p.mouse.down(); await p.waitForTimeout(1000); // ヘッドレスは遅く、ゲームの時計が実時間より進まない
 out.hold = await st();
 await p.mouse.up();
 await p.waitForTimeout(80);

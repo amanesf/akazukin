@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HOUSE_HP, HOUSE_X, LANE_TOL, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -44,6 +44,11 @@ export class View {
   private parts = new Particles(); // 世界の粒
   private screenParts = new Particles(); // 画面の粒（速度線・桜嵐の花吹雪）
   private screen = new Graphics(); // 画面に固定の演出（周辺の暗がり・閃光・矢印・指の軌跡）
+  private blade: { x: number; y: number; t: number }[][] = [[], []]; // 刃先の通り道（ナイフ2本）
+  private marks: { kind: 'sweat' | 'cross' | 'sparkle' | 'note' | 'star'; t: number; life: number; ox: number; oy: number }[] = []; // 漫画の記号（頭のまわり）
+  private markText: Text[] = [];
+  private lastHitFlash = 0;
+  private noteT = 0;
   private nums: Text[] = [];
   private numOwner: number[] = []; // 数字の枠ごとに、受け持つ fx の id（-1 は空き）。枠を固定して、文字の絵を作り直すのは出た瞬間だけにする
   private edgeText: Text[] = [];
@@ -75,6 +80,13 @@ export class View {
       this.world.addChild(t);
       this.nums.push(t);
       this.numOwner.push(-1);
+    }
+    for (let i = 0; i < 4; i++) {
+      const t = new Text({ text: '♪', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 30, fill: 0xffe070, stroke: { color: 0x40202a, width: 5 } } });
+      t.anchor.set(0.5);
+      t.visible = false;
+      this.world.addChild(t);
+      this.markText.push(t);
     }
     st.addChild(this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
@@ -174,7 +186,7 @@ export class View {
       ty = g.laneTop + g.laneH * 1.6 - (g.Hm * 0.12) / tz;
     } else {
       const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
-      tz = (fast ? 0.9 : 1) * (1 + sim.punch * 0.07);
+      tz = (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
       tx = this.wx(h.x) + h.facing * g.W * 0.14;
       tx = Math.max(g.W / 2 / tz - 150, Math.min(fieldW - g.W / 2 / tz + 140, tx));
       ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
@@ -260,8 +272,10 @@ export class View {
     if (pose) {
       this.rig.apply(pose);
       this.afterimages(sim, pose, dt);
+      this.trackBlade(sim);
     } else this.boxHero(fg, sim, hx, hy);
     const top = hy - this.heroH(h.lane) * 1.3 - h.z * this.zk() * 0.75;
+    this.trackMarks(sim, dt);
     const toScreen = (x: number, y: number) => ({ x: x * z + ox, y: y * z + oy });
     this.heroAt = toScreen(hx, top - 6);
 
@@ -320,7 +334,8 @@ export class View {
           P.arc(x, wy + R, R, mir(-90 * D - 0.2), mir(-90 * D + 0.2), hh * 0.06, 0xffffff, 0.16);
           break;
         }
-        P.arc(cx, cy, r, mir(a0), mir(a1), w, f.big ? 0xff5080 : 0xffa0b8, f.move === 'slam' ? 0.2 : 0.15);
+        // 斬り・追い打ちの弧は刃先の軌跡が描く（決まった位置の弧は刃の通り道とずれた）。大きな技だけ弧を重ねる
+        if (f.move === 'launch' || f.move === 'slam' || f.big) P.arc(cx, cy, r, mir(a0), mir(a1), w, f.big ? 0xff5080 : 0xffa0b8, f.move === 'slam' ? 0.2 : 0.15);
         break;
       }
       case 'dash': {
@@ -647,9 +662,141 @@ export class View {
     g.stroke({ width: 2, color: 0xff6070, alpha: 0.8 });
   }
 
+  // 刃先の通り道を覚える（技の振り抜きのあいだだけ）。古い点は0.12秒で消える
+  private trackBlade(sim: Sim) {
+    const h = sim.hero;
+    const m = h.move;
+    const p = m ? h.moveT / MOVES[m].dur : 0;
+    const swinging = !!m && m !== 'bow' && m !== 'ame' && m !== 'hougeki' && h.charge < 0 && p >= 0.35 && p <= 0.85;
+    const tips = this.rig.tips(this.world);
+    const hh = this.heroH(h.lane);
+    const cx = this.wx(h.x);
+    const cy = this.wy(h.lane) - hh * 0.55 - h.z * this.zk() * 0.75; // 体の真ん中
+    tips.forEach((q, i) => {
+      const tr = this.blade[i];
+      while (tr.length && this.vt - tr[0].t > 0.12) tr.shift();
+      if (!swinging || !q || sim.hitStop > 0) return;
+      const last = tr[tr.length - 1];
+      // 絵の差し替えで刃先が大きく跳んだら、間を体の外側へふくらむ弧でつなぐ（振りの軌道に見せる）
+      if (last && Math.hypot(q.x - last.x, q.y - last.y) > 30) {
+        const mx = (last.x + q.x) / 2;
+        const my = (last.y + q.y) / 2;
+        let nx = -(q.y - last.y) * 0.35;
+        let ny = (q.x - last.x) * 0.35;
+        if (nx * (mx - cx) + ny * (my - cy) < 0) { nx = -nx; ny = -ny; }
+        for (let k = 1; k < 8; k++) {
+          const u = k / 8;
+          tr.push({ x: (1 - u) * (1 - u) * last.x + 2 * (1 - u) * u * (mx + nx) + u * u * q.x, y: (1 - u) * (1 - u) * last.y + 2 * (1 - u) * u * (my + ny) + u * u * q.y, t: this.vt });
+        }
+      }
+      tr.push({ x: q.x, y: q.y, t: this.vt });
+    });
+  }
+
+  // 刃の軌跡：先へ行くほど太い1枚の帯（線を重ねると数珠のように見えた）
+  private drawBlade(o: Graphics) {
+    const w0 = this.geo.Hm * 0.03;
+    for (const tr of this.blade) {
+      const n = tr.length;
+      if (n < 2) continue;
+      for (const [wk, color, alpha] of [[1, 0xffb0c8, 0.55], [0.4, 0xffffff, 0.9]] as const) {
+        const left: number[] = [];
+        const right: number[] = [];
+        for (let i = 0; i < n; i++) {
+          const a = tr[Math.max(0, i - 1)];
+          const b = tr[Math.min(n - 1, i + 1)];
+          const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+          const age = Math.max(0, 1 - (this.vt - tr[i].t) / 0.12);
+          const w = w0 * wk * (i / (n - 1)) * age * 0.5;
+          const nx = (-(b.y - a.y) / len) * w;
+          const ny = ((b.x - a.x) / len) * w;
+          left.push(tr[i].x + nx, tr[i].y + ny);
+          right.unshift(tr[i].x - nx, tr[i].y - ny);
+        }
+        o.poly([...left, ...right]).fill({ color, alpha });
+      }
+    }
+  }
+
+  // 漫画の記号（2026-10-04 レビュー A5）：噛まれたら汗と×、連撃中はキラキラ、締めは♪、倒れたら星がくるくる、昼は音符
+  private trackMarks(sim: Sim, dt: number) {
+    const h = sim.hero;
+    const add = (kind: View['marks'][number]['kind'], life: number, ox: number, oy: number) => this.marks.push({ kind, t: 0, life, ox, oy });
+    if (h.hitFlash > this.lastHitFlash + 0.05 && h.down <= 0) {
+      add('sweat', 0.7, 0.32, 0.05);
+      add('cross', 0.45, -0.3, -0.05);
+    }
+    this.lastHitFlash = h.hitFlash;
+    if (sim.events.includes('finisher')) add('note', 0.9, 0.3, -0.1);
+    if (sim.phase === 'wave' && sim.combo >= 10 && Math.random() < dt * 4) add('sparkle', 0.5, (Math.random() - 0.5) * 0.9, -Math.random() * 0.6);
+    this.noteT -= dt;
+    if (sim.phase === 'shop' && this.noteT <= 0) {
+      this.noteT = 1.4 + Math.random();
+      add('note', 1.6, 0.25 + Math.random() * 0.15, 0);
+    }
+    for (const m of this.marks) m.t += dt;
+    this.marks = this.marks.filter((m) => m.t < m.life);
+    if (this.marks.length > 24) this.marks.splice(0, this.marks.length - 24);
+  }
+
+  private drawMarks(o: Graphics, sim: Sim) {
+    const h = sim.hero;
+    const hh = this.heroH(h.lane);
+    const hx = this.wx(h.x);
+    const head = this.wy(h.lane) - hh * 1.05 - h.z * this.zk() * 0.75;
+    const ink = 0x40202a;
+    let ti = 0;
+    for (const m of this.marks) {
+      const q = m.t / m.life;
+      const x = hx + m.ox * hh * h.facing;
+      const y = head + m.oy * hh;
+      const fade = q < 0.7 ? 1 : 1 - (q - 0.7) / 0.3;
+      if (m.kind === 'sweat') {
+        // 汗：頭の横から飛んで落ちる
+        const r = hh * 0.035;
+        const sx = x + h.facing * q * hh * 0.08;
+        const sy = y + q * q * hh * 0.12;
+        o.moveTo(sx, sy - r * 2.2).quadraticCurveTo(sx + r * 1.2, sy, sx, sy + r).quadraticCurveTo(sx - r * 1.2, sy, sx, sy - r * 2.2).fill({ color: 0x9fd8ff, alpha: fade }).stroke({ width: 2.5, color: ink, alpha: fade });
+      } else if (m.kind === 'cross') {
+        // 怒りの印（×）：ぽんと出て締まる
+        const r = hh * 0.05 * (1 + 0.6 * Math.max(0, 1 - q * 5));
+        for (const [a, b] of [[1, 1], [1, -1]]) o.moveTo(x - r * a, y - r * b).lineTo(x + r * a, y + r * b).stroke({ width: hh * 0.022, color: 0xff3050, alpha: fade, cap: 'round' });
+      } else if (m.kind === 'sparkle') {
+        const r = hh * 0.045 * Math.sin(q * Math.PI);
+        o.poly([x, y - r, x + r * 0.25, y - r * 0.25, x + r, y, x + r * 0.25, y + r * 0.25, x, y + r, x - r * 0.25, y + r * 0.25, x - r, y, x - r * 0.25, y - r * 0.25]).fill({ color: 0xfff4c0, alpha: 0.9 });
+      } else if (m.kind === 'note' && ti < this.markText.length) {
+        const t = this.markText[ti++];
+        t.visible = true;
+        t.alpha = fade;
+        t.scale.set((hh / 300) * (1 + 0.4 * Math.max(0, 1 - q * 6)));
+        t.position.set(x + Math.sin(q * 9) * hh * 0.03, y - q * hh * 0.25);
+      }
+    }
+    for (; ti < this.markText.length; ti++) this.markText[ti].visible = false;
+    // 倒れたら頭の上を星がくるくる回る
+    if (h.down > 0) {
+      const gy = this.wy(h.lane) - hh * 0.25;
+      for (let i = 0; i < 3; i++) {
+        const a = this.vt * 4 + (i * Math.PI * 2) / 3;
+        const sx = hx + Math.cos(a) * hh * 0.18;
+        const sy = gy + Math.sin(a) * hh * 0.05;
+        const r = hh * 0.04;
+        const pts: number[] = [];
+        for (let j = 0; j < 10; j++) {
+          const rr = j % 2 ? r * 0.45 : r;
+          const aa = -Math.PI / 2 + (j * Math.PI) / 5;
+          pts.push(sx + Math.cos(aa) * rr, sy + Math.sin(aa) * rr);
+        }
+        o.poly(pts).fill(0xffe070).stroke({ width: 2, color: ink });
+      }
+    }
+  }
+
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
     const K = this.geo.K;
+    this.drawBlade(o);
+    this.drawMarks(o, sim);
     // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
     for (const a of sim.arrows) {
       if (a.t < 0) continue;

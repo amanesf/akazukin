@@ -9,6 +9,8 @@ import {
 } from './config';
 import { hpScale, night, SURGE_WARN } from './nights';
 
+const FINALE = 0.45; // 晩の最後の1匹のあとのスローの長さ（sim の秒。実時間ではこの約3倍）
+
 export interface Unit {
   id: number;
   x: number;
@@ -466,13 +468,15 @@ export class Sim {
   // ── 進行 ──
   advance(dt: number) {
     // 実時間を固定ステップに刻む。重い端末でも結果は変わらない
-    this.acc += Math.min(dt, 0.25);
+    // 晩の最後の1匹を倒したあとは少しのあいだスローに（2026-10-04 レビュー A6）
+    this.acc += Math.min(dt, 0.25) * (this.finale > 0 ? 0.3 : 1);
     while (this.acc >= STEP) {
       this.acc -= STEP;
       this.step(STEP);
     }
   }
   private acc = 0;
+  finale = -1; // 晩の最後の1匹を倒してから昼になるまでの残り（スロー）。-1 は始まっていない
 
   step(dt: number) {
     for (const f of this.fx) f.t += dt;
@@ -559,7 +563,21 @@ export class Sim {
 
   // 晩の狼を全滅させたら昼へ。夜明けの銭が入り、家が少し直る
   private endWave() {
-    if (this.spawners.length > 0 || this.wolves.length > 0) return;
+    if (this.spawners.length > 0 || this.wolves.length > 0) {
+      this.finale = -1;
+      return;
+    }
+    // 最後の1匹：すぐ昼にせず、スローで見せてから
+    if (this.finale < 0) {
+      this.finale = FINALE;
+      this.punch = 1;
+      return;
+    }
+    if (this.finale > 0) {
+      this.finale -= STEP;
+      if (this.finale > 0) return;
+    }
+    this.finale = -1;
     this.wave++;
     this.arrows = [];
     this.shells = [];
