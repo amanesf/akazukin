@@ -34,7 +34,6 @@ export class HeroRig {
   private bowLines = new Graphics();
   private bowGeo!: { cams: [number, number][]; nock: [number, number]; rest: [number, number] };
   private meta!: Meta;
-  private lastX = 0;
   private walkT = 0;
   private lastFrame: FrameName = 'idle';
   private pop = 0; // ポーズが変わった瞬間の弾み（1→0）
@@ -170,82 +169,164 @@ export class HeroRig {
     }
   }
 
-  // 主人公の状態から絵と姿勢を決める。x, y は足もとの画面の座標、height は画面での背の高さ
-  update(sim: Sim, x: number, y: number, height: number) {
-    if (!this.ready) return;
+  // 主人公の状態から絵と姿勢を決める（Pose）。x, y は足もとの世界の座標、height は背の高さ（画素）。
+  // 決めた姿勢は apply で絵に写す。残像は同じ Pose を別の HeroRig に写して作る
+  // vt は画面の時計：昼は sim の時が止まるので、くつろぐ動きはこちらで動かす。夜は sim の時計（ヒットストップで止まる）
+  pose(sim: Sim, x: number, y: number, height: number, vt: number, zpx = 0.55): Pose | null {
+    if (!this.ready) return null;
     const h = sim.hero;
     const k = height / this.meta.height;
-    this.root.position.set(x, y);
-    this.root.scale.set(h.facing * k, k); // 絵は右向き
+    const t = sim.phase === 'wave' ? sim.clock : vt;
+    const dt = Math.max(0, Math.min(0.1, t - this.lastClock));
+    this.lastClock = t;
 
     let frame: FrameName = 'idle';
     let lean = 0;
-    let lift = 0;
+    let lift = (h.z * zpx) / k; // 跳んだ高さ（絵の画素へ）
     let squash = 1; // 回転のときの横幅
-    const far = sim.stance === 'far';
+    let sx = 1;
+    let sy = 1;
     let shot = 1; // 弓を射る技の進み（1＝射ていない）
+    let archer = false;
+    let shiver = 0;
+    let tint = 0xffffff;
 
-    // 歩き：脚を交互に、体を上下に
-    const moved = Math.abs(h.x - this.lastX);
-    this.lastX = h.x;
-    const walking = moved > 0.05 && !h.move && h.down <= 0;
-    let breath = 0;
-    if (walking) {
-      this.walkT += moved * 0.07;
-      lift = Math.abs(Math.sin(this.walkT)) * 22;
-      lean = 4 * D;
-    } else {
-      breath = Math.sin(sim.clock * 3.2); // 息づかい：上下に動かさず、ふくらむ・しぼむ
+    // 走り：脚を交互に、体を上下に、前のめり。速いほど大きく
+    const run = h.running > 0 && h.down <= 0 && h.charge < 0;
+    const fast = h.running > 400 || h.running === 2;
+    let legSwing = 0;
+    if (run && !h.move) {
+      this.walkT += dt * (fast ? 22 : 16);
+      lift += Math.abs(Math.sin(this.walkT)) * (fast ? 34 : 28);
+      lean = (fast ? 16 : 10) * D;
+      legSwing = Math.sin(this.walkT) * (fast ? 30 : 24) * D;
+      const step = (Math.abs(Math.sin(this.walkT)) - 0.5) * 0.06;
+      sy += step;
+      sx -= step * 0.6;
+    } else if (!h.move && h.down <= 0) {
+      // 息づかい：上下ではなく、ふくらむ・しぼむ。少しだけ体を揺らす
+      const b = Math.sin(t * 3.2);
+      sy += b * 0.012;
+      sx -= b * 0.006;
+      lean = Math.sin(t * 1.3) * 1.2 * D;
     }
-    this.legs.legL && (this.legs.legL.rotation = walking ? Math.sin(this.walkT) * 13 * D : 0);
-    this.legs.legR && (this.legs.legR.rotation = walking ? -Math.sin(this.walkT) * 13 * D : 0);
 
-    // 技：途中で絵を差し替える。p は技の進み（0〜1）
+    // 技：途中で絵を差し替える。p は技の進み（0〜1）。
+    // 振りかぶり（溜めの姿勢・後ろへ傾く）→ 振り抜き（前へ傾きすぎてから戻る）で、ため→解放を見せる
     const m = h.move;
     if (m) {
-      const dur = { slash: 0.2, launch: 0.28, air: 0.2, slam: 0.32, shiki: 0.45, kaiten: 0.4, tosshin: 0.3, bow: 0.42, ame: 0.6, hougeki: 0.7 }[m];
+      const dur = { slash: 0.18, launch: 0.26, air: 0.18, slam: 0.3, shiki: 0.42, kaiten: 0.36, tosshin: 0.26, bow: 0.42, ame: 0.6, hougeki: 0.7 }[m];
       const p = Math.min(1, h.moveT / dur);
-      if (m === 'slash') frame = p < 0.4 ? 'idle' : 'strike';
-      if (m === 'launch') { frame = p < 0.35 ? 'idle' : 'up'; lift = p * 40; }
-      if (m === 'air') { frame = 'up'; lift = 50; }
-      if (m === 'slam') { frame = p < 0.4 ? 'up' : 'strike'; lean = p < 0.4 ? -4 * D : 12 * D; }
-      if (m === 'tosshin') { frame = 'strike'; lean = 14 * D; }
-      if (m === 'shiki' || m === 'hougeki') { frame = 'strike'; lean = -6 * D; }
-      if (m === 'bow' || m === 'ame') { frame = 'strike'; shot = p; }
+      const wind = p < 0.4 ? p / 0.4 : 1; // 振りかぶりの進み
+      const after = p >= 0.4 ? (p - 0.4) / 0.6 : 0; // 振り抜いてからの進み
+      const over = Math.sin(Math.min(1, after * 1.6) * Math.PI) * (1 - after); // 行きすぎて戻る
+      if (m === 'slash') {
+        frame = p < 0.4 ? 'idle' : 'strike';
+        lean = p < 0.4 ? -7 * D * wind : (6 + 10 * over) * D;
+        if (p < 0.4) { sy = 1 - 0.05 * wind; sx = 1 + 0.03 * wind; } else { sx = 1 + 0.08 * over; sy = 1 - 0.04 * over; }
+      }
+      if (m === 'air') { frame = after > 0 ? 'strike' : 'up'; lean = after > 0 ? 14 * D * (0.5 + over) : -6 * D; }
+      if (m === 'launch') {
+        frame = p < 0.35 ? 'idle' : 'up';
+        lean = p < 0.35 ? 8 * D : -8 * D;
+        if (p < 0.35) { sy = 0.9; sx = 1.08; } else { sy = 1 + 0.12 * over; sx = 1 - 0.06 * over; }
+      }
+      if (m === 'slam') {
+        frame = p < 0.45 ? 'up' : 'strike';
+        lean = p < 0.45 ? -10 * D : (18 + 10 * over) * D;
+        if (p >= 0.45) { sy = 1 - 0.1 * over; sx = 1 + 0.1 * over; }
+      }
+      if (m === 'tosshin') {
+        frame = p < 0.12 ? 'idle' : 'strike';
+        lean = p < 0.12 ? -8 * D : 20 * D * (1 - after * 0.6);
+        sx = p < 0.12 ? 0.92 : 1.14 - 0.14 * after;
+        sy = p < 0.12 ? 1.04 : 0.9 + 0.1 * after;
+      }
+      if (m === 'shiki' || m === 'hougeki') {
+        // 主砲：撃った反動で後ろへのけぞる
+        frame = p < 0.3 ? 'idle' : 'strike';
+        lean = p < 0.3 ? 4 * D : -(10 * (1 - after) + 2) * D;
+        if (p >= 0.3) { sx = 1 - 0.06 * over; sy = 1 + 0.05 * over; }
+      }
+      if (m === 'bow' || m === 'ame') { frame = 'strike'; shot = p; archer = true; lean = -2 * D; }
       if (m === 'kaiten') {
         // 回転：横幅を縮めて背中の絵へ、また縮めて正面へ
         const a = p * Math.PI * 2;
         squash = Math.abs(Math.cos(a));
         frame = Math.cos(a) < 0 ? 'back' : 'idle';
+        sy = 1 + 0.05 * Math.sin(p * Math.PI);
       }
     }
-    if (far && !m) frame = 'idle';
-    if (h.ouran > 0) frame = (['idle', 'up', 'strike'] as FrameName[])[Math.floor(sim.clock * 14) % 3];
-    if (h.stun > 0 && !m) lean = -10 * D; // ひるみ：のけぞる
-    if (h.down > 0) { frame = 'down'; lean = 0; lift = 0; }
+    // 溜め：しゃがんで力をためる。満タンで小刻みに震えて光る
+    if (h.charge >= 0) {
+      const c = Math.min(1, h.charge / sim.chargeFull);
+      frame = 'idle';
+      sy = 1 - 0.08 * c;
+      sx = 1 + 0.05 * c;
+      lean = -4 * D * c;
+      if (c >= 1) {
+        shiver = Math.sin(t * 90) * 2.5;
+        tint = Math.floor(t * 16) % 2 ? 0xfff0c0 : 0xffffff;
+      } else tint = mixTint(0xffffff, 0xffe0b0, c * 0.6);
+    }
+    if (h.ouran > 0) frame = (['idle', 'up', 'strike'] as FrameName[])[Math.floor(t * 14) % 3];
+    if (h.stun > 0 && !m) { lean = -12 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる
+    if (h.down > 0) { frame = 'down'; lean = 0; lift = 0; sx = sy = 1; }
+    // 昼：ときどき小さく跳ねる（くつろいでいる）
+    if (sim.phase === 'shop') {
+      const hop = Math.max(0, Math.sin(t * 2.4)) ** 6;
+      lift += hop * 40;
+      sy *= 1 + hop * 0.05;
+      lean = Math.sin(t * 1.2) * 2 * D;
+    }
 
-    for (const n of NAMES) this.frames[n].visible = n === frame;
-    // 遠の構え：突きの絵の前の手に弓、胸の手は弦を引く。両手のナイフは隠す
-    const archer = far && frame === 'strike';
-    for (const hd of this.held) hd.knife.visible = !(far && hd.frame === 'strike');
-    this.bow.visible = archer;
-    this.drawBow(archer, shot);
     // 弾み（スクワッシュ＆ストレッチ）：ポーズが変わった瞬間に一度つぶれて伸び戻る。
     // 絵の差し替えだけだとカクッと切り替わって硬く見える（2026-10-04 アマネさん「かわいさ感じない」）
-    const dt = Math.max(0, Math.min(0.1, sim.clock - this.lastClock));
-    this.lastClock = sim.clock;
     if (frame !== this.lastFrame && frame !== 'down' && m !== 'kaiten') this.pop = 1;
     this.lastFrame = frame;
-    this.pop = Math.max(0, this.pop - dt / 0.16);
-    const bounce = Math.sin(this.pop * Math.PI) * 0.09;
-    // 歩き：足が着くたびに少しつぶれ、跳ねる頂点で少し伸びる
-    const step = walking ? (Math.abs(Math.sin(this.walkT)) - 0.5) * 0.05 : 0;
-    const sy = 1 - bounce + step + breath * 0.012;
-    const sx = 1 + bounce * 0.8 - step * 0.6 - breath * 0.006;
-    this.body.rotation = lean;
-    this.body.position.set(0, -lift);
-    this.body.scale.set(squash * sx, sy);
-    const tint = h.hitFlash > 0 ? 0xff8888 : h.ouran > 0 ? (Math.floor(sim.clock * 20) % 2 ? 0xffe6a0 : 0xffffff) : 0xffffff;
+    this.pop = Math.max(0, this.pop - dt / 0.14);
+    const bounce = Math.sin(this.pop * Math.PI) * 0.08;
+    sy -= bounce;
+    sx += bounce * 0.8;
+
+    if (h.hitFlash > 0) tint = h.hitFlash > 0.12 ? 0xffc8c8 : 0xffe8e8; // 噛まれた：一瞬だけ淡く赤く（赤く塗りつぶすと汚い）
+    else if (h.ouran > 0) tint = Math.floor(t * 20) % 2 ? 0xffe6a0 : 0xffffff;
+    const blink = h.iframes > 0 && h.move !== 'tosshin' && Math.floor(t * 20) % 2 === 0; // 起き上がりの無敵は点滅
+
+    return {
+      frame, x: x + shiver, y, k, facing: h.facing, lean, lift, sx: sx * squash, sy, legSwing, archer, shot, tint,
+      alpha: blink ? 0.4 : 1,
+    };
+  }
+
+  apply(p: Pose, tint = p.tint, alpha = p.alpha) {
+    if (!this.ready) return;
+    this.root.position.set(p.x, p.y);
+    this.root.scale.set(p.facing * p.k, p.k); // 絵は右向き
+    this.root.alpha = alpha;
+    for (const n of NAMES) this.frames[n].visible = n === p.frame;
+    this.legs.legL && (this.legs.legL.rotation = p.legSwing);
+    this.legs.legR && (this.legs.legR.rotation = -p.legSwing);
+    // 弓を射る技：突きの絵の前の手に弓、胸の手は弦を引く。両手のナイフは隠す
+    const archer = p.archer && p.frame === 'strike';
+    for (const hd of this.held) hd.knife.visible = !(archer && hd.frame === 'strike');
+    this.bow.visible = archer;
+    this.drawBow(archer, p.shot);
+    this.body.rotation = p.lean;
+    this.body.position.set(0, -p.lift);
+    this.body.scale.set(p.sx, p.sy);
     for (const sp of this.sprites) sp.tint = tint;
   }
+}
+
+export interface Pose {
+  frame: FrameName;
+  x: number; y: number; k: number; facing: 1 | -1;
+  lean: number; lift: number; sx: number; sy: number; legSwing: number;
+  archer: boolean; shot: number; tint: number; alpha: number;
+}
+
+function mixTint(a: number, b: number, k: number) {
+  const ch = (s: number) => Math.round(((a >> s) & 255) * (1 - k) + ((b >> s) & 255) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }

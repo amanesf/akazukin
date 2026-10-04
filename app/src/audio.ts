@@ -77,6 +77,12 @@ export class Sfx {
     for (const [i, f] of [330, 415, 494, 659].entries()) this.tone(t + i * 0.06, 'sawtooth', f, f * 1.5, 0.5, 0.12);
     this.hiss(t, 'highpass', 800, 6000, 0.6, 0.2);
   }
+  // 突進・駆けつけ：風を切る音
+  private dash(t: number) { this.hiss(t, 'bandpass', 900, 3800, 0.16, 0.4); this.tone(t, 'sine', 300, 600, 0.1, 0.12); }
+  private jump(t: number) { this.hiss(t, 'bandpass', 1200, 3000, 0.1, 0.25); }
+  // 溜め：上がっていく音。満タン：きらっ
+  private charge(t: number) { this.tone(t, 'triangle', 220, 660, 0.9, 0.08); }
+  private full(t: number) { this.tone(t, 'sine', 1320, 1320, 0.08, 0.25); this.tone(t + 0.06, 'sine', 1980, 1980, 0.18, 0.2); }
   private horn(t: number) {
     this.tone(t, 'sawtooth', 196, 185, 0.9, 0.18);
     this.tone(t, 'sawtooth', 294, 277, 0.9, 0.12);

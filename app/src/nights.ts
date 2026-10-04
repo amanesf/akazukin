@@ -15,13 +15,14 @@ const THREAT: Record<WolfKind, number> = { pup: 1, wolf: 3, armored: 9, howler: 
 const FROM: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 4, howler: 5, alpha: 10 };
 
 // 晩 n（1始まり）の予算。序盤はゆっくり、後半は急に重くなる
+// 2026-10-04 指一本アクションにして主人公が強くなったので、1.5倍に（自動操作が70晩まで家を守りきった）
 export function budget(n: number) {
-  return Math.round(10 + 4 * n + 0.06 * n * n);
+  return Math.round(1.5 * (10 + 4 * n + 0.06 * n * n));
 }
 
 // 狼の体力の倍率。数だけでなく1匹も少しずつ硬くなる
 export function hpScale(n: number) {
-  return 1 + 0.02 * (n - 1);
+  return 1 + 0.03 * (n - 1);
 }
 
 export const SURGE_WARN = 2;

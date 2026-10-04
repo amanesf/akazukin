@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 OUT = 'app/public/hero'
-SCALE = 0.35  # 元の絵は高さ約1100画素。画面では高さ120画素ほど（端末の解像度が3倍でも粗くならない）
+SCALE = 0.75  # 元の絵は高さ約1100画素。2026-10-04 主人公のアップ（画面で高さ約260画素）に合わせて上げた。端末の解像度3倍で縦約800画素
 P = 'assets/game/parts/poses'
 
 

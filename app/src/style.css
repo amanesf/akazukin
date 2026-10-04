@@ -29,36 +29,43 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* 上部がメイン画面、下にボタン類（決定） */
-#field { flex: 0 0 60%; position: relative; }
-#field canvas { display: block; }
+/* 上部がメイン画面（主人公のアップ＋下に小さい地図）、下にボタン類。夜は桜嵐だけ（技は戦場を指で出す） */
+#field { flex: 1; position: relative; min-height: 0; overflow: hidden; touch-action: none; }
+#field canvas { display: block; touch-action: none; }
 
 #panel {
-  flex: 1;
+  flex: 0 0 auto;
   display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 10px;
-  padding: 10px 16px 14px;
+  grid-template-rows: auto auto;
+  gap: 8px;
+  padding: 8px 16px 12px;
   background: var(--panel);
   border-top: 2px solid var(--line);
 }
 
 .status { display: flex; align-items: center; gap: 12px; font-size: 15px; }
-.coins { color: var(--brass); min-width: 5em; font-variant-numeric: tabular-nums; }
+.coins { color: var(--brass); min-width: 5em; font-variant-numeric: tabular-nums; display: inline-block; }
+.coins.gain { animation: gain 0.25s ease-out; }
+@keyframes gain { from { transform: scale(1.25); color: #fff2a0; } to { transform: scale(1); } }
 .house { flex: 1; height: 8px; background: #000; border-radius: 4px; overflow: hidden; }
-.house i { display: block; height: 100%; background: #60d070; }
+.house i { display: block; height: 100%; background: #60d070; transition: width 0.2s; }
+.house i.low { background: #e04050; animation: blink 0.5s steps(2) infinite; }
 .wave { color: var(--dim); font-variant-numeric: tabular-nums; }
 
-.battle, .shop { display: grid; gap: 8px; min-height: 0; grid-template-rows: 1fr auto; }
+.battle, .shop { display: grid; gap: 8px; min-height: 0; }
 .battle[hidden], .shop[hidden] { display: none; }
-.dogs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 76px; }
-.stance { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.stance button.on { background: #5a2830; border-color: var(--red); }
-.shop { grid-template-rows: auto 1fr auto; }
+.battle .ouran { min-height: 64px; }
+.dogs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.dog { min-height: 52px; touch-action: none; background: #3a2a22; border-color: #6a4a30; cursor: grab; }
+.dogrow { display: grid; gap: 4px; }
+.posts { margin: 0; font-size: 12px; color: var(--dim); text-align: center; line-height: 1.5; }
+.posts b { color: var(--brass); }
+.posts b.short { color: #ff6070; }
+.posts span { font-size: 11px; }
+.shop { grid-template-rows: auto auto auto auto; }
 .dawn { margin: 0; text-align: center; font-size: 13px; color: var(--dim); }
-.ups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.up { padding: 6px; gap: 6px; }
+.ups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.up { padding: 6px 4px; gap: 4px; min-height: 108px; }
 .up b { font-size: 22px; }
 .up .lv { font-size: 13px; color: var(--dim); }
 .up small { font-size: 12px; color: var(--text); line-height: 1.4; text-align: center; }
@@ -108,7 +115,8 @@ button::after {
 #overlay h1 { margin: 0; font-size: 34px; letter-spacing: 0.15em; display: flex; flex-direction: column; gap: 6px; }
 #overlay h1 small { font-size: 18px; color: var(--brass); letter-spacing: 0.3em; }
 #overlay p { margin: 0; color: var(--dim); }
-#overlay ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--dim); line-height: 1.8; }
+#overlay ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--dim); line-height: 1.8; text-align: left; }
+#overlay ul b { color: var(--text); }
 #overlay .choices { display: flex; flex-direction: column; gap: 10px; }
 #overlay button { padding: 12px 40px; background: var(--red); border-color: var(--red); }
 #overlay button + button { background: #2a2026; border-color: var(--line); }
@@ -139,8 +147,34 @@ button::after {
   pointer-events: none;
 }
 #combo small { font-size: 16px; margin-left: 4px; color: #fff; }
-#combo.pop { animation: pop 0.12s ease-out; }
-@keyframes pop { from { transform: scale(1.35); } to { transform: scale(1); } }
+#combo { transform-origin: 0 50%; }
+#combo.pop { animation: pop 0.14s ease-out; }
+#combo[data-tier="1"] { color: #ffb040; font-size: 40px; }
+#combo[data-tier="2"] { color: #ff7050; font-size: 46px; }
+#combo[data-tier="3"] { color: #ff4080; font-size: 52px; text-shadow: 0 0 12px rgba(255, 80, 140, 0.8); }
+@keyframes pop { from { transform: scale(1.45) rotate(-4deg); } to { transform: scale(1) rotate(0); } }
+
+/* 晩の始まり・夜明けの題 */
+#card {
+  position: absolute;
+  inset: 26% 0 auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  animation: card 2s ease-out forwards;
+}
+#card b { font: 900 34px/1.2 system-ui, sans-serif; letter-spacing: 0.25em; color: #fff; text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 60, 80, 0.7); }
+#card small { font-size: 14px; color: #f0d0d8; letter-spacing: 0.2em; text-shadow: 0 1px 0 #000; }
+body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8); }
+@keyframes card {
+  0% { opacity: 0; transform: translateY(12px) scale(1.15); letter-spacing: 0.6em; }
+  15% { opacity: 1; transform: none; }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+#card[hidden] { display: none; }
 #bubble {
   position: absolute;
   transform: translate(-20%, -100%);
@@ -203,6 +237,7 @@ button::after {
   position: absolute;
   right: 10px;
   top: 44px;
+  opacity: 0.8;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

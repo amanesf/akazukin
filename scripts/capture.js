@@ -4,11 +4,11 @@
  * あわせて状態（銭・家の耐久・波・討伐数）を書き出す。
  *
  * 使い方: node scripts/capture.js [--at 5,20,40] [--speed 4] [--play 1] [--out shots]
- *   --play 1 : 素朴な自動操作。構えは「近」、体力が3割を切ったら「遠」。桜嵐は溜まったら押す。
- *              銭があれば番犬、昼は近接→体力→近接→遠隔の順に1段ずつ買って次の晩へ
+ *   --play 1 : 素朴な自動操作（scripts/bot.mjs）
  * 先に app で npm run build すること。
  */
 import { chromium } from 'playwright';
+import { bot } from './bot.mjs';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -47,19 +47,9 @@ await page.waitForFunction(() => document.body.classList.contains('ready'), null
 
 const state = () => page.evaluate(() => {
   const s = window.akazukin.sim;
-  return { phase: s.phase, levels: Object.values(s.levels).join(''), heroHp: Math.round(s.hero.hp), best: s.bestCombo, clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
+  return { phase: s.phase, levels: Object.values(s.levels).join(''), combo: s.combo, heroHp: Math.round(s.hero.hp), best: s.bestCombo, clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
 });
-const autoplay = () => page.evaluate(() => {
-  const s = window.akazukin.sim;
-  if (s.phase === 'shop') {
-    for (const t of ['near', 'body', 'near', 'far']) s.buy(t);
-    s.nextWave();
-    return;
-  }
-  s.setStance(s.hero.hp < s.maxHp * 0.3 ? 'far' : 'near');
-  s.ouran();
-  for (const k of ['tosa', 'akita', 'shiba']) if (s.sendDog(k)) break;
-});
+const autoplay = () => page.evaluate(`(${bot.toString()})(window.akazukin.sim, window.__mem ||= {})`);
 
 for (const [i, t] of AT.entries()) {
   let st = await state();

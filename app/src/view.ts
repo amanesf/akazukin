@@ -1,265 +1,805 @@
-// 戦場の描画。いまは灰色の箱だけの仮の絵（plan.md §6：絵は生成した素材に差し替える）。
-// 手応えの演出（ヒットストップは sim、ここでは画面の揺れ・ダメージ数字・斬撃の線）だけは先に入れる。
+// 戦場の描画。主人公のアップをカメラで追い、下に戦場全体の小さい地図（minimap.ts）を出す（2026-10-04）。
+// 狼・番犬はまだ灰色の箱（絵は生成で作る・plan.md §6）。動き・演出は箱のままでも作り込む：
+// 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { FIELD_LENGTH, HOUSE_X, WOLVES, type WolfKind } from './config';
-import { HeroRig } from './heroRig';
-import type { Sim, Unit } from './sim';
+import { Backdrop, mix } from './backdrop';
+import { DOGS, FIELD_LENGTH, HOUSE_HP, HOUSE_X, LANE_TOL, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { crescent, easeOut, glowTexture, Particles, place } from './fx';
+import { HeroRig, type Pose } from './heroRig';
+import { Minimap } from './minimap';
+import { DOG_COLOR, WOLF_COLOR } from './palette';
+import type { Dog, Fx, Sim, Wolf } from './sim';
 
 const COLOR = {
-  sky: 0x1a1218,
-  daySky: 0x6a8aa8, // 昼（合間）。絵が入るまでの仮の色
-  sun: 0xf0d890,
-  moon: 0x8a2a2e,
-  ground: 0x2c2422,
-  groundLine: 0x4a3c36,
-  house: 0x5a4636,
-  roof: 0x3a2c26,
-  window: 0xe0b860,
-  girl: 0xc0303a,
-  hair: 0x201818,
-  brass: 0x9a8a60,
-  dog: 0xc8a070,
-  wolf: 0x6a6a74,
-  armored: 0x8a8a96,
-  howler: 0x5a6a8a,
-  alpha: 0x4a4a52,
-  eye: 0xff4040,
-  hp: 0x60d070,
   heroHp: 0xf06070,
   hpBack: 0x000000,
   arrow: 0xd8f0ff,
   shell: 0xe8c070,
-  blast: 0xffa040,
-  slash: 0xffffff,
   shock: 0x9ab0ff,
 };
 
-// 狼の仮の色（予告の印にも使う）
-export const WOLF_COLOR: Record<WolfKind, number> = {
-  pup: 0x6a6a74,
-  wolf: 0x6a6a74,
-  armored: 0x8a8a96,
-  howler: 0x5a6a8a,
-  alpha: 0x4a4a52,
-};
+const VIEW_UNITS = 250; // 夜のカメラが横に映す間合い（戦場は 1000＝画面4つ分。全体は小さい地図で）
+const GHOSTS = 7;
 
-// 見た目の大きさだけの倍率（当たり判定は間合いのまま）。2026-10-04 アマネさん「キャラ小さい」
-const BODY_ZOOM = 1.25; // 狼・番犬
-const HERO_ZOOM = 1.45; // 主人公はさらに（BODY_ZOOM に掛ける）。顔が読める大きさに
+export interface Geo {
+  W: number; H: number; Hm: number; MM: number; K: number;
+  horizon: number; laneTop: number; laneH: number;
+}
 
 export class View {
   app = new Application();
-  private world = new Container(); // 揺らすのはこちら
-  private g = new Graphics();
-  private nums: Text[] = [];
-  private w = 0;
-  private h = 0;
-  heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
+  geo!: Geo;
+  private backdrop = new Backdrop();
+  private paraRoot = new Container();
+  private world = new Container(); // カメラで動かす
+  private shade = new Graphics(); // 桜嵐で背景を暗くする
+  private ground = new Graphics(); // 影・地面の輪・家
+  private backG = new Graphics(); // 主人公より奥の箱
+  private frontG = new Graphics(); // 主人公より手前の箱
+  private overG = new Graphics(); // 矢・砲弾・衝撃波・斬撃の弧・裂け目
+  private ghostLayer = new Container();
   private rig = new HeroRig();
+  private ghosts: { rig: HeroRig; pose: Pose | null; t: number; tint: number }[] = [];
+  private ghostT = 0;
+  private parts = new Particles(); // 世界の粒
+  private screenParts = new Particles(); // 画面の粒（速度線・桜嵐の花吹雪）
+  private screen = new Graphics(); // 画面に固定の演出（周辺の暗がり・閃光・矢印・指の軌跡）
+  private nums: Text[] = [];
+  private edgeText: Text[] = [];
+  private mini = new Minimap();
+  private seen = 0; // 処理済みの fx の id
+  private cam = { x: 0, y: 0, z: 1 };
+  private flash = 0; // 画面の白い閃光
+  private flashColor = 0xffffff;
+  private houseFlash = 0;
+  vt = 0; // 画面の時計
+  private lastWave = '';
+  private ambientT = 0;
+  heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
+  trail: { x: number; y: number; t: number }[] = []; // 指の軌跡（input が足す）
+  dragGhost: { kind: DogKind; x: number; lane: number } | null = null; // 昼：置こうとしている番犬
 
   async init(host: HTMLElement) {
-    await this.app.init({ preference: 'webgl', resizeTo: host, background: COLOR.sky, antialias: true, resolution: Math.min(devicePixelRatio, 2), autoDensity: true });
+    await this.app.init({ preference: 'webgl', resizeTo: host, background: 0x2a1e1e, antialias: true, resolution: Math.min(devicePixelRatio, 2), autoDensity: true });
     host.appendChild(this.app.canvas);
-    this.app.stage.addChild(this.world);
-    this.world.addChild(this.g);
-    // 赤ずきんの絵。読み込めなければ灰色の箱のまま遊べる
-    // 2026-10-04 アマネさんの OK で既定に。?rig=0 で灰色の箱に戻せる（見比べ用）
-    if (new URLSearchParams(location.search).get('rig') !== '0') {
-      this.rig.load().then(() => this.world.addChildAt(this.rig.root, 1)).catch((e) => console.warn('hero rig', e));
-    }
-    for (let i = 0; i < 40; i++) {
-      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 16, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
+    // resizeTo は窓の大きさしか見ない。下の板（昼と夜で高さが変わる）に合わせて、戦場の大きさを測り直す
+    new ResizeObserver(() => this.app.resize()).observe(host);
+    const st = this.app.stage;
+    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.moon, this.paraRoot, this.shade, this.world);
+    this.world.addChild(this.ground, this.backG, this.ghostLayer, this.rig.root, this.frontG, this.overG, this.parts.root);
+    for (let i = 0; i < 48; i++) {
+      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontStyle: 'italic', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
       t.visible = false;
       this.world.addChild(t);
       this.nums.push(t);
     }
+    st.addChild(this.screenParts.root, this.screen);
+    for (let i = 0; i < 2; i++) {
+      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
+      t.anchor.set(0.5);
+      st.addChild(t);
+      this.edgeText.push(t);
+    }
+    st.addChild(this.mini.root);
+    // 赤ずきんの絵。読み込めなければ箱のまま遊べる（?rig=0 で箱：見比べ用）
+    if (new URLSearchParams(location.search).get('rig') !== '0') {
+      const all = [this.rig, ...Array.from({ length: GHOSTS }, () => new HeroRig())];
+      Promise.all([...all.map((r) => r.load()), this.mini.load()]).then(() => {
+        for (let i = 1; i < all.length; i++) {
+          this.ghostLayer.addChild(all[i].root);
+          all[i].root.visible = false;
+          this.ghosts.push({ rig: all[i], pose: null, t: 99, tint: 0xffffff });
+        }
+      }).catch((e) => console.warn('hero rig', e));
+    }
+    this.layout();
   }
 
-  // 画面の横位置 → 間合い
-  toFieldX(px: number) {
-    return ((px - this.pad()) / (this.w - this.pad() * 2)) * FIELD_LENGTH;
+  private layout() {
+    const W = this.app.screen.width;
+    const H = this.app.screen.height;
+    const MM = Math.round(Math.max(64, Math.min(96, H * 0.13)));
+    const Hm = H - MM;
+    const K = W / VIEW_UNITS;
+    this.geo = { W, H, Hm, MM, K, horizon: Hm * 0.58, laneTop: Hm * 0.66, laneH: Hm * 0.22 };
+    this.backdrop.build(W, Hm, this.geo.horizon, FIELD_LENGTH * K);
+    this.paraRoot.removeChildren();
+    for (const l of this.backdrop.layers) this.paraRoot.addChild(l.c);
+    this.world.addChildAt(this.backdrop.front.c, this.world.children.length);
+    this.mini.layout(W, Hm, MM);
+    this.lastWave = `${W}x${H}`;
   }
 
-  draw(sim: Sim) {
-    this.w = this.app.screen.width;
-    this.h = this.app.screen.height;
-    const g = this.g.clear();
-    const ground = this.h * 0.7;
-    const depth = this.h * 0.16;
-    const k = (this.w - this.pad() * 2) / FIELD_LENGTH; // 間合い1あたりの画素
-    const X = (x: number) => this.pad() + x * k;
-    const Y = (lane: number) => ground + lane * depth;
-    const u = this.h * 0.0032 * BODY_ZOOM; // 体の大きさの倍率（横幅ではなく戦場の高さに合わせる）
-    const zk = u * 0.55; // 高さ1あたりの画素
+  // ── 座標 ──
+  private wx(x: number) { return x * this.geo.K; }
+  private wy(lane: number) { return this.geo.laneTop + lane * this.geo.laneH; }
+  private ds(lane: number) { return 0.86 + 0.24 * lane; } // 手前ほど大きい
+  private U(lane: number) { return this.geo.Hm * 0.0027 * this.ds(lane); } // 体の大きさ1あたりの画素
+  private heroH(lane: number) { return this.geo.Hm * 0.4 * this.ds(lane); }
+  private zk() { return this.geo.K * 0.9; } // 高さ（間合い）→画素
 
-    // 画面の揺れ
+  // 画面の点 → 戦場（間合いと奥行き）。小さい地図の上なら sprint
+  toField(sx: number, sy: number): { x: number; lane: number; mini: boolean } | null {
+    const g = this.geo;
+    if (sy >= g.Hm) {
+      const m = this.mini.toField(sx, sy - g.Hm);
+      return m ? { ...m, mini: true } : null;
+    }
+    const wxp = (sx - g.W / 2) / this.cam.z + this.cam.x;
+    const wyp = (sy - g.Hm / 2) / this.cam.z + this.cam.y;
+    return { x: wxp / g.K, lane: Math.max(0, Math.min(1, (wyp - g.laneTop) / g.laneH)), mini: false };
+  }
+
+  // 昼：画面の点の近くにある番犬の持ち場
+  postAt(sim: Sim, sx: number, sy: number) {
+    const f = this.toField(sx, sy);
+    if (!f || f.mini) return -1;
+    let best = -1;
+    let bd = 60;
+    sim.posts.forEach((p, i) => {
+      const d = Math.abs(p.x - f.x) + Math.abs(p.lane - f.lane) * 200;
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  }
+
+  draw(sim: Sim, dtReal: number) {
+    if (this.lastWave !== `${this.app.screen.width}x${this.app.screen.height}`) this.layout();
+    const g = this.geo;
+    const dt = Math.min(0.05, dtReal);
+    this.vt += dt;
+    const frozen = sim.hitStop > 0;
+    const pdt = frozen ? dt * 0.08 : dt; // ヒットストップのあいだは粒もほぼ止める
+    const h = sim.hero;
+    const day = sim.phase === 'shop' ? 1 : 0;
+
+    // ── カメラ ──
+    let tz: number;
+    let tx: number;
+    let ty: number;
+    const fieldW = FIELD_LENGTH * g.K;
+    if (day) {
+      tz = (g.W - 16) / (fieldW + 300);
+      tx = (fieldW - 220) / 2;
+      ty = g.laneTop + g.laneH * 0.5 - (g.Hm * 0.1) / tz;
+    } else {
+      const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
+      tz = (fast ? 0.9 : 1) * (1 + sim.punch * 0.07);
+      tx = this.wx(h.x) + h.facing * g.W * 0.14;
+      tx = Math.max(g.W / 2 / tz - 150, Math.min(fieldW - g.W / 2 / tz + 140, tx));
+      ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
+    }
+    const kc = 1 - Math.exp(-dt * (day ? 3 : 7));
+    if (!this.cam.x) this.cam = { x: tx, y: ty, z: tz };
+    this.cam.x += (tx - this.cam.x) * kc;
+    this.cam.y += (ty - this.cam.y) * kc;
+    this.cam.z += (tz - this.cam.z) * (sim.punch > 0.6 ? 0.5 : kc);
+    // 画面の揺れ：当てた向きへ押してから戻る（ランダムだけより重く感じる）
     const s = sim.shake;
-    this.world.position.set((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+    const sx = (Math.random() - 0.5) * s + sim.shakeDir * s * 0.5;
+    const sy = (Math.random() - 0.5) * s;
+    const z = this.cam.z;
+    const ox = g.W / 2 - this.cam.x * z + sx;
+    const oy = g.Hm / 2 - this.cam.y * z + sy;
+    this.world.scale.set(z);
+    this.world.position.set(ox, oy);
+    for (const l of this.backdrop.layers) {
+      l.c.scale.set(z);
+      l.c.position.set(g.W / 2 - this.cam.x * l.f * z + sx * l.f, oy);
+    }
+    const fr = this.backdrop.front;
+    fr.c.position.set(this.cam.x * (1 - fr.f), 0); // 世界の中で、さらに速く流す
+    const horizonS = g.horizon * z + oy;
+    this.backdrop.update(this.vt, g.W, horizonS, day, 0);
+    this.backdrop.moon.position.set(g.W * 0.8 - this.cam.x * 0.02, g.Hm * 0.17 + (day ? -g.Hm * 0.04 : 0));
 
-    // 空。夜は赤い月（月が裂けて狼が来る：決定済みのメインビジュアルの構図）、昼（合間）は日
-    const day = sim.phase === 'shop';
-    g.rect(-20, -20, this.w + 40, this.h + 40).fill(day ? COLOR.daySky : COLOR.sky);
-    g.circle(this.w * 0.8, this.h * 0.2, this.h * 0.11).fill(day ? COLOR.sun : COLOR.moon);
-    g.rect(-20, ground - 4, this.w + 40, this.h - ground + 24).fill(COLOR.ground);
-    g.rect(-20, ground - 4, this.w + 40, 2).fill(COLOR.groundLine);
+    // ── 新しい出来事から演出を起こす ──
+    for (const f of sim.fx) {
+      if (f.id <= this.seen) continue;
+      this.spawn(sim, f);
+    }
+    if (sim.fx.length) this.seen = Math.max(this.seen, sim.fx[sim.fx.length - 1].id);
+    this.ambient(sim, dt);
 
-    // おばあさんの家
-    const hx = X(HOUSE_X);
-    const hw = Math.max(36, hx);
-    g.rect(hx - hw, ground - hw * 1.1, hw, hw * 1.1 + depth).fill(COLOR.house);
-    g.poly([hx - hw - 6, ground - hw * 1.1, hx + 6, ground - hw * 1.1, hx - hw / 2, ground - hw * 1.7]).fill(COLOR.roof);
-    g.rect(hx - hw * 0.65, ground - hw * 0.8, hw * 0.3, hw * 0.3).fill(COLOR.window);
-
-    // タップした所の印（近：向かう先／遠：撃つ位置）
-    const mark = sim.phase === 'wave' ? (sim.stance === 'far' ? sim.hero.farX : sim.hero.order) : null;
-    if (mark !== null) {
-      const mx = X(mark);
-      g.moveTo(mx, ground + depth * 0.5).lineTo(mx, ground - 26).stroke({ width: 2, color: 0xffffff, alpha: 0.6 });
-      g.poly([mx, ground - 26, mx + 14, ground - 21, mx, ground - 16]).fill({ color: COLOR.girl, alpha: 0.9 });
+    // ── 地面・家・裂け目・影 ──
+    const gr = this.ground.clear();
+    this.drawHouse(gr, sim);
+    this.drawRift(gr, sim);
+    const shadow = (x: number, lane: number, w: number, zz: number) => {
+      const k = Math.max(0.35, 1 - zz / 300);
+      gr.ellipse(this.wx(x), this.wy(lane) + 2, w * 0.55 * k, w * 0.13 * k).fill({ color: 0x000000, alpha: 0.42 * k });
+    };
+    for (const d of sim.dogs) shadow(d.x, d.lane, d.size * this.U(d.lane), 0);
+    for (const w of sim.wolves) shadow(w.x, w.lane, w.size * this.U(w.lane), w.z);
+    if (h.down <= 0) shadow(h.x, h.lane, this.heroH(h.lane) * 0.5, h.z);
+    // 溜めの足もとの光
+    if (h.charge >= 0) {
+      const c = Math.min(1, h.charge / sim.chargeFull);
+      const r = this.heroH(h.lane) * (0.35 + 0.25 * c);
+      gr.ellipse(this.wx(h.x), this.wy(h.lane), r, r * 0.25).stroke({ width: 3 + 3 * c, color: c >= 1 ? 0xffe070 : 0xff9050, alpha: 0.5 + 0.4 * Math.sin(this.vt * 30) * c });
+    }
+    // 昼：番犬の持ち場の目印
+    if (day) {
+      for (const p of sim.posts) gr.ellipse(this.wx(p.x), this.wy(p.lane), 34, 9).stroke({ width: 2, color: 0xffe0a0, alpha: 0.6 });
     }
 
-    // 奥から手前へ
-    type Item = { lane: number; draw: () => void };
+    // ── 体（奥から手前へ。主人公より奥は backG、手前は frontG）──
+    const bg = this.backG.clear();
+    const fg = this.frontG.clear();
+    type Item = { lane: number; draw: (gg: Graphics) => void };
     const items: Item[] = [];
-    for (const d of sim.dogs) items.push({ lane: d.lane, draw: () => this.body(g, X(d.x), Y(d.lane), d, u, COLOR.dog, 0.7) });
-    for (const w of sim.wolves) {
-      const c = WOLF_COLOR[w.kind];
-      items.push({
-        lane: w.lane,
-        draw: () => {
-          const x = X(w.x);
-          const y = Y(w.lane);
-          if (w.z > 0) g.ellipse(x, y, (w.size * u) / 2, 3).fill({ color: 0x000000, alpha: 0.4 }); // 影
-          const lift = w.z * zk;
-          this.body(g, x, y - lift, w, u, w.slammed ? 0xffd080 : c, WOLVES[w.kind].size > 50 ? 0.9 : 0.7);
-          // 目（左を向いている）
-          g.rect(x - (w.size * u) / 2 + 2, y - lift - w.size * u * 0.6, 3, 3).fill(w.hasted ? 0xffff60 : COLOR.eye);
-        },
-      });
+    const dogs: Dog[] = day ? sim.posts.map((p, i) => ({ id: -i - 1, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 })) : sim.dogs;
+    for (const d of dogs) items.push({ lane: d.lane, draw: (gg) => this.drawDog(gg, d, sim) });
+    if (this.dragGhost) {
+      const p = this.dragGhost;
+      items.push({ lane: p.lane, draw: (gg) => this.drawDog(gg, { id: -99, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 }, sim, 0.6) });
     }
-    items.push({ lane: 0.5, draw: () => this.hero(g, sim, X, Y(0.5), u) });
-    items.sort((a, b) => a.lane - b.lane).forEach((i) => i.draw());
+    for (const w of sim.wolves) items.push({ lane: w.lane, draw: (gg) => this.drawWolf(gg, w, sim) });
+    items.sort((a, b) => a.lane - b.lane);
+    for (const it of items) it.draw(it.lane <= h.lane ? bg : fg);
 
+    // ── 主人公 ──
+    const hx = this.wx(h.x);
+    const hy = this.wy(h.lane);
+    const pose = this.rig.pose(sim, hx, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75);
+    if (pose) {
+      this.rig.apply(pose);
+      this.afterimages(sim, pose, dt);
+    } else this.boxHero(fg, sim, hx, hy);
+    const top = hy - this.heroH(h.lane) * 1.3 - h.z * this.zk() * 0.75;
+    const toScreen = (x: number, y: number) => ({ x: x * z + ox, y: y * z + oy });
+    this.heroAt = toScreen(hx, top - 6);
+
+    // ── 矢・砲弾・衝撃波・斬撃の弧・数字 ──
+    this.drawOver(sim, dt);
+    // 主人公の体力の棒（減ったときだけ）
+    if (!day && h.down <= 0 && h.hp < sim.maxHp) {
+      const w = this.heroH(h.lane) * 0.42;
+      const o = this.overG;
+      o.roundRect(hx - w / 2 - 1, top - 1, w + 2, 7, 3).fill({ color: COLOR.hpBack, alpha: 0.7 });
+      o.roundRect(hx - w / 2, top, (w * Math.max(0, h.hp)) / sim.maxHp, 5, 2).fill(h.hp < sim.maxHp * 0.3 ? 0xff4050 : COLOR.heroHp);
+    }
+
+    this.parts.update(pdt);
+    this.parts.draw();
+    this.screenParts.update(dt);
+    this.screenParts.draw();
+
+    // ── 画面に固定の演出 ──
+    this.drawScreen(sim, dt, z, ox);
+    this.mini.draw(sim, this.vt, { x0: (0 - ox) / z / g.K, x1: (g.W - ox) / z / g.K }, day);
+  }
+
+  // ── 出来事 → 演出 ──
+  private spawn(sim: Sim, f: Fx) {
+    const P = this.parts;
+    const h = sim.hero;
+    const x = this.wx(f.x);
+    const y = this.wy(f.lane);
+    const s = this.ds(f.lane) * this.geo.Hm / 600;
+    const zy = (f.z ?? 0) * this.zk();
+    switch (f.kind) {
+      case 'spark': {
+        const wolf = this.geo.Hm * 0.06;
+        P.hit(x, y - zy - wolf, f.dir ?? 1, s, !!f.big);
+        if (f.big) this.flash = Math.max(this.flash, 0.22);
+        break;
+      }
+      case 'slash': {
+        // 斬撃の弧。技ごとに向きと大きさを変える（右向きで決めて、左向きは裏返す）
+        const dir = f.dir ?? 1;
+        const hh = this.heroH(h.lane);
+        const cx = this.wx(h.x) + dir * hh * 0.2;
+        const cy = this.wy(h.lane) - hh * 0.45 - h.z * this.zk() * 0.75;
+        const D = Math.PI / 180;
+        const mir = (a: number) => (dir > 0 ? a : Math.PI - a);
+        const flipStep = sim.combo % 2 === 0;
+        let [a0, a1, r, w] = flipStep ? [-115 * D, 35 * D, hh * 0.36, hh * 0.05] : [45 * D, -105 * D, hh * 0.34, hh * 0.045];
+        if (f.move === 'launch') [a0, a1, r, w] = [120 * D, -75 * D, hh * 0.44, hh * 0.07];
+        if (f.move === 'air') [a0, a1, r, w] = [-60 * D, 70 * D, hh * 0.32, hh * 0.05];
+        if (f.move === 'slam') [a0, a1, r, w] = [-140 * D, 70 * D, hh * 0.48, hh * 0.08];
+        if (f.move === 'tosshin') {
+          // 突進で斬った狼に、横一文字（大きな半径のほぼまっすぐな弧）
+          const wy = y - this.geo.Hm * 0.07;
+          const R = hh * 2.2;
+          P.arc(x, wy + R, R, mir(-90 * D - 0.2), mir(-90 * D + 0.2), hh * 0.06, 0xffffff, 0.16);
+          break;
+        }
+        P.arc(cx, cy, r, mir(a0), mir(a1), w, f.big ? 0xff5080 : 0xffa0b8, f.move === 'slam' ? 0.2 : 0.15);
+        break;
+      }
+      case 'dash': {
+        const dir = f.dir ?? 1;
+        P.dust(x, y, s * 1.4, 6, 50, 60);
+        P.glow(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 1.1, 0xff6090, 0.2, 0.5);
+        for (let i = 0; i < 8; i++) {
+          const ly = Math.random() * this.geo.Hm * 0.8 + this.geo.Hm * 0.1;
+          this.screenParts.line(dir > 0 ? this.geo.W : -this.geo.W * 0.6, ly, this.geo.W * (0.3 + Math.random() * 0.4), -dir * this.geo.W * 5, 0xffffff, 0.5, 0.18, 1.5 + Math.random() * 2);
+        }
+        break;
+      }
+      case 'pound': {
+        P.ring(x, y, 10, (f.r ?? 80) * this.geo.K * 1.6, 6 * s, 0xffe0c0, 0.35, 0.28);
+        P.debris(x, y - 4, s, 14, y + 6);
+        P.dust(x, y, s * 1.8, 8, 90, 50);
+        this.flash = Math.max(this.flash, 0.2);
+        break;
+      }
+      case 'land':
+        P.dust(x, y, s * (f.big ? 1.8 : 1), f.big ? 8 : 4, f.big ? 70 : 40, 30);
+        if (f.big) {
+          P.debris(x, y - 4, s, 8, y + 6);
+          P.ring(x, y, 8, (f.r ?? 60) * this.geo.K * 1.3, 4 * s, 0xd0c0a0, 0.3, 0.28);
+        }
+        break;
+      case 'blast': {
+        const r = (f.r ?? 60) * this.geo.K;
+        const by = y - this.geo.Hm * 0.08;
+        P.glow(x, by, r * 2.6, f.big ? 0xffd080 : 0xffa040, 0.35, 1, 0.4);
+        P.glow(x, by, r * 1.2, 0xffffff, 0.15, 1, 0.8);
+        P.ring(x, by, r * 0.2, r * 1.3, 8 * s, 0xffc070, 0.32);
+        P.ring(x, y, r * 0.3, r * 1.5, 5 * s, 0xffe0c0, 0.4, 0.28);
+        P.debris(x, y - 6, s, f.big ? 22 : 12, y + 6);
+        P.dust(x, y, s * 2.2, 10, 120, 80);
+        for (let i = 0; i < (f.big ? 16 : 6); i++) P.petal(x, by, s, (Math.random() - 0.5) * 700, -Math.random() * 500);
+        this.flash = Math.max(this.flash, f.big ? 0.55 : 0.3);
+        this.flashColor = 0xfff0d0;
+        break;
+      }
+      case 'muzzle': {
+        const dir = f.dir ?? 1;
+        const hh = this.heroH(f.lane);
+        const my = y - hh * 0.62;
+        P.glow(x + dir * hh * 0.25, my, hh * (f.big ? 1.6 : 1.1), 0xffe0a0, 0.18, 1, 0.3);
+        for (let i = 0; i < 10; i++) P.line(x, my + (Math.random() - 0.5) * hh * 0.2, dir * hh * (0.6 + Math.random() * 0.8), 0, 0xfff0c0, 0.9, 0.12, 3);
+        P.dust(x - dir * hh * 0.3, y, s * 1.6, 6, 60, 30); // 反動の土煙
+        break;
+      }
+      case 'full':
+        P.ring(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 0.9, 10, 4, 0xffe070, 0.25);
+        P.glow(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 1.4, 0xffd060, 0.3, 0.9);
+        this.flash = Math.max(this.flash, 0.15);
+        this.flashColor = 0xfff0a0;
+        break;
+      case 'spin': {
+        const r = (f.r ?? 90) * this.geo.K;
+        const cy = y - this.heroH(f.lane) * 0.4;
+        P.arc(x, cy, r * 0.8, 0, Math.PI * 1.9, this.heroH(f.lane) * 0.08, f.big ? 0xffd060 : 0xff80a0, 0.28);
+        P.ring(x, y, r * 0.3, r * 1.2, 4 * s, 0xffffff, 0.3, 0.3);
+        for (let i = 0; i < (f.big ? 8 : 4); i++) P.petal(x, cy, s, (Math.random() - 0.5) * 600, -Math.random() * 300);
+        break;
+      }
+      case 'poof':
+        P.pop(x, y - zy - this.geo.Hm * 0.05, s, f.r ?? 30);
+        break;
+      case 'miss':
+        P.dust(x, y, s * 0.7, 2, 20, 20);
+        break;
+      case 'bite':
+        this.houseFlash = 0.25;
+        P.debris(this.wx(HOUSE_X), y - 30, s, 4, y + 6);
+        break;
+      case 'emerge':
+        P.glow(this.wx(WOLF_SPAWN_X), y - this.geo.Hm * 0.06, this.geo.Hm * (f.big ? 0.8 : 0.35), 0xff3040, 0.4, 0.9);
+        P.ring(this.wx(WOLF_SPAWN_X), y, 6, this.geo.Hm * 0.12, 3, 0xff6070, 0.35, 0.3);
+        break;
+      case 'num':
+        break;
+    }
+  }
+
+  // 走りの土煙・花びらの舞い・低い体力の息づかい
+  private ambient(sim: Sim, dt: number) {
+    const h = sim.hero;
+    const P = this.parts;
+    const g = this.geo;
+    this.ambientT -= dt;
+    if (sim.hitStop > 0) return;
+    if (this.ambientT <= 0) {
+      this.ambientT = 0.05;
+      if (h.running > 0 && h.z <= 0 && Math.random() < (h.running > 400 ? 0.9 : 0.45)) P.dust(this.wx(h.x) - h.facing * 14, this.wy(h.lane), this.ds(h.lane) * g.Hm / 600, 1, 20, 30);
+      // 夜風の花びら（画面の右上から）
+      if (Math.random() < 0.35) this.screenParts.petal(g.W * (0.3 + Math.random() * 0.8), -10, 1, -40 - Math.random() * 60, 30 + Math.random() * 40, 5 + Math.random() * 3);
+      // 桜嵐：花吹雪
+      if (h.ouran > 0) for (let i = 0; i < 6; i++) this.screenParts.petal(g.W + 10, Math.random() * g.Hm, 1.6, -600 - Math.random() * 500, (Math.random() - 0.5) * 200, 1.4);
+      // 溜め：まわりから光の粒が集まる
+      if (h.charge >= 0) {
+        const hh = this.heroH(h.lane);
+        const cx = this.wx(h.x);
+        const cy = this.wy(h.lane) - hh * 0.5;
+        for (let i = 0; i < 2; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = hh * (0.6 + Math.random() * 0.4);
+          P.line(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2, 0, 0xffd080, 1, 0.01, 0);
+          P.glow(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 16, 0xffc060, 0.25, 0.9, -0.8);
+        }
+      }
+      // 遠吠えの狼のまわりの速さの線
+      for (const w of sim.wolves) if (w.hasted && Math.random() < 0.3) P.line(this.wx(w.x) + w.size * this.U(w.lane) * 0.6, this.wy(w.lane) - w.size * this.U(w.lane) * 0.4 * Math.random(), w.size * this.U(w.lane) * 0.5, 120, 0xffff80, 0.6, 0.15, 1.5);
+    }
+  }
+
+  // 残像：速く動いた瞬間の姿を、色を付けて少し残す
+  private afterimages(sim: Sim, pose: Pose, dt: number) {
+    if (!this.ghosts.length) return;
+    const h = sim.hero;
+    const fast = h.move === 'tosshin' || (h.order?.sprint && h.running > 0) || h.ouran > 0 || h.move === 'launch' || (h.move === 'slam' && h.z > 0) || h.lungeTo !== null;
+    if (sim.hitStop <= 0) this.ghostT -= dt;
+    if (fast && this.ghostT <= 0) {
+      this.ghostT = 0.028;
+      const g = this.ghosts.reduce((a, b) => (a.t > b.t ? a : b));
+      g.pose = { ...pose };
+      g.t = 0;
+      g.tint = h.ouran > 0 ? 0xffd060 : 0xff5a8a;
+    }
+    for (const g of this.ghosts) {
+      if (sim.hitStop <= 0) g.t += dt;
+      const life = 0.2;
+      const on = g.pose && g.t < life;
+      g.rig.root.visible = !!on;
+      if (on) g.rig.apply(g.pose!, g.tint, 0.55 * (1 - g.t / life));
+    }
+  }
+
+  // ── 狼（箱。動きで生き物に見せる）──
+  private drawWolf(g: Graphics, w: Wolf, sim: Sim) {
+    const u = this.U(w.lane);
+    const bw = w.size * u;
+    const big = WOLVES[w.kind].size > 100;
+    const bh = bw * (big ? 0.78 : 0.62);
+    const x = this.wx(w.x);
+    const ground = this.wy(w.lane);
+    const lift = w.z * this.zk();
+    const t = sim.clock + w.id * 0.37;
+    const moving = w.z <= 0 && w.stun <= 0 && w.vx === 0;
+    const speed = WOLVES[w.kind].speed * (w.hasted ? 1.5 : 1);
+    const ph = t * (6 + speed * 0.08);
+    let rot = 0;
+    let sx = 1;
+    let sy = 1;
+    let bob = 0;
+    if (moving) {
+      bob = Math.abs(Math.sin(ph)) * bh * 0.1;
+      rot = Math.sin(ph * 2) * 0.04;
+      sy = 1 + Math.sin(ph * 2) * 0.03;
+    }
+    // 噛みつき：前へ飛び出して戻る
+    const s = WOLVES[w.kind];
+    const biteK = w.cooldown > s.interval - 0.16 && w.z <= 0 ? Math.sin(((s.interval - w.cooldown) / 0.16) * Math.PI) : 0;
+    const lunge = -biteK * bw * 0.25;
+    if (biteK) { sx = 1 + biteK * 0.15; sy = 1 - biteK * 0.1; }
+    // 当たった：つぶれる・のけぞる
+    const hit = w.hitFlash / 0.12;
+    if (hit > 0) { sx *= 1 - 0.22 * hit; sy *= 1 + 0.18 * hit; rot += (w.hitDir || 1) * 0.25 * hit; }
+    if (w.z > 0) {
+      if (w.pouncing) {
+        rot = Math.atan2(-w.vz, -330) + Math.PI; // 跳びかかり：鼻先を進む向きへ
+        rot = Math.max(-0.6, Math.min(0.6, -w.vz / 900));
+        sx = 1.15;
+        sy = 0.9;
+      } else if (w.slammed) {
+        sx = 0.8;
+        sy = 1.3;
+        rot = (w.hitDir || 1) * 0.3;
+      } else rot = (w.hitDir || 1) * Math.min(Math.PI * 1.6, w.z / (w.size * 2.2)) * (w.vz > 0 ? 1 : 1.2); // 打ち上げ：くるくる回る
+    } else if (w.stun > 0.05 && !hit) {
+      sy *= 0.92; // 落ちたあと、へたりこむ
+      sx *= 1.06;
+    }
+    // 裂け目から出てくる：ぽんっと大きくなる
+    if (w.age < 0.45) {
+      const k = backOut(w.age / 0.45);
+      sx *= k;
+      sy *= k;
+    }
+    const color = WOLF_COLOR[w.kind];
+    const flash = w.hitFlash > 0;
+    const cy = ground - lift - bob;
+    place(g, x + lunge, cy, rot, sx, sy);
+    // 脚（4本。走ると交互に）
+    const legH = bh * 0.28;
+    const legW = bw * 0.09;
+    const legs = [-0.32, -0.16, 0.18, 0.34];
+    legs.forEach((lx, i) => {
+      const sw = moving ? Math.sin(ph + (i % 2) * Math.PI) * legH * 0.35 : w.z > 0 ? legH * 0.3 : 0;
+      g.roundRect(bw * lx - legW / 2 + sw * 0.4, -legH, legW, legH - Math.abs(sw) * 0.3, legW / 2).fill(mix(color, 0x000000, 0.35));
+    });
+    // しっぽ（右。走ると振る）
+    const tw = Math.sin(t * 9) * 0.4;
+    g.moveTo(bw * 0.45, -bh * 0.85).quadraticCurveTo(bw * 0.7, -bh * (1.1 + tw * 0.3), bw * 0.72, -bh * (0.75 + tw * 0.4)).stroke({ width: bw * 0.09, color, cap: 'round' });
+    // 体
+    g.roundRect(-bw / 2, -bh - legH * 0.6, bw, bh, bw * 0.12).fill(flash ? 0xffffff : color);
+    g.roundRect(-bw / 2, -legH * 0.6 - bh * 0.28, bw, bh * 0.28, bw * 0.1).fill({ color: 0x000000, alpha: flash ? 0 : 0.18 }); // 腹の影
+    if (w.kind === 'armored') {
+      for (let i = 0; i < 3; i++) g.rect(-bw * 0.35 + i * bw * 0.25, -bh - legH * 0.6 + bh * 0.12, bw * 0.18, bh * 0.4).fill({ color: 0xc8c8d8, alpha: flash ? 0 : 0.5 });
+    }
+    if (w.kind === 'howler') g.circle(-bw * 0.32, -bh - legH * 0.4, bw * 0.28).fill({ color: mix(color, 0xffffff, 0.15), alpha: flash ? 0 : 1 }); // たてがみ
+    // 耳（左が頭）
+    const top = -bh - legH * 0.6;
+    g.poly([-bw * 0.48, top + 2, -bw * 0.4, top - bh * 0.32, -bw * 0.28, top + 2]).fill(flash ? 0xffffff : color);
+    g.poly([-bw * 0.3, top + 2, -bw * 0.2, top - bh * 0.28, -bw * 0.1, top + 2]).fill(flash ? 0xffffff : mix(color, 0x000000, 0.1));
+    // 目：ふつうは赤く光る。遠吠えのそばでは黄色。のびているときは ×
+    const ex = -bw * 0.36;
+    const ey = top + bh * 0.3;
+    const er = Math.max(2, bw * 0.06);
+    if (w.z <= 0 && w.stun > 0.12 && !hit) {
+      g.moveTo(ex - er, ey - er).lineTo(ex + er, ey + er).moveTo(ex + er, ey - er).lineTo(ex - er, ey + er).stroke({ width: 2, color: 0xffffff });
+    } else {
+      g.circle(ex, ey, er).fill(w.hasted ? 0xffff60 : 0xff4040);
+      g.circle(ex, ey, er * 2.4).fill({ color: w.hasted ? 0xffff60 : 0xff2020, alpha: 0.18 });
+    }
+    // 鼻先
+    g.roundRect(-bw * 0.62, top + bh * 0.38, bw * 0.16, bh * 0.26, 3).fill(flash ? 0xffffff : mix(color, 0x000000, 0.15));
+    if (biteK > 0.3) g.poly([-bw * 0.6, top + bh * 0.62, -bw * 0.5, top + bh * 0.78, -bw * 0.46, top + bh * 0.62]).fill(0xffffff); // 牙
+    g.restore();
+    // 体力の棒（減ったときだけ）
+    if (w.hp < w.maxHp && w.age > 0.4) {
+      const hb = bw * 0.8;
+      const hy = cy - bh - legH - bh * 0.45;
+      g.rect(x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
+      g.rect(x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
+    }
+  }
+
+  // ── 番犬（箱。右を向いて構える）──
+  private drawDog(g: Graphics, d: Dog, sim: Sim, alpha = 1) {
+    const u = this.U(d.lane);
+    const bw = d.size * u;
+    const bh = bw * 0.6;
+    const x = this.wx(d.x);
+    const ground = this.wy(d.lane);
+    const t = (sim.phase === 'wave' ? sim.clock : this.vt) + d.id * 0.5;
+    const color = DOG_COLOR[d.kind];
+    const bite = d.bite > 0 ? Math.sin((1 - d.bite / 0.2) * Math.PI) : 0;
+    const hit = d.hitFlash / 0.12;
+    const bob = Math.abs(Math.sin(t * 5)) * bh * 0.04;
+    place(g, x + bite * bw * 0.25, ground - bob, 0, 1 + bite * 0.12 - hit * 0.15, 1 - bite * 0.08 + hit * 0.12);
+    const legH = bh * 0.3;
+    for (const lx of [-0.3, -0.15, 0.18, 0.32]) g.roundRect(bw * lx - bw * 0.045, -legH, bw * 0.09, legH, 3).fill({ color: mix(color, 0x000000, 0.3), alpha });
+    // 巻いたしっぽ（振る）
+    const wag = Math.sin(t * 14) * 0.25;
+    g.circle(-bw * 0.5, -bh - legH * 0.4 - wag * bh * 0.2, bw * 0.12).stroke({ width: bw * 0.07, color, alpha });
+    g.roundRect(-bw / 2, -bh - legH * 0.6, bw, bh, bw * 0.15).fill({ color: d.hitFlash > 0 ? 0xffffff : color, alpha });
+    g.roundRect(-bw / 2 + bw * 0.1, -legH * 0.6 - bh * 0.3, bw * 0.8, bh * 0.3, bw * 0.1).fill({ color: 0xfff0e0, alpha: 0.5 * alpha }); // 白い腹
+    const top = -bh - legH * 0.6;
+    g.poly([bw * 0.2, top + 2, bw * 0.28, top - bh * 0.35, bw * 0.38, top + 2]).fill({ color, alpha });
+    g.poly([bw * 0.36, top + 2, bw * 0.44, top - bh * 0.3, bw * 0.5, top + 2]).fill({ color, alpha });
+    g.circle(bw * 0.36, top + bh * 0.3, Math.max(2, bw * 0.05)).fill({ color: 0x1a1010, alpha });
+    g.roundRect(bw * 0.46, top + bh * 0.4, bw * 0.14, bh * 0.22, 3).fill({ color: mix(color, 0xffffff, 0.3), alpha });
+    if (bite > 0.3 || sim.phase !== 'wave') g.roundRect(bw * 0.5, top + bh * 0.6, bw * 0.07, bh * 0.16, 2).fill({ color: 0xff7080, alpha }); // 舌
+    g.restore();
+    if (d.hp < d.maxHp) {
+      const hb = bw * 0.8;
+      const hy = ground - bh - legH - bh * 0.3;
+      g.rect(x - hb / 2, hy, hb, 3).fill({ color: 0x000000, alpha: 0.6 });
+      g.rect(x - hb / 2, hy, (hb * Math.max(0, d.hp)) / d.maxHp, 3).fill(0xe0b060);
+    }
+  }
+
+  // おばあさんの家（仮の影絵：大正の和洋折衷の屋敷）。齧られると赤く光り、傷むとひびが入る
+  private drawHouse(g: Graphics, sim: Sim) {
+    const gx = this.geo;
+    const right = this.wx(HOUSE_X) + 8;
+    const base = this.wy(1) + 8;
+    const top = gx.horizon - gx.Hm * 0.32;
+    const left = right - gx.Hm * 0.55;
+    const f = Math.max(0, this.houseFlash);
+    const wall = mix(0x5a4636, 0xff4040, f * 2);
+    g.rect(left, top, right - left, base - top).fill(wall);
+    g.rect(left, top, right - left, (base - top) * 0.12).fill(mix(0x3a2c26, 0xff4040, f));
+    // 屋根（瓦）
+    g.poly([left - 20, top + 4, right + 18, top + 4, right - (right - left) * 0.25, top - gx.Hm * 0.13, left + (right - left) * 0.1, top - gx.Hm * 0.13]).fill(0x2a1e22);
+    for (let i = 0; i < 6; i++) g.moveTo(left - 10 + i * ((right - left) / 5), top + 2).lineTo(left + 6 + i * ((right - left) / 5.6), top - gx.Hm * 0.12).stroke({ width: 1, color: 0x403038 });
+    // 窓の灯り（昼は消える）
+    const lit = sim.phase === 'shop' ? 0.2 : 0.9;
+    for (const [fx, fy] of [[0.2, 0.3], [0.55, 0.3], [0.2, 0.62]]) {
+      g.rect(left + (right - left) * fx, top + (base - top) * fy, (right - left) * 0.2, (base - top) * 0.16).fill({ color: 0xf0c060, alpha: lit });
+    }
+    // 戸
+    g.rect(right - (right - left) * 0.28, top + (base - top) * 0.55, (right - left) * 0.2, (base - top) * 0.45).fill(0x2a1c18);
+    // ひび（家の耐久が減るほど）
+    const dmg = 1 - sim.houseHp / HOUSE_HP;
+    for (let i = 0; i < Math.floor(dmg * 6); i++) {
+      const cx = left + (right - left) * ((i * 0.37 + 0.1) % 0.9);
+      const cy = top + (base - top) * ((i * 0.53 + 0.2) % 0.8);
+      g.moveTo(cx, cy).lineTo(cx + 10, cy + 14).lineTo(cx + 4, cy + 26).lineTo(cx + 14, cy + 38).stroke({ width: 2, color: 0x1a1010 });
+    }
+    this.houseFlash -= 1 / 60;
+  }
+
+  // 異界の裂け目（戦場の右の端）。狼はここから出てくる
+  private drawRift(g: Graphics, sim: Sim) {
+    const gx = this.geo;
+    const x = this.wx(WOLF_SPAWN_X) + 20;
+    const top = gx.horizon - gx.Hm * 0.2;
+    const bot = this.wy(1) + 6;
+    const t = this.vt;
+    const pts: number[] = [];
+    const n = 12;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      pts.push(x + Math.sin(k * 9 + t * 2) * 6 + Math.sin(k * 23) * 5, top + (bot - top) * k);
+    }
+    const width = (sim.phase === 'wave' ? 1 : 0.4) * (22 + Math.sin(t * 4) * 4);
+    const half = (i: number) => width * Math.sin((Math.PI * i) / n) ** 0.6;
+    const poly: number[] = [];
+    for (let i = 0; i <= n; i++) poly.push(pts[i * 2] - half(i), pts[i * 2 + 1]);
+    for (let i = n; i >= 0; i--) poly.push(pts[i * 2] + half(i), pts[i * 2 + 1]);
+    g.poly(poly).fill({ color: 0xff3040, alpha: 0.25 });
+    g.poly(poly.map((v, i) => (i % 2 === 0 ? x + (v - x) * 0.5 : v))).fill({ color: 0x200008, alpha: 0.95 });
+    g.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+    g.stroke({ width: 2, color: 0xff6070, alpha: 0.8 });
+  }
+
+  private drawOver(sim: Sim, dt: number) {
+    const o = this.overG.clear();
+    const K = this.geo.K;
     // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
-      const dx = (a.toX - a.fromX) * k;
-      const arc = Math.abs(dx) * 0.35;
-      const y0 = Y(a.lane) - 14 * u;
-      const x = X(a.fromX) + dx * a.t;
-      const y = y0 - Math.sin(Math.PI * a.t) * arc + (14 * u - 10) * a.t;
-      const vx = dx;
-      const vy = -Math.cos(Math.PI * a.t) * Math.PI * arc;
+      const hh = this.heroH(a.fromLane);
+      const x0 = this.wx(a.fromX);
+      const y0 = this.wy(a.fromLane) - hh * 0.6;
+      const x1 = this.wx(a.toX);
+      const y1 = this.wy(a.lane) - this.geo.Hm * 0.05;
+      const arc = Math.abs(x1 - x0) * 0.3;
+      const x = x0 + (x1 - x0) * a.t;
+      const y = y0 + (y1 - y0) * a.t - Math.sin(Math.PI * a.t) * arc;
+      const vx = x1 - x0;
+      const vy = y1 - y0 - Math.cos(Math.PI * a.t) * Math.PI * arc;
       const len = Math.hypot(vx, vy) || 1;
-      const L = 9 * u;
-      g.moveTo(x - (vx / len) * L, y - (vy / len) * L).lineTo(x, y).stroke({ width: 2.5, color: COLOR.arrow });
+      const L = hh * 0.14;
+      o.moveTo(x - (vx / len) * L * 2.2, y - (vy / len) * L * 2.2).lineTo(x, y).stroke({ width: 2, color: 0xffffff, alpha: 0.25 }); // 尾
+      o.moveTo(x - (vx / len) * L, y - (vy / len) * L).lineTo(x, y).stroke({ width: 3, color: COLOR.arrow });
     }
-    // 砲弾（放物線）
+    // 砲弾（放物線と火の尾）
     for (const sh of sim.shells) {
       if (sh.t < 0) continue;
-      const x = X(sh.fromX + (sh.toX - sh.fromX) * sh.t);
-      const arc = Math.sin(Math.PI * sh.t) * this.h * 0.4;
-      g.circle(x, Y(sh.lane) - 40 - arc + 40 * sh.t, 4).fill(COLOR.shell);
+      const x = this.wx(sh.fromX + (sh.toX - sh.fromX) * sh.t);
+      const arc = Math.sin(Math.PI * sh.t) * this.geo.Hm * 0.45;
+      const y = this.wy(sh.lane) - 60 - arc + 60 * sh.t;
+      o.circle(x, y, 7).fill(COLOR.shell);
+      o.circle(x, y, 14).fill({ color: 0xffa040, alpha: 0.35 });
+      if (Math.random() < 0.6) this.parts.dust(x, y, 0.6, 1, 10, 0);
     }
     // 狼の衝撃波
     for (const sh of sim.shots) {
-      const x = X(sh.x);
-      const y = Y(0.5) - 14 * u;
-      g.moveTo(x + 10 + Math.cos(Math.PI * 0.7) * 14, y + Math.sin(Math.PI * 0.7) * 14).arc(x + 10, y, 14, Math.PI * 0.7, Math.PI * 1.3).stroke({ width: 3, color: COLOR.shock });
+      const x = this.wx(sh.x);
+      const y = this.wy(sh.lane) - this.geo.Hm * 0.06;
+      const r = this.geo.Hm * 0.05;
+      for (let i = 0; i < 3; i++) crescent(o, x + 10 + i * 9, y, r * (1 - i * 0.2), Math.PI * 0.65, Math.PI * 1.35, 6 - i * 1.5, COLOR.shock, 0.8 - i * 0.25);
     }
-
-    // 効果
+    // 数字：跳ねて上へ消える。出た瞬間に大きく、すぐ締まる。大きい一撃は大きく黄色く
     let ni = 0;
     for (const f of sim.fx) {
-      const p = f.t / 0.6;
-      const x = X(f.x);
-      const y = Y(f.lane) - 14 * u;
-      if (f.kind === 'blast') g.circle(x, y, (f.r ?? 60) * k * (0.4 + p * 0.6)).fill({ color: COLOR.blast, alpha: 0.55 * (1 - p) });
-      if (f.kind === 'poof') g.circle(x, y - (f.z ?? 0) * zk - p * 20, 8 + p * 16).fill({ color: 0xffffff, alpha: 0.5 * (1 - p) });
-      if (f.kind === 'miss') g.moveTo(x - 4, y + 10).lineTo(x + 2, y).stroke({ width: 2, color: COLOR.arrow, alpha: 1 - p });
-      if (f.kind === 'spin') g.circle(x, y, (f.r ?? 80) * k).stroke({ width: 4 * (1 - p) + 1, color: COLOR.slash, alpha: 1 - p });
-      if (f.kind === 'land') g.ellipse(x, Y(f.lane), (f.r ?? 60) * k * (0.5 + p), 6 * (1 - p) + 2).stroke({ width: 3, color: 0xd0c0a0, alpha: 1 - p });
-      if (f.kind === 'slash') {
-        // 斬撃の線：斬り上げは下から上、叩き落としは上から下、ふつうは横なぎ
-        const r = 26 * u;
-        const [a0, a1] = f.z === 1 ? [Math.PI * 0.6, -Math.PI * 0.4] : f.z === -1 ? [-Math.PI * 0.5, Math.PI * 0.5] : [-Math.PI * 0.35, Math.PI * 0.35];
-        const cx = x - r * 0.4;
-        const cy = y - 6 * u;
-        const lo = Math.min(a0, a1);
-        // arc は直前の点から線を引くので、弧の始まりへ先に移る（撮影で、左上から線が伸びていた）
-        g.moveTo(cx + Math.cos(lo) * r, cy + Math.sin(lo) * r).arc(cx, cy, r, lo, Math.max(a0, a1)).stroke({ width: 5 * (1 - p) + 1, color: COLOR.slash, alpha: 1 - p });
+      if ((f.kind !== 'num' && !(f.kind === 'poof' && f.n)) || ni >= this.nums.length) continue;
+      const q = f.t / (f.kind === 'num' ? 0.8 : 0.6);
+      const t = this.nums[ni++];
+      t.visible = true;
+      const x = this.wx(f.x);
+      const y = this.wy(f.lane) - (f.z ?? 0) * this.zk() - this.geo.Hm * 0.12;
+      if (f.kind === 'poof') {
+        t.text = `+${f.n}銭`;
+        t.style.fontSize = 15;
+        t.style.fill = 0xffd860;
+        t.scale.set(1);
+        t.alpha = 1 - q;
+        t.position.set(x, y - this.geo.Hm * 0.04 - q * 40);
+        continue;
       }
-      if (f.kind === 'num' && ni < this.nums.length) {
-        // ダメージ数字：跳ねて上へ消える。大きい一撃は大きく黄色く
-        const q = f.t / 0.8;
-        const t = this.nums[ni++];
-        t.visible = true;
-        t.text = String(f.n);
-        t.style.fontSize = f.big ? 26 : 16;
-        t.style.fill = f.big ? 0xffd040 : 0xffffff;
-        t.alpha = q < 0.6 ? 1 : 1 - (q - 0.6) / 0.4;
-        t.position.set(x + ((ni * 37) % 31) - 15, y - ((ni * 53) % 17) - (f.z ?? 0) * zk - 20 * u - Math.sin(Math.min(1, q * 3) * Math.PI * 0.5) * 24);
-      }
+      t.text = String(f.n);
+      t.style.fontSize = f.big ? 34 : 22;
+      t.style.fill = f.big ? 0xffd040 : 0xffffff;
+      const pop = 1 + 0.7 * Math.max(0, 1 - q * 7);
+      t.scale.set(pop);
+      t.alpha = q < 0.6 ? 1 : 1 - (q - 0.6) / 0.4;
+      t.position.set(x + ((f.id * 37) % 41) - 20, y - ((f.id * 53) % 17) - easeOut(Math.min(1, q * 3)) * 34);
     }
     for (; ni < this.nums.length; ni++) this.nums[ni].visible = false;
+    void K;
+    void dt;
   }
 
-  private hero(g: Graphics, sim: Sim, X: (x: number) => number, gy: number, u: number) {
+  private drawScreen(sim: Sim, dt: number, z: number, ox: number) {
+    const s = this.screen.clear();
+    const g = this.geo;
     const h = sim.hero;
-    const b = 14 * u * HERO_ZOOM; // 体の幅
-    let x = X(h.x);
-    // 足もとの影：地面に立たせる（影が無いと絵が浮いて貼り付けたように見える）
-    const air = h.move === 'launch' || h.move === 'air' ? 0.75 : 1;
-    g.ellipse(x, gy + 2, b * 1.1 * air, b * 0.22 * air).fill({ color: 0x000000, alpha: 0.45 });
-    this.heroAt = { x, y: gy - b * 4.3 };
-    if (this.rig.ready) {
-      // 絵がある：切り絵を動かし、体力の棒だけ描く
-      this.rig.update(sim, x, gy, b * 4.4);
-      if (h.down > 0) return;
-      // 頭上へ振り上げたナイフの先（跳んだときも）より上に置く。ポーズで上下させない
-      const top = gy - b * 5.7;
-      const hw = b * 2;
-      g.rect(x - hw / 2, top, hw, 4).fill(COLOR.hpBack);
-      g.rect(x - hw / 2, top, (hw * Math.max(0, h.hp)) / sim.maxHp, 4).fill(COLOR.heroHp);
-      this.heroAt = { x, y: top - b * 0.1 };
-      return;
+    // 桜嵐：背景を暗く
+    const sh = this.shade.clear();
+    if (h.ouran > 0) sh.rect(0, 0, g.W, g.Hm).fill({ color: 0x100008, alpha: 0.45 });
+    // 周辺の暗がり（ずっと薄く。体力が少ないと赤く脈打つ）
+    const low = sim.phase === 'wave' && h.down <= 0 && h.hp < sim.maxHp * 0.3;
+    const vc = low ? 0x800010 : h.ouran > 0 ? 0x601020 : 0x000000;
+    const va = low ? 0.35 + 0.2 * Math.sin(this.vt * 6) : 0.3;
+    const edge = Math.min(g.W, g.Hm) * 0.12;
+    for (let i = 0; i < 6; i++) {
+      const k = i / 6;
+      const a = va * (1 - k) * 0.35;
+      const e = edge * k;
+      s.rect(0, 0, g.W, e + 3).fill({ color: vc, alpha: a });
+      s.rect(0, g.Hm - e - 3, g.W, e + 3).fill({ color: vc, alpha: a });
+      s.rect(0, 0, e + 3, g.Hm).fill({ color: vc, alpha: a });
+      s.rect(g.W - e - 3, 0, e + 3, g.Hm).fill({ color: vc, alpha: a });
     }
+    // 溜め：画面の縁が暖かく光る
+    if (h.charge >= 0) {
+      const c = Math.min(1, h.charge / sim.chargeFull);
+      s.rect(0, 0, g.W, g.Hm).stroke({ width: 10 * c, color: c >= 1 ? 0xffe070 : 0xff9040, alpha: 0.35 + 0.25 * Math.sin(this.vt * 20) * c });
+    }
+    // 閃光（大きい一撃・主砲）
+    if (this.flash > 0) {
+      s.rect(0, 0, g.W, g.Hm).fill({ color: this.flashColor, alpha: Math.min(0.45, this.flash) });
+      this.flash = Math.max(0, this.flash - dt * 5);
+      if (this.flash <= 0) this.flashColor = 0xffffff;
+    }
+    // 画面の外の狼：端に矢印と数（家に近い狼がいると赤く脈打つ）
+    const x0 = (0 - ox) / z / g.K;
+    const x1 = (g.W - ox) / z / g.K;
+    const leftN = sim.wolves.filter((w) => w.x < x0).length;
+    const rightN = sim.wolves.filter((w) => w.x > x1).length;
+    const danger = sim.wolves.some((w) => w.x < 200 && w.x < x0);
+    const ay = g.Hm * 0.7;
+    const arrow = (x: number, dir: number, n: number, i: number, red: boolean) => {
+      const t = this.edgeText[i];
+      t.visible = n > 0 && sim.phase === 'wave';
+      if (!t.visible) return;
+      const pulse = 1 + 0.12 * Math.sin(this.vt * (red ? 12 : 5));
+      const c = red ? 0xff4050 : 0xffffff;
+      s.poly([x, ay, x - dir * 16 * pulse, ay - 13 * pulse, x - dir * 16 * pulse, ay + 13 * pulse]).fill({ color: c, alpha: 0.85 });
+      t.text = String(n);
+      t.style.fill = c;
+      t.position.set(x - dir * 30, ay);
+    };
+    arrow(g.W - 6, 1, rightN, 1, false);
+    arrow(6, -1, leftN, 0, danger);
+    if (danger && sim.phase === 'wave') s.rect(0, 0, 8, g.Hm).fill({ color: 0xff2030, alpha: 0.3 + 0.25 * Math.sin(this.vt * 12) });
+    // 指の軌跡（はじいた手応え）
+    const now = this.vt;
+    this.trail = this.trail.filter((p) => now - p.t < 0.18);
+    for (let i = 1; i < this.trail.length; i++) {
+      const a = this.trail[i - 1];
+      const b = this.trail[i];
+      const k = 1 - (now - b.t) / 0.18;
+      s.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 2 + 8 * k, color: 0xffe0f0, alpha: 0.55 * k, cap: 'round' });
+    }
+    void sim;
+  }
+
+  // 絵が読めないときの主人公（赤い箱）
+  private boxHero(g: Graphics, sim: Sim, x: number, y: number) {
+    const h = sim.hero;
+    const b = this.heroH(h.lane) * 0.22;
+    const lift = h.z * this.zk() * 0.55;
+    const col = h.ouran > 0 ? (Math.floor(sim.clock * 20) % 2 ? 0xffe060 : 0xff6040) : h.hitFlash > 0 ? 0xffffff : 0xc0303a;
     if (h.down > 0) {
-      // 倒れている：横になる
-      g.rect(x - b * 1.5, gy - b * 0.8, b * 3, b * 0.8).fill({ color: COLOR.girl, alpha: 0.6 });
+      g.rect(x - b * 1.5, y - b * 0.8, b * 3, b * 0.8).fill({ color: col, alpha: 0.6 });
       return;
     }
-    // 技の踏み込み：当てる瞬間に前へ出る
-    const m = h.move;
-    if (m && m !== 'bow' && m !== 'ame' && m !== 'hougeki') x += h.facing * Math.sin(Math.min(1, h.moveT / 0.15) * Math.PI) * b * 0.5;
-    const lift = m === 'launch' || m === 'air' ? b * 0.6 : 0;
-    const col = h.ouran > 0 ? (Math.floor(sim.clock * 20) % 2 ? 0xffe060 : 0xff6040) : h.hitFlash > 0 ? 0xffffff : COLOR.girl;
-    g.rect(x - b / 2, gy - b * 3 - lift, b, b * 3).fill(col);
-    g.circle(x, gy - b * 3.5 - lift, b * 0.55).fill(COLOR.hair);
-    // 背中の主砲：撃つ技のときだけ前上へ起きる
-    const up = m === 'shiki' || m === 'hougeki' || h.ouran > 0;
-    const r = b * 1.3;
-    const bx = x - h.facing * b * 0.2;
-    g.moveTo(bx, gy - b * 2.6 - lift).lineTo(bx + h.facing * (up ? r : -r * 0.8), gy - b * 2.6 - lift - (up ? r : -r * 0.8)).stroke({ width: b * 0.3, color: COLOR.brass });
-    // 体力
-    const hw = b * 2;
-    g.rect(x - hw / 2, gy - b * 4.3, hw, 4).fill(COLOR.hpBack);
-    g.rect(x - hw / 2, gy - b * 4.3, (hw * Math.max(0, h.hp)) / sim.maxHp, 4).fill(COLOR.heroHp);
+    g.rect(x - b / 2, y - b * 3.6 - lift, b, b * 3.6).fill(col);
+    g.circle(x, y - b * 4.1 - lift, b * 0.6).fill(0x201818);
   }
 
-  private body(g: Graphics, x: number, y: number, unit: Unit, u: number, color: number, aspect: number) {
-    const w = unit.size * u;
-    const h = w * aspect;
-    if (!('z' in unit) || !unit.z) g.ellipse(x, y + 1, w * 0.6, w * 0.12).fill({ color: 0x000000, alpha: 0.4 });
-    g.rect(x - w / 2, y - h, w, h).fill(unit.hitFlash > 0 ? 0xffffff : color);
-    if (unit.hp < unit.maxHp) {
-      g.rect(x - w / 2, y - h - 6, w, 3).fill(COLOR.hpBack);
-      g.rect(x - w / 2, y - h - 6, (w * Math.max(0, unit.hp)) / unit.maxHp, 3).fill(COLOR.hp);
-    }
+  // 撮影・点検用：主人公の今の姿勢（残像を作るのと同じ値）
+  nowPose() {
+    return this.rig.ready;
   }
 
-  private pad() {
-    return Math.max(10, this.w * 0.03);
+  laneTolPx() {
+    return LANE_TOL * this.geo.laneH;
   }
 }
+
+function dogSize(k: DogKind) {
+  return DOGS[k].size;
+}
+
+// 少し行きすぎて戻る（出てくる・置く）
+function backOut(t: number) {
+  const c = 1.9;
+  t = Math.min(1, t) - 1;
+  return 1 + (c + 1) * t * t * t + c * t * t;
+}
+
+void glowTexture;

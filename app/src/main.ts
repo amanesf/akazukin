@@ -1,9 +1,11 @@
 import './style.css';
 import { Sfx } from './audio';
 import { WOLVES, type WolfKind } from './config';
+import { Input } from './input';
 import { Sim, type Event, type Save } from './sim';
 import { Panel } from './ui';
-import { View, WOLF_COLOR } from './view';
+import { WOLF_COLOR } from './palette';
+import { View } from './view';
 
 const params = new URLSearchParams(location.search);
 // 撮影用：?auto=1 で題字を飛ばして始める、?speed=4 で早回し
@@ -15,7 +17,7 @@ const store = {
   read(): Save | null {
     try {
       const d = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
-      return d && d.v === 1 ? d : null;
+      return d && (d.v === 1 || d.v === 2) ? d : null;
     } catch {
       return null;
     }
@@ -40,14 +42,8 @@ async function main() {
   const field = document.getElementById('field')!;
   const overlay = document.getElementById('overlay')!;
   await view.init(field);
-  const panel = new Panel(document.getElementById('panel')!, () => sim);
-
-  // 戦場をタップ：近ならそこへ走って少し踏みとどまる。遠ならそこから撃つ
-  const canvas = view.app.canvas;
-  canvas.addEventListener('pointerdown', (e) => {
-    if (sim.phase !== 'wave') return;
-    sim.moveTo(view.toFieldX(e.clientX - canvas.getBoundingClientRect().left));
-  });
+  const input = new Input(view.app.canvas, view, () => sim);
+  const panel = new Panel(document.getElementById('panel')!, () => sim, (kind, e) => input.startNewDog(kind, e));
 
   // 音：最初は切。押すと入る
   const sound = document.getElementById('sound') as HTMLButtonElement;
@@ -66,12 +62,20 @@ async function main() {
     down: ['おばあちゃん、ちょっと待ってて'],
     revive: ['……お返し、しなきゃ'],
     surge: ['わ、いっぱい来た♪'],
+    combo10: ['ふふっ、まだまだ♪'],
+    combo30: ['止まらないよ〜♪'],
+    dawn: ['朝だ〜。おばあちゃん、無事？'],
   };
   const comboEl = document.getElementById('combo')!;
   const bubble = document.getElementById('bubble')!;
   const cutin = document.getElementById('cutin')!;
   const surge = document.getElementById('surge')!;
   const next = document.getElementById('next')!;
+  const card = document.getElementById('card')!;
+  const showCard = (big: string, small: string) => {
+    card.innerHTML = `<b>${big}</b><small>${small}</small>`;
+    restart(card);
+  };
   let said = -99;
   let saidLen = 0;
   let surgeUntil = -1;
@@ -85,7 +89,7 @@ async function main() {
   const say = (ev: Event) => {
     const lines = LINES[ev];
     if (!lines) return;
-    const urgent = ev === 'ouran' || ev === 'down' || ev === 'hurt' || ev === 'surge';
+    const urgent = ev === 'ouran' || ev === 'down' || ev === 'hurt' || ev === 'surge' || ev === 'dawn';
     if (!urgent && sim.clock - said < 6) return; // しゃべりすぎない
     bubble.textContent = lines[(sim.kills + Math.floor(sim.clock)) % lines.length];
     bubble.hidden = false;
@@ -100,18 +104,26 @@ async function main() {
         restart(surge);
         surgeUntil = sim.clock + 2;
       }
-      if (ev === 'dawn') store.write(sim.save()); // 夜が明けたら保存
+      if (ev === 'dawn') {
+        store.write(sim.save()); // 夜が明けたら保存（家が落ちたら、ここへ戻る）
+        showCard('夜明け', `${sim.wave}日目の夜を越えた`);
+      }
+      if (ev === 'night') {
+        const n = Object.values(sim.pending()).reduce((a, b) => a + (b ?? 0), 0);
+        showCard(`${sim.wave + 1}日目の夜`, `狼 ${n}匹`);
+      }
       say(ev);
     }
     if (sim.clock > surgeUntil) surge.hidden = true;
     if (sim.clock - said > saidLen) bubble.hidden = true;
     const { x, y } = view.heroAt;
     // 右端からはみ出さない
-    bubble.style.left = `${Math.min(x, field.clientWidth - bubble.offsetWidth * 0.8 - 6)}px`;
-    bubble.style.top = `${y - 6}px`;
+    bubble.style.left = `${Math.max(6, Math.min(x, field.clientWidth - bubble.offsetWidth * 0.8 - 6))}px`;
+    bubble.style.top = `${Math.max(bubble.offsetHeight + 4, y - 6)}px`;
     comboEl.hidden = sim.combo < 2;
     if (sim.combo !== lastCombo) {
       comboEl.innerHTML = `${sim.combo}<small>HIT</small>`;
+      comboEl.dataset.tier = sim.combo >= 50 ? '3' : sim.combo >= 20 ? '2' : sim.combo >= 10 ? '1' : '0';
       if (sim.combo > lastCombo) {
         comboEl.classList.remove('pop');
         void comboEl.offsetWidth;
@@ -152,11 +164,19 @@ async function main() {
     store.clear();
     sim = new Sim(seed());
   };
+  // 家が落ちた：その晩の前の昼に戻る。負けた晩に拾った銭は残さない（2026-10-04・アマネさん）
+  const retry = () => {
+    const losses = sim.losses;
+    const d = store.read();
+    sim = d ? Sim.load(d, seed()) : new Sim(seed());
+    sim.losses = losses;
+    if (d) store.write(sim.save());
+  };
 
   const saved = store.read();
   const title = `<h1>鋼桜奇譚<small>大正赤ずきん</small></h1>
      <p>月の裂け目から狼が来る。99日、おばあさんの家を守り抜け。</p>
-     <ul><li>赤ずきんは自分で戦う。「近」で踏み込み、「遠」で下がって撃つ</li><li>戦場をタップ：そこへ向かわせる</li><li>当てるとゲージが溜まる。満タンで桜嵐</li><li>犬のボタン：番犬を出す</li><li>夜ごとに狼が来る。昼に体力・近接・遠隔を鍛える</li></ul>`;
+     <ul><li><b>タップ</b>：斬る（連打で連撃）／遠くの地面：走る</li><li><b>はじく</b>：左右＝突進斬り・上＝斬り上げ・下＝叩き落とし</li><li><b>長押し→離す</b>：主砲</li><li><b>下の地図をタップ</b>：そこへ駆けつける</li><li>当てるとゲージが溜まる。満タンで桜嵐</li><li>昼：鍛える・番犬を戦場に置く</li></ul>`;
   show(title, saved
     ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
     : [['はじめる', () => {}]]);
@@ -165,17 +185,27 @@ async function main() {
     running = true;
   }
 
-  view.app.ticker.add((t) => {
-    if (running) sim.advance((t.deltaMS / 1000) * SPEED);
-    view.draw(sim);
+  // ?manual=1：時計を止め、外から akazukin.tick(秒) で1コマずつ進める（動きをコマ送りで点検する）
+  const manual = !!params.get('manual');
+  const frame = (dt: number) => {
+    if (running) sim.advance(dt);
+    view.draw(sim, dt);
     panel.update();
     overlays();
+  };
+  view.app.ticker.add((t) => {
+    if (!manual) frame((t.deltaMS / 1000) * SPEED);
     if (sim.result !== shown) {
       shown = sim.result;
       running = false;
-      store.clear(); // 家が落ちたら1日目から（決定）。狼絶滅でも保存は消す
-      if (sim.result === 'won') show(`<h1>狼絶滅</h1><p>99日を守り抜いた（${sim.kills} 匹・最大 ${sim.bestCombo} コンボ）。</p>`, [['もう一度', fresh]]);
-      if (sim.result === 'lost') show(`<h1>家が落ちた</h1><p>${sim.wave + 1}日目の夜に力尽きた。<br>1日目からやり直し。</p>`, [['もう一度', fresh]]);
+      if (sim.result === 'won') {
+        store.clear();
+        show(`<h1>狼絶滅</h1><p>99日を守り抜いた（${sim.kills} 匹・最大 ${sim.bestCombo} コンボ・家が落ちたのは ${sim.losses} 回）。</p>`, [['もう一度', fresh]]);
+      }
+      if (sim.result === 'lost') {
+        const back = store.read();
+        show(`<h1>家が落ちた</h1><p>${sim.wave + 1}日目の夜に力尽きた。<br>${back ? `${back.wave + 1}日目の昼に戻る（この夜に拾った銭は残らない）` : '1日目の夜からやり直す'}</p>`, [['もう一度', retry]]);
+      }
     }
   });
 
@@ -183,6 +213,8 @@ async function main() {
   (window as unknown as { akazukin: unknown }).akazukin = {
     get clock() { return sim.clock; },
     get sim() { return sim; },
+    get view() { return view; },
+    tick(dt: number, n = 1) { for (let i = 0; i < n; i++) frame(dt); },
   };
   document.body.classList.add('ready');
 }
