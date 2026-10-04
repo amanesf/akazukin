@@ -78,7 +78,8 @@ export const MOVES: Record<MoveId, MoveSpec> = {
 export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
 export const MOVE_CD = { kaiten: 2.5, tosshin: DASH.cd, ame: 5, hougeki: 0 };
-export const OURAN = { time: 3, tick: 0.15, damage: 22, reach: 190, final: 90, finalArea: 420, gain: { hit: 1.6, hurt: 0.6 } };
+// 桜嵐：その場で腕を掲げ、桜の竜巻でまわりの狼を吸い寄せて巻き上げる（2026-10-04 アマネさん。前は狼から狼へ跳んで、動きが変だった）
+export const OURAN = { time: 3, tick: 0.15, damage: 22, reach: 260, pull: 420, final: 90, finalArea: 420, gain: { hit: 1.6, hurt: 0.6 } };
 export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る
 
 // ── 昼に買うもの：体力・近接・主砲の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」

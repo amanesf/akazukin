@@ -284,7 +284,8 @@ export class HeroRig {
         tint = Math.floor(t * 16) % 2 ? 0xfff0c0 : 0xffffff;
       } else tint = mixTint(0xffffff, 0xffe0b0, c * 0.6);
     }
-    if (h.ouran > 0) frame = (['idle', 'up', 'strike'] as FrameName[])[Math.floor(t * 14) % 3];
+    // 桜嵐：腕を高く掲げたまま、竜巻の中で少し浮いて揺れる（絵を細かく切り替えるとガタガタした）
+    if (h.ouran > 0) { frame = 'up'; lean = Math.sin(t * 3) * 2 * D; lift += 18 + Math.sin(t * 4) * 6; }
     if (h.stun > 0 && !m) { frame = 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
     if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && this.face) frame = this.face.name;
     // 宙にいるあいだ（技のあと落ちてくるところ）は跳んだ姿。立った姿のまま浮くとおかしかった

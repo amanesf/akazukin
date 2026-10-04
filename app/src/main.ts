@@ -2,7 +2,7 @@ import './style.css';
 import { Sfx } from './audio';
 import { WOLVES, type WolfKind } from './config';
 import { Input } from './input';
-import { MOODS } from './nights';
+import { MOODS, mood as moodOf, night as nightOf } from './nights';
 import { TALKS } from './talks';
 import { Sim, type Event, type Save } from './sim';
 import { ICON, Panel } from './ui';
@@ -91,7 +91,7 @@ async function main() {
     { text: '右から来る狼をタップして斬ろう（続けてタップで連撃）', done: (d, b) => d.tap - b.tap >= 3 },
     { text: '画面を左か右に、さっとはじこう → 突進斬り', done: (d, b) => d.dash > b.dash },
     { text: '上か下にはじこう → 斬り上げ／叩き落とし', done: (d, b) => d.launch + d.slam > b.launch + b.slam },
-    { text: '長押しして離す（または下の「主砲」ボタン）→ 背中の主砲', done: (d, b) => d.shiki > b.shiki },
+    { text: '長押しして、光が満ちたら離そう → 背中の主砲', done: (d, b) => d.shiki > b.shiki },
     { text: '下の小さい地図をタップ → そこへ駆けつける', done: (d, b) => d.mini > b.mini },
   ];
   let step = -1;
@@ -107,6 +107,8 @@ async function main() {
   let surgeUntil = -1;
   let lastCombo = 0;
   let lastPending = '';
+  let lastTonight = -1;
+  const tonight = document.getElementById('tonight')!;
   // 節目の会話：タップで次へ。昼は時が止まっているので、そのまま読める
   const talkEl = document.getElementById('talk')!;
   const showTalk = (lines: [string, string][]) => {
@@ -202,6 +204,18 @@ async function main() {
         comboEl.classList.add('pop');
       }
       lastCombo = sim.combo;
+    }
+    // 昼：今夜の予告（夜の様子と、来る狼の種類と数）。戦場の下の帯に
+    const tn = sim.phase === 'shop' ? sim.wave + 1 : 0;
+    if (tn !== lastTonight) {
+      lastTonight = tn;
+      tonight.hidden = !tn;
+      if (tn) {
+        const m = moodOf(tn);
+        const count: Partial<Record<WolfKind, number>> = {};
+        for (const l of nightOf(tn)) count[l.kind] = (count[l.kind] ?? 0) + l.count;
+        tonight.innerHTML = `<b>今夜 ${tn}日目${m ? `・<em>${MOODS[m].name}</em>` : ''}</b>${m ? `<small>${MOODS[m].note}</small>` : ''}<div>${(Object.keys(count) as WolfKind[]).map((k) => `<span><img src="${BASE}wolves/${k}.webp" alt="">${WOLVES[k].name}<i>${count[k]}</i></span>`).join('')}</div>`;
+      }
     }
     // 予告：この晩にまだ来ていない狼
     const pend = sim.phase === 'wave' ? sim.pending() : {};

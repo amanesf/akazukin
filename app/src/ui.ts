@@ -1,7 +1,6 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は銭・家・日付と主砲・桜嵐。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
+// 夜（戦闘中）は銭・家・日付と桜嵐（主砲は戦場の長押し。ボタンは連打で強すぎたのでやめた・2026-10-04）。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
 import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, TRACKS, type DogKind, type DogRole, type Track } from './config';
-import { MOODS, mood } from './nights';
 import type { Sim } from './sim';
 
 // アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
@@ -19,7 +18,6 @@ export class Panel {
   private ouran: HTMLButtonElement;
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [Track, HTMLButtonElement][] = [];
-  private shiki: HTMLButtonElement;
   private repair: HTMLButtonElement;
   private next: HTMLButtonElement;
   private dawn: HTMLElement;
@@ -36,7 +34,6 @@ export class Panel {
         <span class="wave"></span>
       </div>
       <div class="battle">
-        <button class="shiki"><span class="row">${ICON('cannon')}主砲</span><small>押して溜め・離して撃つ</small></button>
         <button class="ouran"><span class="row">${ICON('sakura')}桜嵐</span><small></small></button>
       </div>
       <div class="shop" hidden>
@@ -54,22 +51,12 @@ export class Panel {
     this.battle = q('.battle');
     this.shop = q('.shop');
     this.ouran = q('.ouran');
-    this.shiki = q('.shiki');
     this.repair = q('.repair');
     this.repair.addEventListener('click', () => this.sim().repair());
     this.next = q('.next');
     this.dawn = q('.dawn');
     this.ouran.addEventListener('pointerdown', () => this.sim().ouran());
     this.next.addEventListener('click', () => this.sim().nextWave());
-    // 主砲のボタン：押しているあいだ溜め、離すと撃つ（戦場の長押しと同じ。2026-10-04 アマネさん「主砲の撃ち方わからない」）
-    this.shiki.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.shiki.setPointerCapture(e.pointerId);
-      this.sim().holdStart();
-    });
-    const release = () => this.sim().hero.charge >= 0 && this.sim().holdEnd(true);
-    this.shiki.addEventListener('pointerup', release);
-    this.shiki.addEventListener('pointercancel', release);
     for (const kind of DOG_ORDER) {
       const b = document.createElement('button');
       b.className = 'dog';
@@ -113,11 +100,9 @@ export class Panel {
     this.battle.hidden = shop;
     this.shop.hidden = !shop;
     if (shop) {
-      const m = mood(s.wave + 1);
-      const tonight = m ? `<br><b class="mood">今夜は${MOODS[m].name}：${MOODS[m].note}</b>` : '';
       this.dawn.innerHTML = (s.nightKills
         ? `夜が明けた。${s.nightKills}匹を倒し、${s.nightEarned}銭を得た`
-        : '昼。鍛えて、番犬の役目を決める') + tonight;
+        : '昼。鍛えて、番犬の役目を決める'); // 今夜の様子は戦場の下の帯に出す
       for (const [t, b] of this.ups) {
         const cost = s.trackCost(t);
         const next = s.nextPerk(t);
@@ -138,14 +123,6 @@ export class Panel {
       }
       return;
     }
-    const ch = s.hero.charge;
-    const full = ch >= s.chargeFull;
-    this.shiki.classList.toggle('charging', ch >= 0);
-    this.shiki.classList.toggle('full', full);
-    this.shiki.style.setProperty('--fill', String(ch >= 0 ? Math.min(1, ch / s.chargeFull) : 0));
-    const label = ch < 0 ? '押して溜め・離して撃つ' : full ? '満タン！離して撃て' : '溜めている…';
-    const sm = this.shiki.querySelector('small')!;
-    if (sm.textContent !== label) sm.textContent = label;
     this.ouran.disabled = !s.canOuran();
     this.ouran.classList.toggle('ready', s.canOuran());
     this.ouran.style.setProperty('--fill', String(s.gauge / 100));

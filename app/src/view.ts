@@ -80,6 +80,8 @@ export class View {
   heroAt = { x: 0, y: 0 }; // 吹き出しを置く位置（画面の座標）
   trail: { x: number; y: number; t: number }[] = []; // 指の軌跡（input が足す）
   private roleText: Text[] = []; // 昼：番犬の頭の上の役目
+  private stuck: { id: number; x: number; lane: number; z: number; rel: number; t: number; dir: number }[] = []; // 狼の頭に刺さった矢（少しのあいだ残す）
+  private seenArrows = new WeakSet<object>();
   private wolfBoxes: { id: number; lane: number; x0: number; x1: number; y0: number; y1: number }[] = []; // 描いた狼の絵の範囲（世界の座標）。タップで狼を選ぶ
   private xf = { z: 1, ox: 0, oy: 0 }; // 世界→画面
 
@@ -269,7 +271,9 @@ export class View {
       const x1 = 520 * g.K; // 家と番犬3匹が見える所まで
       tz = g.W / (x1 - x0);
       tx = (x0 + x1) / 2;
-      ty = g.laneTop + g.laneH * 1.6 - (g.Hm * 0.12) / tz;
+      // 地面の手前の縁が、画面の下（今夜の予告の帯の上）で終わるように（下が何もない地面で間延びしていた。2026-10-04 アマネさん）
+      const groundEnd = g.laneTop + g.laneH * 1.05 * (1 + 2.2 * this.dayK) + g.Hm * 0.02;
+      ty = groundEnd - (g.Hm / 2 - g.Hm * 0.15) / tz;
     } else {
       const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
       // 少し引いて広く映す（2026-10-04 アマネさん「ステージ狭い？」。寄りすぎて主人公と狼2匹で画面がいっぱいだった）
@@ -404,6 +408,22 @@ export class View {
 
     // ── 矢・砲弾・衝撃波・斬撃の弧・数字 ──
     this.drawOver(sim, dt);
+    // 主砲の溜め：頭の上の丸い目盛り。撃てる所（短い印）から満タンまで溜まり、満タンで金色に脈打つ（ボタンをやめた代わり）
+    if (h.charge >= 0) {
+      const o = this.overG;
+      const r = this.heroH(h.lane) * 0.07;
+      const cx = hx;
+      const cy = top - r * 2.2;
+      const c = Math.min(1, h.charge / sim.chargeFull);
+      const full = c >= 1;
+      const a0 = -Math.PI / 2;
+      o.circle(cx, cy, r + 3).fill({ color: 0x000000, alpha: 0.5 });
+      o.circle(cx, cy, r).stroke({ width: 4, color: 0xffffff, alpha: 0.18 });
+      o.moveTo(cx + Math.cos(a0) * r, cy + Math.sin(a0) * r).arc(cx, cy, r, a0, a0 + Math.PI * 2 * Math.max(0.001, c)).stroke({ width: 4, color: full ? 0xffe070 : h.charge >= sim.chargeMin ? 0xffa040 : 0xa08070, cap: 'round' });
+      const am = a0 + (Math.PI * 2 * sim.chargeMin) / sim.chargeFull;
+      o.moveTo(cx + Math.cos(am) * (r - 5), cy + Math.sin(am) * (r - 5)).lineTo(cx + Math.cos(am) * (r + 5), cy + Math.sin(am) * (r + 5)).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
+      if (full) o.circle(cx, cy, r + 6 + 3 * Math.sin(this.vt * 20)).stroke({ width: 2, color: 0xffe070, alpha: 0.7 });
+    }
     // 主人公の体力の棒（減ったときだけ）
     if (!day && h.down <= 0 && h.hp < sim.maxHp) {
       const w = this.heroH(h.lane) * 0.42;
@@ -542,6 +562,18 @@ export class View {
         P.glow(this.wx(WOLF_SPAWN_X), y - this.geo.Hm * 0.06, this.geo.Hm * (f.big ? 0.8 : 0.35), 0xff3040, 0.4, 0.9);
         P.ring(this.wx(WOLF_SPAWN_X), y, 6, this.geo.Hm * 0.12, 3, 0xff6070, 0.35, 0.3);
         break;
+      case 'arrowhit': {
+        // 矢が頭に当たった：桜色の輪と火花、花びら。矢は少しのあいだ刺さって残る
+        const w = sim.wolves.find((o) => o.id === f.n);
+        const rel = w ? WOLF_REL[w.kind] : 1;
+        const hd = this.wolfHead(f.x, f.lane, f.z ?? 0, rel);
+        P.ring(hd.x, hd.y, 4, this.geo.Hm * 0.07 * rel, 3 * s, 0xffc0d8, 0.22);
+        P.glow(hd.x, hd.y, this.geo.Hm * 0.12, 0xff90b8, 0.15, 0.9, 0.6);
+        for (let i = 0; i < 4; i++) P.petal(hd.x, hd.y, s, (Math.random() - 0.3) * 260 * (f.dir ?? 1), -120 - Math.random() * 200, 0.6);
+        this.stuck.push({ id: f.n ?? 0, x: f.x, lane: f.lane, z: f.z ?? 0, rel, t: 0, dir: f.dir ?? 1 });
+        if (this.stuck.length > 12) this.stuck.shift();
+        break;
+      }
       case 'num':
         break;
     }
@@ -573,7 +605,19 @@ export class View {
       }
       if (Math.random() < 0.6) P.ember(this.wx(WOLF_SPAWN_X) + (Math.random() - 0.5) * 30, this.wy(Math.random()) - Math.random() * g.Hm * 0.2, g.Hm / 600);
       // 桜嵐：花吹雪
-      if (h.ouran > 0) for (let i = 0; i < 6; i++) this.screenParts.petal(g.W + 10, Math.random() * g.Hm, 1.6, -600 - Math.random() * 500, (Math.random() - 0.5) * 200, 1.4);
+      // 桜嵐：竜巻に沿って花びらが渦を巻いて昇る（画面を横切る花吹雪は少しだけ）
+      if (h.ouran > 0) {
+        const hh = this.heroH(h.lane);
+        const cx = this.wx(h.x);
+        const gy = this.wy(h.lane);
+        for (let i = 0; i < 10; i++) {
+          const k = Math.random();
+          const a = this.vt * 9 + Math.random() * Math.PI * 2;
+          const rad = hh * (0.25 + 0.75 * k);
+          P.petal(cx + Math.cos(a) * rad, gy - hh * 1.5 * k, (g.Hm / 600) * 1.3, -Math.sin(a) * rad * 5, -180 - 260 * k, 0.5 + Math.random() * 0.3);
+        }
+        for (let i = 0; i < 2; i++) this.screenParts.petal(g.W + 10, Math.random() * g.Hm, 1.6, -600 - Math.random() * 500, (Math.random() - 0.5) * 200, 1.4);
+      }
       // 溜め：まわりから光の粒が集まる
       if (h.charge >= 0) {
         const hh = this.heroH(h.lane);
@@ -595,7 +639,7 @@ export class View {
   private afterimages(sim: Sim, pose: Pose, dt: number) {
     if (!this.ghosts.length) return;
     const h = sim.hero;
-    const fast = h.move === 'tosshin' || (h.order?.sprint && h.running > 0) || h.ouran > 0 || h.move === 'launch' || (h.move === 'slam' && h.z > 0) || h.lungeTo !== null;
+    const fast = h.move === 'tosshin' || (h.order?.sprint && h.running > 0) || h.move === 'launch' || (h.move === 'slam' && h.z > 0) || h.lungeTo !== null;
     if (sim.hitStop <= 0) this.ghostT -= dt;
     if (fast && this.ghostT <= 0) {
       this.ghostT = 0.028;
@@ -1080,9 +1124,48 @@ export class View {
     }
   }
 
+  // 狼の頭の位置（狼は左を向く）。矢はここを狙う（2026-10-04 アマネさん「弓矢は頭狙ってほしい」）
+  private wolfHead(x: number, lane: number, z: number, rel: number) {
+    const wh = this.heroH(lane) * 0.6 * rel;
+    return { x: this.wx(x) - wh * 0.32, y: this.wy(lane) - z * this.zk() - wh * 0.7 };
+  }
+
+  // 桜嵐の竜巻：足もとは細く、上へ行くほど広がる漏斗。花の色の帯が回りながら昇る（奥の半周は薄く）
+  private drawTornado(o: Graphics, sim: Sim) {
+    const h = sim.hero;
+    if (h.ouran <= 0) return;
+    const hh = this.heroH(h.lane);
+    const cx = this.wx(h.x);
+    const gy = this.wy(h.lane);
+    const grow = Math.min(1, (3 - h.ouran) / 0.4); // 立ち上がり
+    const t = this.vt;
+    const layers = 9;
+    for (let i = 0; i < layers; i++) {
+      const k = i / (layers - 1);
+      const y = gy - hh * 1.7 * k * grow;
+      const rx = hh * (0.18 + 0.85 * k) * grow;
+      const ry = rx * 0.22;
+      for (let j = 0; j < 3; j++) {
+        const a0 = t * (7 - k * 2) + j * 2.1 + i * 0.6;
+        const span = 1.3;
+        const front = Math.sin(a0 + span / 2) > 0;
+        const steps = 10;
+        o.moveTo(cx + Math.cos(a0) * rx, y + Math.sin(a0) * ry);
+        for (let q = 1; q <= steps; q++) {
+          const a = a0 + (span * q) / steps;
+          o.lineTo(cx + Math.cos(a) * rx, y + Math.sin(a) * ry);
+        }
+        o.stroke({ width: (3 + 5 * k) * (front ? 1 : 0.6), color: j === 0 ? 0xffffff : j === 1 ? 0xffb0cc : 0xff6a9a, alpha: (front ? 0.55 : 0.2) * (1 - k * 0.4), cap: 'round' });
+      }
+    }
+    // 足もとの光
+    o.ellipse(cx, gy, hh * 0.5 * grow, hh * 0.1 * grow).fill({ color: 0xff80b0, alpha: 0.18 + 0.08 * Math.sin(t * 12) });
+  }
+
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
     const K = this.geo.K;
+    this.drawTornado(o, sim);
     this.drawBlade(o);
     this.drawMarks(o, sim);
     // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
@@ -1092,8 +1175,16 @@ export class View {
       // 弓の絵の矢の高さ（足もとから背の73%・前へ30%）から放つ（55%だと腰のあたりから出て見えた。2026-10-04 アマネさん）
       const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;
       const y0 = this.wy(a.fromLane) - hh * 0.73;
-      const x1 = this.wx(a.toX);
-      const y1 = this.wy(a.lane) - this.geo.Hm * 0.05;
+      const tw = !a.rain ? sim.wolves.find((w) => w.id === a.target) : undefined;
+      const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
+      const x1 = hd ? hd.x : this.wx(a.toX);
+      const y1 = hd ? hd.y : this.wy(a.lane) - this.geo.Hm * 0.05;
+      // 放った瞬間：弓のまわりに輪と花びら
+      if (!this.seenArrows.has(a)) {
+        this.seenArrows.add(a);
+        this.parts.ring(x0, y0, 4, hh * 0.22, 3, 0xffd0e0, 0.18);
+        for (let i = 0; i < 3; i++) this.parts.petal(x0, y0, this.geo.Hm / 600, Math.sign(x1 - x0) * (80 + Math.random() * 120), -60 - Math.random() * 120, 0.5);
+      }
       // ふつうの矢はほぼまっすぐ。矢の雨だけ高い放物線
       const arc = Math.abs(x1 - x0) * (a.rain ? 0.3 : 0.04);
       const x = x0 + (x1 - x0) * a.t;
@@ -1119,8 +1210,33 @@ export class View {
         const fy = y - uy * L;
         o.poly([fx, fy, fx + ux * 16 - uy * 7 * sg, fy + uy * 16 + ux * 7 * sg, fx + ux * 20, fy + uy * 20]).fill(0xffe8f0).stroke({ width: 1.2, color: 0x2a1a20 });
       }
-      // 放った瞬間の光
+      // 放った瞬間の光・飛んでいるあいだのきらめき
       if (a.t < 0.12) this.parts.glow(x0, y0, hh * 0.5 * (1 - a.t / 0.12), 0xffc0d8, 0.08, 0.8, 0.5);
+      if (Math.random() < 0.7) this.parts.glow(x - ux * L * 0.6, y - uy * L * 0.6, hh * 0.09, 0xffe0ee, 0.25, 0.9, -0.6);
+    }
+    // 頭に刺さった矢：狼について動き、0.35秒で消える
+    this.stuck = this.stuck.filter((st) => (st.t += dt) < 0.35);
+    for (const st of this.stuck) {
+      const w = sim.wolves.find((o) => o.id === st.id);
+      if (w) { st.x = w.x; st.lane = w.lane; st.z = w.z; }
+      const hd = this.wolfHead(st.x, st.lane, st.z, st.rel);
+      const L = this.heroH(st.lane) * 0.16;
+      const al = 1 - st.t / 0.35;
+      const ex = hd.x - st.dir * L;
+      const ey = hd.y - L * 0.12;
+      o.moveTo(ex, ey).lineTo(hd.x, hd.y).stroke({ width: 4, color: 0x3a2018, alpha: al, cap: 'round' });
+      o.moveTo(ex, ey).lineTo(hd.x, hd.y).stroke({ width: 2, color: 0xc89060, alpha: al, cap: 'round' });
+      o.poly([ex, ey, ex - st.dir * 12, ey - 6, ex - st.dir * 14, ey + 2]).fill({ color: 0xffe8f0, alpha: al });
+    }
+    // 弓を引いているあいだ、弓が桜色に光る
+    const hb = sim.hero;
+    if ((hb.move === 'bow' || hb.move === 'ame') && hb.moveT < MOVES[hb.move].dur * 0.5) {
+      const hh = this.heroH(hb.lane);
+      const k = hb.moveT / (MOVES[hb.move].dur * 0.5);
+      const bx = this.wx(hb.x) + hb.facing * hh * 0.25;
+      const by = this.wy(hb.lane) - hh * 0.73 - hb.z * this.zk() * 0.75;
+      o.circle(bx, by, hh * (0.05 + 0.08 * k)).fill({ color: 0xffb0d0, alpha: 0.25 * k });
+      o.circle(bx, by, hh * (0.02 + 0.03 * k)).fill({ color: 0xffffff, alpha: 0.5 * k });
     }
     // 砲弾（放物線と火の尾）
     for (const sh of sim.shells) {

@@ -59,23 +59,7 @@ body {
 
 .battle, .shop { display: grid; gap: 8px; min-height: 0; }
 .battle[hidden], .shop[hidden] { display: none; }
-.battle { grid-template-columns: 1fr 1fr; }
 .battle button { min-height: 64px; }
-/* 主砲のボタン：押しているあいだ下から溜まる。満タンで金色に光る */
-.shiki { font-size: 20px; touch-action: none; }
-.shiki::before {
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: calc(var(--fill, 0) * 100%);
-  background: linear-gradient(0deg, #8a5a20, #e0b050);
-  opacity: 0.6;
-  pointer-events: none;
-}
-.shiki.charging { border-color: #e0a040; }
-.shiki.full { border-color: #ffe070; color: #fff; animation: glow 0.25s ease-in-out infinite alternate; }
-.shiki .row, .shiki small { position: relative; }
-.shiki .ic { width: 30px; height: 30px; }
 /* 番犬の役目：1匹ずつの札。タップで 守り → 攻撃 → 支援 */
 .dogrow { display: grid; gap: 4px; }
 .dogtitle { margin: 0; font-size: 12px; color: var(--brass); text-align: center; letter-spacing: 0.1em; }
@@ -525,3 +509,28 @@ body.tutorial #next { display: none; }
 #legend b { font-weight: 700; color: var(--brass); }
 #legend i { font-style: normal; font-size: 15px; width: 20px; text-align: center; color: #ffd0e0; line-height: 1; }
 #legend .ic { width: 20px; height: 20px; margin: 0; }
+
+/* 昼：今夜の予告（戦場の下、小さい地図の上） */
+#tonight {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(clamp(64px, 13%, 96px) + 6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 10px 6px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(20, 12, 24, 0), rgba(20, 12, 24, 0.7) 15%, rgba(20, 12, 24, 0.7) 85%, rgba(20, 12, 24, 0));
+  pointer-events: none;
+  text-align: center;
+}
+#tonight[hidden] { display: none; }
+#tonight b { font-size: 13px; letter-spacing: 0.1em; color: #f0e6e0; font-family: "Shippori Mincho", "Hiragino Mincho ProN", serif; }
+#tonight em { font-style: normal; color: #ffb0c0; }
+#tonight small { font-size: 11px; color: var(--dim); }
+#tonight div { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; }
+#tonight span { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: #f0e6e0; }
+#tonight span img { height: 22px; width: auto; transform: scaleX(-1); }
+#tonight span i { font-style: normal; color: var(--brass); font-variant-numeric: tabular-nums; }

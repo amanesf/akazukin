@@ -3,7 +3,7 @@
 kabu の `docs/HANDOFF.md`（2026-10-03時点）から赤ずきんの「現在地」を移したもの。
 決定と経緯の正本は [spinoff/akazukin.md](spinoff/akazukin.md)。ここには現在地だけを置く。
 
-## 現在地（2026-10-04 深夜・**銭の使い道・夜の様子・節目の会話・動きの絵を作業ブランチ `claude/compassionate-keller-fr98f8` に入れた。main は未**）
+## 現在地（2026-10-04 深夜・**銭の使い道〜動きの絵は main に公開済み。そのあとの「空との境目・主砲ボタンをやめる・桜嵐の竜巻・弓は頭へ・昼の画面」（plan.md §0.8）は作業ブランチ `claude/compassionate-keller-fr98f8` だけ**）
 
 **公開中**：https://amanesf.github.io/akazukin/ （main は「番犬の自律化・ストーリー画面」まで）
 

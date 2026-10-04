@@ -41,7 +41,7 @@ export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; 
 export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[] }
 export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number }
 export interface Shot { x: number; lane: number } // 狼の衝撃波（左へ飛ぶ）
-export type FxKind = 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge';
+export type FxKind = 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge';
 export interface Fx {
   id: number;
   kind: FxKind;
@@ -315,8 +315,7 @@ export class Sim {
   }
 
   // 溜め不足で離したら撃たずに 'short' を返す（指の操作ではタップとして扱う。ゆっくりめのタップが空振りにならないように）
-  // force：主砲のボタンから。溜め不足でも弱い主砲を撃つ（ボタンを押したのに何も出ない、をなくす）
-  holdEnd(force = false): 'fired' | 'short' | 'none' {
+  holdEnd(): 'fired' | 'short' | 'none' {
     const h = this.hero;
     if (this.holdWanted && h.charge < 0) {
       this.holdWanted = false;
@@ -326,7 +325,7 @@ export class Sim {
     const c = h.charge;
     h.charge = -1;
     if (!this.canAct) return 'none';
-    if (c < this.chargeMin && !force) return 'short';
+    if (c < this.chargeMin) return 'short';
     h.stun = 0;
     const full = c >= this.chargeFull;
     const t = this.nearest(this.wolves.filter((w) => Math.abs(w.lane - h.lane) <= 0.6), h.x);
@@ -1187,15 +1186,14 @@ export class Sim {
     h.ouranTick -= dt;
     if (h.ouranTick <= 0) {
       h.ouranTick = OURAN.tick;
-      // 次の狼へ一足で跳び、まわりをまとめて斬る
-      const t = this.nearest(this.wolves.filter((w) => Math.abs(w.x - h.x) <= 380 && w.x <= HERO.maxX + 60), h.x);
-      if (t) {
-        h.facing = t.x >= h.x ? 1 : -1;
-        h.x = clamp(t.x - h.facing * 20, GIRL_X, HERO.maxX + 60);
-        h.lane = t.lane;
-      }
+      // その場で竜巻：まわりの狼を吸い寄せ（奥行きも寄せる）、近い狼を巻き上げて斬る
       for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) <= OURAN.reach) this.hit(w, OURAN.damage * this.nearPower, { lift: 240, stop: 0.02, kb: 60 });
+        const d = Math.abs(w.x - h.x);
+        if (d > OURAN.pull || w.age < 0.4) continue;
+        w.x += (h.x + 30 - w.x) * 0.28;
+        w.lane += (h.lane - w.lane) * 0.3;
+        w.vx = 0;
+        if (d <= OURAN.reach) this.hit(w, OURAN.damage * this.nearPower, { lift: 260, stop: 0.02 });
       }
       this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: OURAN.reach, big: true }));
       this.kick(4, h.facing);
@@ -1246,6 +1244,7 @@ export class Sim {
           if (w.x + w.size / 2 < lo || w.x - w.size / 2 > hi) continue;
           a.hits.push(w.id);
           this.hit(w, a.damage * (1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: 70, stun: 0.3 });
+          this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1 }));
           if (a.hits.length >= a.pierce) return false;
         }
         if (a.t < 1) return true;
