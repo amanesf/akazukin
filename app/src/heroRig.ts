@@ -473,11 +473,19 @@ export class HeroRig {
       c.rotation = a;
       c.position.set(x0 + (x1 - x0) * g + Math.sin(a) * p.recoil * kick, y0 + (y1 - y0) * g - Math.cos(a) * p.recoil * kick);
     };
-    // 奥：少し中央寄り。構えると肩の上から、手前より少し上を狙う。奥にあるので少し暗く
-    place2(this.cannon, REST, -0.04, -0.14 * H, -0.08 * H, shoulderY, shoulderY - 0.02 * H, 40);
+    // たたんだとき：2本とも背中で、付け根を両肩に寄せ、下へ行くほど少し開くVの字（2026-10-04 アマネさん：離しすぎで両側に見えなかった → 案B）
+    // 奥：構えると肩の上から、手前より少し上を狙う。奥にあるので少し暗く
+    place2(this.cannon, REST - 0.1, -0.04, -0.07 * H, -0.08 * H, shoulderY, shoulderY - 0.02 * H, 40);
     this.cannon.tint = mixTint(tint, 0x8a7a88, 0.3);
-    // 手前：背中から後ろへ離して体の前に。構えると付け根は体より後ろのまま、腰の高さで前を向く
-    place2(this.cannon2, REST + 0.12, 0.06, -0.34 * H, -0.3 * H, shoulderY + 0.02 * H, shoulderY + 0.3 * H, 46); // 胸の高さだと胴と手を隠したので、腰の高さ
+    // 手前：構えると付け根は体より後ろのまま、腰の高さで前を向く
+    place2(this.cannon2, REST + 0.18, 0.06, -0.14 * H, -0.3 * H, shoulderY + 0.01 * H, shoulderY + 0.3 * H, 46); // 胸の高さだと胴と手を隠したので、腰の高さ
+    // 手前の砲は、たたんでいるあいだは体の後ろ（体の前に何も重ねない）。構えると体の前へ
+    const front = g > 0.5;
+    if (front !== (this.body.getChildIndex(this.cannon2) > this.body.getChildIndex(this.cannon))) {
+      this.body.removeChild(this.cannon2);
+      if (front) this.body.addChild(this.cannon2);
+      else this.body.addChildAt(this.cannon2, this.body.getChildIndex(this.cannon) + 1);
+    }
     this.cannon2.tint = tint;
     this.body.rotation = p.lean;
     this.body.position.set(0, -p.lift);
