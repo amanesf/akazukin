@@ -78,8 +78,30 @@ export const MOVES: Record<MoveId, MoveSpec> = {
 export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
 export const MOVE_CD = { kaiten: 2.5, tosshin: DASH.cd, ame: 5, hougeki: 0 };
-// 桜嵐：その場で腕を掲げ、桜の竜巻でまわりの狼を吸い寄せて巻き上げる（2026-10-04 アマネさん。前は狼から狼へ跳んで、動きが変だった）
-export const OURAN = { time: 3, tick: 0.15, damage: 22, reach: 260, pull: 420, final: 90, finalArea: 420, gain: { hit: 1.6, hurt: 0.6 } };
+// 桜嵐：3つの必殺技（2026-10-04 アマネさん「連撃して主砲みたいな感じ」「その夜の武器の使い方に応じて3種類がそれぞれ溜まる。ボタン3つ」）。
+// どれも桜の竜巻でまわりの狼を吸い寄せる（竜巻そのものは斬らない・アマネさん「竜巻は全部残す。ダメージはない。吸い寄せのみ」）。
+// 削るのは技ごとの飛び道具。溜まり方は当てたダメージに比例（斬りは手数が多いので数で数えると千本桜ばかり溜まる）。
+// 噛まれても溜まる（3つとも。前の半分）
+export type Special = 'senbon' | 'nagare' | 'midare';
+export const SPECIAL_ORDER: Special[] = ['senbon', 'nagare', 'midare'];
+export const SPECIALS: Record<Special, { name: string; icon: string; gain: number }> = {
+  // gain：当てたダメージ1あたり、どれだけ溜まるか（0〜100）
+  senbon: { name: '千本桜', icon: 'knife', gain: 0.07 }, // 斬り（連撃・突進・斬り上げ・叩き落とし・回転）で溜まる
+  nagare: { name: '桜流れ矢', icon: 'bow', gain: 0.25 }, // 弓（自動の弓・矢の雨）で溜まる
+  midare: { name: '主砲乱れ撃ち', icon: 'cannon', gain: 0.1 }, // 主砲（長押し・撃ち込み・連撃の締めの主砲）で溜まる
+};
+export const OURAN = {
+  time: 3,
+  tick: 0.15, // 吸い寄せと、技の手を出す間隔
+  pull: 420, // 吸い寄せる距離
+  hurt: 0.3, // 噛まれたダメージ1あたり、3つとも溜まる
+  // 千本桜：まわりの狼めがけてナイフを投げ続け、最後に一斉に刺す
+  knife: { damage: 11, perTick: 6, reach: 420, final: 70 },
+  // 桜流れ矢：前へまっすぐ貫く矢を奥・中・手前に一斉に。最後に大きく一斉射
+  volley: { damage: 16, lanes: 3, range: 640, pierce: 8, final: 9 },
+  // 主砲乱れ撃ち：群れへ砲弾を連射し、最後に満タンの主砲
+  barrage: { damage: 30, area: 80, perTick: 2, final: 110, finalArea: 260 },
+};
 export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る
 
 // ── 昼に買うもの：体力・近接・主砲の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」

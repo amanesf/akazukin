@@ -35,7 +35,7 @@ export const MOODS: Record<Mood, { name: string; note: string; from: number }> =
   mure: { name: '群れの夜', note: '子狼がたくさん来る', from: 5 },
   yoroi: { name: '鎧の夜', note: '鎧狼が多い', from: 12 },
   toboe: { name: '遠吠えの夜', note: '遠吠えが多い', from: 15 },
-  sakura: { name: '桜吹雪の夜', note: '桜嵐がよく溜まる', from: 6 },
+  sakura: { name: '桜吹雪の夜', note: '桜嵐（必殺技3つ）がよく溜まる', from: 6 },
 };
 export function mood(n: number): Mood | null {
   if (n < 5 || n % 10 === 0 || n === DAYS_TO_CLEAR) return null;

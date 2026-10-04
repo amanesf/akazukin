@@ -338,7 +338,8 @@ export class HeroRig {
       } else tint = mixTint(0xffffff, 0xffe0b0, c * 0.6);
     }
     // 桜嵐：腕を高く掲げたまま、竜巻の中で少し浮いて揺れる（絵を細かく切り替えるとガタガタした）
-    if (h.ouran > 0) { frame = 'up'; lean = Math.sin(t * 3) * 2 * D; lift += 18 + Math.sin(t * 4) * 6; }
+    // 流れ矢は弓を放った絵、乱れ撃ちは主砲を撃った絵のまま（2026-10-04 必殺技を3つに）
+    if (h.ouran > 0) { frame = h.special === 'nagare' ? 'loose' : h.special === 'midare' ? 'strike' : 'up'; lean = Math.sin(t * 3) * 2 * D; lift += 18 + Math.sin(t * 4) * 6; }
     if (h.stun > 0 && !m) { frame = 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
     // 待機のしぐさ：力を抜いた待機が続いたら始める。ほかの姿になったらすぐやめる
     let prop = 0;

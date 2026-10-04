@@ -1,6 +1,6 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は銭・家・日付と桜嵐（主砲は戦場の長押し。ボタンは連打で強すぎたのでやめた・2026-10-04）。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
-import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, TRACKS, type DogKind, type DogRole, type Track } from './config';
+// 夜（戦闘中）は銭・家・日付と桜嵐の3つの必殺技（斬り・弓・主砲で別々に溜まる・2026-10-04）（主砲は戦場の長押し。ボタンは連打で強すぎたのでやめた・2026-10-04）。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
+import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, SPECIAL_ORDER, SPECIALS, TRACKS, type DogKind, type DogRole, type Special, type Track } from './config';
 import type { Sim } from './sim';
 
 // アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
@@ -15,7 +15,7 @@ export class Panel {
   private wave: HTMLElement;
   private battle: HTMLElement;
   private shop: HTMLElement;
-  private ouran: HTMLButtonElement;
+  private specials: [Special, HTMLButtonElement][] = [];
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [Track, HTMLButtonElement][] = [];
   private repair: HTMLButtonElement;
@@ -34,7 +34,6 @@ export class Panel {
         <span class="wave"></span>
       </div>
       <div class="battle">
-        <button class="ouran"><span class="row">${ICON('sakura')}桜嵐</span><small></small></button>
       </div>
       <div class="shop" hidden>
         <p class="dawn"></p>
@@ -50,12 +49,18 @@ export class Panel {
     this.wave = q('.wave');
     this.battle = q('.battle');
     this.shop = q('.shop');
-    this.ouran = q('.ouran');
+    for (const sp of SPECIAL_ORDER) {
+      const b = document.createElement('button');
+      b.className = 'ouran';
+      b.innerHTML = `<span class="row">${ICON(SPECIALS[sp].icon)}${SPECIALS[sp].name}</span><small></small>`;
+      b.addEventListener('pointerdown', () => this.sim().ouran(sp));
+      this.battle.appendChild(b);
+      this.specials.push([sp, b]);
+    }
     this.repair = q('.repair');
     this.repair.addEventListener('click', () => this.sim().repair());
     this.next = q('.next');
     this.dawn = q('.dawn');
-    this.ouran.addEventListener('pointerdown', () => this.sim().ouran());
     this.next.addEventListener('click', () => this.sim().nextWave());
     for (const kind of DOG_ORDER) {
       const b = document.createElement('button');
@@ -123,9 +128,14 @@ export class Panel {
       }
       return;
     }
-    this.ouran.disabled = !s.canOuran();
-    this.ouran.classList.toggle('ready', s.canOuran());
-    this.ouran.style.setProperty('--fill', String(s.gauge / 100));
-    this.ouran.querySelector('small')!.textContent = s.hero.ouran > 0 ? '満開' : s.gauge >= 100 ? '押せ！' : `${Math.floor(s.gauge)}%`;
+    for (const [sp, b] of this.specials) {
+      const g = s.gauges[sp];
+      const on = s.hero.ouran > 0 && s.hero.special === sp;
+      b.disabled = !s.canOuran(sp);
+      b.classList.toggle('ready', s.canOuran(sp));
+      b.classList.toggle('on', on);
+      b.style.setProperty('--fill', String(g / 100));
+      b.querySelector('small')!.textContent = on ? '満開' : g >= 100 ? '押せ！' : `${Math.floor(g)}%`;
+    }
   }
 }

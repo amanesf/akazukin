@@ -1,6 +1,6 @@
 import './style.css';
 import { Sfx } from './audio';
-import { WOLVES, type WolfKind } from './config';
+import { SPECIALS, WOLVES, type Special, type WolfKind } from './config';
 import { Input } from './input';
 import { MOODS, mood as moodOf, night as nightOf } from './nights';
 import { TALKS } from './talks';
@@ -61,7 +61,7 @@ async function main() {
   const LINES: Partial<Record<Event, string[]>> = {
     night: ['今夜は何匹かな♪', 'さ、狩りの時間'],
     finisher: ['ばーん♪', 'おやすみ', 'つぎのひと〜'],
-    ouran: ['ぜーんぶ、まとめて――おやすみ'],
+    ouran: ['ぜーんぶ、まとめて――おやすみ'], // 必殺技ごとの台詞は SP_LINES
     hurt: ['いったぁ……噛んだね？'],
     down: ['おばあちゃん、ちょっと待ってて'],
     revive: ['……お返し、しなきゃ'],
@@ -69,6 +69,11 @@ async function main() {
     combo10: ['ふふっ、まだまだ♪'],
     combo30: ['止まらないよ〜♪'],
     dawn: ['朝だ〜。おばあちゃん、無事？'],
+  };
+  const SP_LINES: Record<Special, string> = {
+    senbon: 'ぜーんぶ、まとめて――おやすみ',
+    nagare: '逃げても、無駄だよ♪',
+    midare: '撃って撃って――撃ちまくる！',
   };
   // 操作の早見（夜だけ・画面の上）。2026-10-04 アマネさん「タップ＝斬る、長押し＝主砲、みたいなのがわかるように」
   const legend = document.getElementById('legend')!;
@@ -136,7 +141,7 @@ async function main() {
     if (!lines) return;
     const urgent = ev === 'ouran' || ev === 'down' || ev === 'hurt' || ev === 'surge' || ev === 'dawn';
     if (!urgent && sim.clock - said < 6) return; // しゃべりすぎない
-    bubble.textContent = lines[(sim.kills + Math.floor(sim.clock)) % lines.length];
+    bubble.textContent = ev === 'ouran' ? SP_LINES[sim.hero.special] : lines[(sim.kills + Math.floor(sim.clock)) % lines.length];
     bubble.hidden = false;
     said = sim.clock;
     saidLen = 2.2;
@@ -144,7 +149,12 @@ async function main() {
   const overlays = () => {
     sfx.play(sim.sounds.splice(0));
     for (const ev of sim.events.splice(0)) {
-      if (ev === 'ouran') restart(cutin);
+      if (ev === 'ouran') {
+        const name = SPECIALS[sim.hero.special].name;
+        cutin.textContent = name;
+        cutin.style.fontSize = name.length > 4 ? '30px' : ''; // 長い名前は立ち絵にかからないよう小さく
+        restart(cutin);
+      }
       if (ev === 'surge') {
         restart(surge);
         surgeUntil = sim.clock + 2;

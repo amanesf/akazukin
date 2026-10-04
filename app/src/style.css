@@ -152,7 +152,8 @@ button::after {
 #overlay button + button { background: #2a2026; border-color: var(--line); }
 
 /* 桜嵐のゲージ：ボタンの下から溜まる。満タンで光る */
-.ouran { font-size: 20px; }
+.battle { grid-template-columns: repeat(3, 1fr); } /* 必殺技3つ（千本桜・桜流れ矢・主砲乱れ撃ち） */
+.ouran { font-size: 15px; padding: 4px 2px; white-space: nowrap; }
 .ouran::before {
   content: "";
   position: absolute;
@@ -164,6 +165,7 @@ button::after {
 }
 .ouran:disabled { opacity: 1; color: var(--dim); }
 .ouran.ready { border-color: #ffd040; color: #fff; animation: glow 0.6s ease-in-out infinite alternate; }
+.ouran.on { border-color: #ff9cc0; color: #fff; }
 @keyframes glow { from { box-shadow: 0 0 0 rgba(255, 208, 64, 0); } to { box-shadow: 0 0 18px rgba(255, 208, 64, 0.8); } }
 
 /* 戦場の上に重ねるもの：コンボ数・吹き出し・カットイン */
@@ -337,8 +339,8 @@ body.tutorial #next { display: none; }
 .coins, .wave { display: inline-flex; align-items: center; gap: 2px; }
 .up b { display: flex; align-items: center; gap: 2px; font-size: 15px; white-space: nowrap; }
 .up b .ic { width: 22px; height: 22px; margin-right: 1px; object-fit: contain; }
-.ouran .row { display: flex; align-items: center; gap: 6px; }
-.ouran .ic { width: 30px; height: 30px; }
+.ouran .row { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ouran .ic { width: 28px; height: 28px; }
 .dog { flex-direction: row; gap: 4px; justify-content: flex-start; }
 .dog .pic { height: 40px; width: auto; flex: none; }
 #hint .ic { width: 22px; height: 22px; }

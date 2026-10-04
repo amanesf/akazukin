@@ -9,7 +9,7 @@ import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_CROWN, DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
-import { Sim, type Dog, type Fx, type Wolf } from './sim';
+import { Sim, type Arrow, type Dog, type Fx, type Wolf } from './sim';
 import type { WolfKind } from './config';
 
 const COLOR = {
@@ -737,6 +737,7 @@ export class View {
         P.glow(hd.x, hd.y, this.geo.Hm * 0.12, 0xff90b8, 0.15, 0.9, 0.6);
         P.flower(hd.x, hd.y, this.geo.Hm * 0.03 * rel, 0.55); // 当たった所に桜がぱっと咲く
         for (let i = 0; i < 4; i++) P.petal(hd.x, hd.y, s, (Math.random() - 0.3) * 260 * (f.dir ?? 1), -120 - Math.random() * 200, 0.6);
+        if (f.big) break; // 千本桜のナイフは刺さったまま残さない（数が多い）
         this.stuck.push({ id: f.n ?? 0, x: f.x, lane: f.lane, z: f.z ?? 0, rel, t: 0, dir: f.dir ?? 1 });
         if (this.stuck.length > 12) this.stuck.shift();
         break;
@@ -1514,6 +1515,31 @@ export class View {
     o.ellipse(cx, gy, hh * 0.5 * grow, hh * 0.1 * grow).fill({ color: 0xff80b0, alpha: 0.18 + 0.08 * Math.sin(t * 12) });
   }
 
+  // 千本桜のナイフ：胸の高さから、くるくる回りながら狼の頭へ。桜色の尾を引く
+  private drawKnife(o: Graphics, sim: Sim, a: Arrow) {
+    const hh = this.heroH(a.fromLane);
+    const dir = Math.sign(a.toX - a.fromX) || 1;
+    const x0 = this.wx(a.fromX) + dir * hh * 0.12;
+    const y0 = this.wy(a.fromLane) - hh * 0.62;
+    const tw = a.target ? sim.wolves.find((w) => w.id === a.target) : undefined;
+    const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
+    const x1 = hd ? hd.x : this.wx(a.toX);
+    const y1 = hd ? hd.y : this.wy(a.lane) - this.geo.Hm * 0.04;
+    const arc = Math.abs(x1 - x0) * 0.08;
+    const at = (t: number) => ({ x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * arc });
+    const p = at(Math.min(1, a.t));
+    const q = at(Math.max(0, a.t - 0.25));
+    o.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 5, color: 0xff7aa8, alpha: 0.3, cap: 'round' });
+    o.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 1.8, color: 0xffe0ee, alpha: 0.7, cap: 'round' });
+    const ang = a.t * 18 * dir;
+    const ux = Math.cos(ang);
+    const uy = Math.sin(ang);
+    const L = hh * 0.09;
+    // 刃（銀）と柄（焦げ茶）
+    o.poly([p.x + ux * L, p.y + uy * L, p.x - uy * 3.5, p.y + ux * 3.5, p.x + uy * 3.5, p.y - ux * 3.5]).fill(0xeef2fa).stroke({ width: 1.2, color: 0x2a1a20 });
+    o.moveTo(p.x, p.y).lineTo(p.x - ux * L * 0.6, p.y - uy * L * 0.6).stroke({ width: 4, color: 0x3a2018, cap: 'round' });
+  }
+
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
     const K = this.geo.K;
@@ -1523,6 +1549,10 @@ export class View {
     // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
+      if (a.knife) {
+        this.drawKnife(o, sim, a);
+        continue;
+      }
       const hh = this.heroH(a.fromLane);
       // 弓の絵の矢の高さ（足もとから背の73%・前へ30%）から放つ（55%だと腰のあたりから出て見えた。2026-10-04 アマネさん）
       const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;

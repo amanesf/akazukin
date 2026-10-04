@@ -3,9 +3,9 @@
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO_BASE, COMBO_RESET, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
-  FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SHOCKWAVE, STEER, STEP,
+  FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
-  type DogKind, type DogRole, type MoveId, type Perk, type SkillId, type Track, type WolfKind,
+  type DogKind, type DogRole, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfKind,
 } from './config';
 import { hpScale, mood, night, SURGE_WARN, type Mood } from './nights';
 
@@ -40,8 +40,9 @@ export interface Wolf extends Unit {
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
-export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[] }
-export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number }
+// knife：千本桜のナイフ（矢と同じく飛ぶ。絵だけ違う）。sp：必殺技が出したもの（当てても必殺技は溜まらない）
+export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; knife?: boolean; sp?: boolean }
+export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number; sp?: boolean }
 export interface Shot { x: number; lane: number } // 狼の衝撃波（左へ飛ぶ）
 export type FxKind = 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge';
 export interface Fx {
@@ -92,7 +93,8 @@ export interface Hero {
   jumps: number; // 着地までに跳んだ回数（2段ジャンプまで）
   armor: number; // ひるまない残り（噛まれてひるんだ直後。囲まれてひるみ続けて動けなくなるのを防ぐ）
   hitFlash: number;
-  ouran: number; // 桜嵐の残り秒数
+  ouran: number; // 桜嵐（必殺技）の残り秒数
+  special: Special; // 出している必殺技
   ouranTick: number;
   facing: 1 | -1;
   order: { x: number; lane: number; target: number; sprint: boolean } | null; // 走って行く先（target は着いたら斬る狼）
@@ -119,10 +121,17 @@ export class Sim {
 
   hero: Hero = {
     x: GIRL_X + 60, lane: 0.5, z: 0, vz: 0, hp: HERO.hp, move: null, moveT: 0, moveTarget: 0, dashTo: 0, lungeTo: null, lungeLane: 0.5,
-    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, ouranTick: 0, facing: 1,
+    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, special: 'senbon', ouranTick: 0, facing: 1,
     order: null, running: 0, charge: -1, autoT: 0, bowT: 0,
   };
-  gauge = 0; // 桜嵐のゲージ（0〜100）
+  gauges: Record<Special, number> = { senbon: 0, nagare: 0, midare: 0 }; // 必殺技3つのゲージ（0〜100）
+  // いちばん溜まっているゲージ。代入すると3つとも（点検・撮影の台本が s.gauge=100 を使う）
+  get gauge() {
+    return Math.max(...SPECIAL_ORDER.map((k) => this.gauges[k]));
+  }
+  set gauge(v: number) {
+    for (const k of SPECIAL_ORDER) this.gauges[k] = v;
+  }
   combo = 0;
   bestCombo = 0;
   sinceHit = 99;
@@ -432,13 +441,17 @@ export class Sim {
     return true;
   }
 
-  canOuran() {
-    return this.phase === 'wave' && this.gauge >= 100 && this.hero.down <= 0 && this.hero.ouran <= 0;
+  // sp を省くと、溜まっているどれか（千本桜→流れ矢→乱れ撃ちの順）
+  canOuran(sp?: Special) {
+    const ready = sp ? this.gauges[sp] >= 100 : this.gauge >= 100;
+    return this.phase === 'wave' && ready && this.hero.down <= 0 && this.hero.ouran <= 0;
   }
 
-  ouran() {
-    if (!this.canOuran()) return false;
-    this.gauge = 0;
+  ouran(sp?: Special) {
+    sp ??= SPECIAL_ORDER.find((k) => this.gauges[k] >= 100);
+    if (!sp || !this.canOuran(sp)) return false;
+    this.gauges[sp] = 0;
+    this.hero.special = sp;
     this.hero.ouran = OURAN.time;
     this.hero.ouranTick = 0.35; // カットインのぶん少し待つ
     this.hero.move = null;
@@ -737,7 +750,7 @@ export class Sim {
             this.sounds.push('slam');
             for (const o of this.wolves) {
               if (o !== w && o.z <= 0 && Math.abs(o.x - w.x) <= BODY.slamSplash && Math.abs(o.lane - w.lane) <= 0.5) {
-                this.hit(o, BODY.slamSplashDamage, { stop: 0, kb: 120 });
+                this.hit(o, BODY.slamSplashDamage, { stop: 0, kb: 120, src: 'senbon' });
               }
             }
             this.kick(6, 0);
@@ -941,7 +954,7 @@ export class Sim {
       h.charge = -1;
       h.lungeTo = null;
     }
-    this.gain(OURAN.gain.hurt * dmg);
+    for (const k of SPECIAL_ORDER) this.gain(k, OURAN.hurt * dmg);
     this.kick(3, 0);
     if (h.hp <= 0) {
       h.hp = 0;
@@ -1129,7 +1142,7 @@ export class Sim {
     for (const w of this.wolves) {
       if (h.dashHit.includes(w.id) || w.x < lo || w.x > hi || Math.abs(w.lane - h.lane) > 0.42) continue;
       h.dashHit.push(w.id);
-      this.hit(w, m.damage * this.nearPower, { kb: m.kb!, lift: w.z > 0 ? 200 : 140, stop: m.stop, stun: DASH.stun });
+      this.hit(w, m.damage * this.nearPower, { kb: m.kb!, lift: w.z > 0 ? 200 : 140, stop: m.stop, stun: DASH.stun, src: 'senbon' });
       this.fx.push(this.mk({ kind: 'slash', x: w.x, lane: w.lane, z: 0, move: 'tosshin', dir: h.facing }));
     }
   }
@@ -1188,7 +1201,7 @@ export class Sim {
     if (id === 'slam' && !hits.some((w) => w.z > 0)) {
       // 地面を叩く：まわりを少し跳ね上げる
       hits = this.wolves.filter((w) => w.z <= 0 && Math.abs(w.x - (h.x + h.facing * 40)) <= 120 && Math.abs(w.lane - h.lane) <= 0.5);
-      for (const w of hits) this.hit(w, dmg * 0.7, { lift: 260, kb: 60, stop: 0.06 });
+      for (const w of hits) this.hit(w, dmg * 0.7, { lift: 260, kb: 60, stop: 0.06, src: 'senbon' });
       this.fx.push(this.mk({ kind: 'pound', x: h.x + h.facing * 40, lane: h.lane, r: 120 }));
       this.sounds.push('slam');
       this.kick(m.shake ?? 0, 0);
@@ -1198,7 +1211,7 @@ export class Sim {
     // 連撃は相手1匹に。範囲の技と主砲はまとめて
     const targets = area ? hits : [hits.find((w) => w.id === h.moveTarget) ?? hits[0]].filter((w): w is Wolf => !!w);
     for (const w of targets) {
-      this.hit(w, dmg, { kb, lift: m.lift, slam: m.slam, stop: m.stop });
+      this.hit(w, dmg, { kb, lift: m.lift, slam: m.slam, stop: m.stop, src: id === 'shiki' ? 'midare' : 'senbon' });
     }
     this.sounds.push(id === 'shiki' ? 'boom' : 'swing');
     if (id === 'kaiten') this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: area }));
@@ -1225,31 +1238,25 @@ export class Sim {
     } else if (id !== 'shiki') h.step++;
   }
 
+  // 必殺技：その場で桜の竜巻（吸い寄せるだけ）を起こし、技ごとの飛び道具で削る
   private runOuran(dt: number) {
     const h = this.hero;
     h.ouran -= dt;
     h.ouranTick -= dt;
     if (h.ouranTick <= 0) {
       h.ouranTick = OURAN.tick;
-      // その場で竜巻：まわりの狼を吸い寄せ（奥行きも寄せる）、近い狼を巻き上げて斬る
+      // 竜巻：まわりの狼を前へ吸い寄せる（奥行きも寄せる）。竜巻そのものは斬らない
       for (const w of this.wolves) {
-        const d = Math.abs(w.x - h.x);
-        if (d > OURAN.pull || w.age < 0.4) continue;
-        w.x += (h.x + 30 - w.x) * 0.28;
+        if (Math.abs(w.x - h.x) > OURAN.pull || w.age < 0.4) continue;
+        w.x += (h.x + h.facing * 60 - w.x) * 0.28;
         w.lane += (h.lane - w.lane) * 0.3;
         w.vx = 0;
-        if (d <= OURAN.reach) this.hit(w, OURAN.damage * this.nearPower, { lift: 260, stop: 0.02 });
       }
-      this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: OURAN.reach, big: true }));
-      this.kick(4, h.facing);
+      this.specialTick();
+      this.kick(3, h.facing);
     }
     if (h.ouran <= 0) {
-      // 締め：主砲の全弾
-      for (const w of this.wolves) {
-        if (Math.abs(w.x - h.x) <= OURAN.finalArea) this.hit(w, OURAN.final * this.nearPower, { kb: 500, stop: 0 });
-      }
-      this.fx.push(this.mk({ kind: 'blast', x: h.x + h.facing * 120, lane: h.lane, r: OURAN.finalArea * 0.6, big: true }));
-      this.fx.push(this.mk({ kind: 'muzzle', x: h.x + h.facing * 40, lane: h.lane, dir: h.facing, big: true }));
+      this.specialFinal();
       this.hitStop = 0.2;
       this.kick(14, h.facing);
       this.punch = 1;
@@ -1258,12 +1265,82 @@ export class Sim {
     }
   }
 
+  private specialTick() {
+    const h = this.hero;
+    const near = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= OURAN.knife.reach);
+    if (h.special === 'senbon') {
+      // ナイフをシパパパ：近い狼から順に1本ずつ、少しずつずらして
+      const K = OURAN.knife;
+      const list = near.sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x)).slice(0, K.perTick);
+      const n = Math.max(3, list.length);
+      for (let i = 0; i < n; i++) {
+        const t = list[i % Math.max(1, list.length)];
+        const delay = (i * OURAN.tick) / n;
+        if (t) this.throwKnife(t.x, t.lane, K.damage * this.nearPower, delay, t.id);
+        else this.throwKnife(h.x + h.facing * (120 + this.rand() * 200), this.rand(), 0, delay); // 狼がいなくても投げる（見た目）
+      }
+    } else if (h.special === 'nagare') {
+      // 矢を奥・中・手前へ一斉に。まっすぐ貫く
+      const V = OURAN.volley;
+      for (let i = 0; i < V.lanes; i++) {
+        const lane = (i + 0.5) / V.lanes + (this.rand() - 0.5) * 0.15;
+        this.loose(h.x + h.facing * V.range, lane, V.damage * this.farPower, i * 0.03, false, 0, V.pierce, true);
+      }
+    } else {
+      // 砲弾を群れへ連射
+      const B = OURAN.barrage;
+      const front = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= OURAN.pull);
+      for (let i = 0; i < B.perTick; i++) {
+        const t = front.length ? front[Math.floor(this.rand() * front.length)] : undefined;
+        const toX = t ? t.x + (this.rand() - 0.5) * 40 : h.x + h.facing * (100 + this.rand() * 250);
+        this.shells.push({ fromX: h.x, toX, t: -i * 0.06, lane: t ? t.lane : this.rand(), damage: B.damage * this.farPower, area: B.area, sp: true });
+      }
+      this.fx.push(this.mk({ kind: 'muzzle', x: h.x + h.facing * 40, lane: h.lane, dir: h.facing }));
+      this.sounds.push('boom');
+    }
+  }
+
+  private specialFinal() {
+    const h = this.hero;
+    if (h.special === 'senbon') {
+      // まわりの狼すべてに、ナイフが一斉に刺さる
+      const K = OURAN.knife;
+      const list = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= K.reach);
+      for (const w of list) this.throwKnife(w.x, w.lane, K.final * this.nearPower, 0, w.id);
+      for (let i = list.length; i < 8; i++) this.throwKnife(h.x + h.facing * (80 + this.rand() * 280), this.rand(), 0, 0);
+      this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: K.reach * 0.6, big: true }));
+    } else if (h.special === 'nagare') {
+      // 大きな一斉射：奥行きいっぱいに
+      const V = OURAN.volley;
+      for (let i = 0; i < V.final; i++) {
+        this.loose(h.x + h.facing * V.range * 1.2, (i + 0.5) / V.final, V.damage * 2 * this.farPower, i * 0.015, false, 0, 99, true);
+      }
+    } else {
+      // 満タンの主砲
+      const B = OURAN.barrage;
+      for (const w of this.wolves) {
+        const d = (w.x - h.x) * h.facing;
+        if (d >= -60 && d <= B.finalArea * 1.6) this.hit(w, B.final * this.farPower, { kb: 500, stop: 0, src: 'sp' });
+      }
+      this.fx.push(this.mk({ kind: 'blast', x: h.x + h.facing * 140, lane: h.lane, r: B.finalArea * 0.6, big: true }));
+      this.fx.push(this.mk({ kind: 'muzzle', x: h.x + h.facing * 40, lane: h.lane, dir: h.facing, big: true }));
+      this.sounds.push('boom');
+    }
+  }
+
+  private throwKnife(toX: number, lane: number, damage: number, delay: number, target = 0) {
+    const h = this.hero;
+    const flight = 0.1 + Math.abs(toX - h.x) * 0.0002;
+    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain: false, target, pierce: 1, hits: [], knife: true, sp: true });
+    if (Math.floor(delay * 100) % 3 === 0) this.sounds.push('swing');
+  }
+
   // ── 飛び道具 ──
-  private loose(toX: number, lane: number, damage: number, delay = 0, rain = false, target = 0) {
+  private loose(toX: number, lane: number, damage: number, delay = 0, rain = false, target = 0, pierce = rain ? 1 : BOW_FLIGHT.pierce, sp = false) {
     const h = this.hero;
     const F = rain ? RAIN_FLIGHT : BOW_FLIGHT;
     const flight = F.base + Math.abs(toX - h.x) * F.perUnit;
-    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain, target, pierce: rain ? 1 : BOW_FLIGHT.pierce, hits: [] });
+    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain, target, pierce, hits: [], sp });
     this.sounds.push('bow');
   }
 
@@ -1288,8 +1365,8 @@ export class Sim {
           if (a.hits.includes(w.id) || w.age < 0.4 || w.z > 80 || Math.abs(w.lane - lane) > 0.35) continue;
           if (w.x + w.size / 2 < lo || w.x - w.size / 2 > hi) continue;
           a.hits.push(w.id);
-          this.hit(w, a.damage * (1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: 70, stun: 0.3 });
-          this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1 }));
+          this.hit(w, a.damage * (a.knife ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.knife ? 30 : 70, stun: 0.3, src: a.sp ? 'sp' : 'nagare' });
+          this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1, big: a.knife }));
           if (a.hits.length >= a.pierce) return false;
         }
         if (a.t < 1) return true;
@@ -1299,7 +1376,7 @@ export class Sim {
       if (a.t < 1) return true;
       const near = this.wolves.filter((w) => Math.abs(w.x - a.toX) <= BOW_FLIGHT.hitRadius + w.size / 2 && Math.abs(w.lane - a.lane) <= 0.4);
       const t = this.nearest(near, a.toX);
-      if (t) this.hit(t, a.damage * (1 - WOLVES[t.kind].arrowResist), { stop: 0, kb: 30 });
+      if (t) this.hit(t, a.damage * (1 - WOLVES[t.kind].arrowResist), { stop: 0, kb: 30, src: a.sp ? 'sp' : 'nagare' });
       else this.fx.push(this.mk({ kind: 'miss', x: a.toX, lane: a.lane }));
       return false;
     });
@@ -1311,7 +1388,7 @@ export class Sim {
       if (s.t < 1) return true;
       for (const w of this.wolves) {
         if (Math.abs(w.x - s.toX) <= s.area + w.size / 2 && Math.abs(w.lane - s.lane) <= 0.5) {
-          this.hit(w, s.damage * (1 - WOLVES[w.kind].arrowResist), { kb: 160, lift: 180, stop: 0 });
+          this.hit(w, s.damage * (1 - WOLVES[w.kind].arrowResist), { kb: 160, lift: 180, stop: 0, src: s.sp ? 'sp' : 'midare' });
         }
       }
       this.fx.push(this.mk({ kind: 'blast', x: s.toX, lane: s.lane, r: s.area }));
@@ -1324,7 +1401,8 @@ export class Sim {
   // ── 当てる ──
   // 弾く向きはいつも右（裂け目の側）。主人公との位置で向きを決めていたので、重なった狼が家の側へ飛ぶことがあった
   // （2026-10-04 アマネさん「ノックバックが左側に飛んでくときあるの困る」）
-  private hit(w: Wolf, dmg: number, o: { kb?: number; lift?: number; slam?: boolean; stop?: number; quiet?: boolean; stun?: number }) {
+  // src：どの必殺技のゲージが溜まるか（sp は必殺技そのもの＝溜まらない）
+  private hit(w: Wolf, dmg: number, o: { kb?: number; lift?: number; slam?: boolean; stop?: number; quiet?: boolean; stun?: number; src?: Special | 'sp' }) {
     if (w.age < 0.4) return; // 裂け目から出てくる途中は当たらない
     if (o.kb) o = { ...o, kb: Math.abs(o.kb) };
     const light = 1 - (WOLVES[w.kind].heavy ?? 0);
@@ -1353,13 +1431,13 @@ export class Sim {
     if (this.combo === 30) this.events.push('combo30');
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.sinceHit = 0;
-    this.gain(OURAN.gain.hit);
+    if (o.src && o.src !== 'sp') this.gain(o.src, dmg * SPECIALS[o.src].gain);
     if (o.stop) this.hitStop = Math.max(this.hitStop, o.stop);
   }
 
-  private gain(n: number) {
+  private gain(sp: Special, n: number) {
     if (this.hero.ouran > 0) return;
-    this.gauge = Math.min(100, this.gauge + n * (this.mood === 'sakura' ? 1.8 : 1));
+    this.gauges[sp] = Math.min(100, this.gauges[sp] + n * (this.mood === 'sakura' ? 1.8 : 1));
   }
 
   // 画面を揺らす。dir があれば当てた向きへ押す
