@@ -2,6 +2,8 @@ import './style.css';
 import { Sfx } from './audio';
 import { WOLVES, type WolfKind } from './config';
 import { Input } from './input';
+import { MOODS } from './nights';
+import { TALKS } from './talks';
 import { Sim, type Event, type Save } from './sim';
 import { ICON, Panel } from './ui';
 import { openStory } from './story';
@@ -68,6 +70,9 @@ async function main() {
     combo30: ['止まらないよ〜♪'],
     dawn: ['朝だ〜。おばあちゃん、無事？'],
   };
+  // 操作の早見（夜だけ・画面の上）。2026-10-04 アマネさん「タップ＝斬る、長押し＝主砲、みたいなのがわかるように」
+  const legend = document.getElementById('legend')!;
+  legend.innerHTML = `<span>${ICON('tap')}<b>タップ</b>斬る</span><span><i>⇆</i><b>はじく</b>突進</span><span><i>⇅</i><b>はじく</b>上げ・落とし</span><span>${ICON('cannon')}<b>長押し</b>主砲</span>`;
   const comboEl = document.getElementById('combo')!;
   const bubble = document.getElementById('bubble')!;
   const cutin = document.getElementById('cutin')!;
@@ -102,6 +107,23 @@ async function main() {
   let surgeUntil = -1;
   let lastCombo = 0;
   let lastPending = '';
+  // 節目の会話：タップで次へ。昼は時が止まっているので、そのまま読める
+  const talkEl = document.getElementById('talk')!;
+  const showTalk = (lines: [string, string][]) => {
+    let i = 0;
+    const next = () => {
+      if (i >= lines.length) {
+        talkEl.hidden = true;
+        talkEl.onclick = null;
+        return;
+      }
+      const [who, text] = lines[i++];
+      talkEl.innerHTML = `<b class="${who === '赤ずきん' ? 'hero' : 'oba'}">${who}</b><p>${text}</p><small>${i < lines.length ? '▼ タップで次へ' : '▼ タップで閉じる'}</small>`;
+      restart(talkEl);
+    };
+    talkEl.onclick = next;
+    next();
+  };
   const restart = (el: HTMLElement) => {
     el.hidden = true;
     void el.offsetWidth; // 演出をやり直す
@@ -128,10 +150,14 @@ async function main() {
       if (ev === 'dawn') {
         store.write(sim.save()); // 夜が明けたら保存（家が落ちたら、ここへ戻る）
         showCard('夜明け', `${sim.wave}日目の夜を越えた`);
+        const talk = TALKS[sim.wave];
+        if (talk) setTimeout(() => showTalk(talk), 1800); // 節目の晩のあとは、昼におばあさんと話す
       }
       if (ev === 'night') {
         const n = Object.values(sim.pending()).reduce((a, b) => a + (b ?? 0), 0);
-        showCard(`${sim.wave + 1}日目の夜`, `狼 ${n}匹`);
+        const m = sim.mood ? MOODS[sim.mood] : null;
+        showCard(m ? m.name : `${sim.wave + 1}日目の夜`, m ? `${sim.wave + 1}日目・${m.note}・狼 ${n}匹` : `狼 ${n}匹`);
+        document.body.dataset.mood = sim.mood ?? '';
       }
       say(ev);
     }
@@ -165,6 +191,7 @@ async function main() {
       if (hx) restart(hint);
       else hint.hidden = true;
     }
+    legend.hidden = sim.phase !== 'wave' || !!hx;
     comboEl.hidden = sim.combo < 2;
     if (sim.combo !== lastCombo) {
       comboEl.innerHTML = `${sim.combo}<small>HIT</small>`;

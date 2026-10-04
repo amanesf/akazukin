@@ -40,6 +40,17 @@ mimgs = {n: cv2.flip(cv2.imread(f'{SRC}/{n}.png', cv2.IMREAD_UNCHANGED), 1) for 
 km = wolf_h / (bounds(mimgs['wolf_walk2'])[3] - bounds(mimgs['wolf_walk2'])[1])
 for n, img in mimgs.items():
     imgs[n] = cv2.resize(img, (int(img.shape[1] * km), int(img.shape[0] * km)), interpolation=cv2.INTER_AREA)
+# 子狼・鎧狼・遠吠え・大狼の動き（pack-motion-v1：噛みつき4つ・のけぞり2つ。子狼と鎧狼ののけぞりは別の狼に描かれたので使わない）。
+# 別の1枚で縮尺が違うので、同じ姿勢で描かれた所で倍率を測る：遠吠え（頭を上げた立ち姿）と大狼（のけぞりの立ち姿）。
+# 子狼・鎧狼は遠吠えの倍率を使う（同じ1枚の中は互いの大きさで描かせた）
+PACK = {'pup_bite': 'pup', 'armored_bite': 'armored', 'howler_bite': 'howler', 'alpha_bite': 'alpha', 'howler_hit': 'howler', 'alpha_hit': 'alpha'}
+pimgs = {n: cv2.flip(cv2.imread(f'{SRC}/{n}.png', cv2.IMREAD_UNCHANGED), 1) for n in PACK}
+hgt = lambda im: bounds(im)[3] - bounds(im)[1]
+sheet = {'howler': hgt(imgs['howler']) / hgt(pimgs['howler_hit']), 'alpha': hgt(imgs['alpha']) / hgt(pimgs['alpha_hit'])}
+for n, kind in PACK.items():
+    kk = sheet.get(kind, sheet['howler'])
+    imgs[n] = cv2.resize(pimgs[n], (int(pimgs[n].shape[1] * kk), int(pimgs[n].shape[0] * kk)), interpolation=cv2.INTER_AREA)
+MOTION += list(PACK)
 meta = {}
 for n, img in imgs.items():
     x0, y0, x1, y1 = bounds(img)
@@ -64,6 +75,12 @@ OUT = 'app/public/dogs'
 os.makedirs(OUT, exist_ok=True)
 imgs = {n: cv2.imread(f'assets/game/parts/dogs/{n}.png', cv2.IMREAD_UNCHANGED) for n in ('shiba', 'akita', 'tosa', 'house')}
 akita_h = bounds(imgs['akita'])[3] - bounds(imgs['akita'])[1]
+# 番犬の動き（dogs-motion-v1：走り・噛みつき）。別の1枚なので、秋田の噛みつき（頭を上げた立ち姿に近い）の背を秋田にそろえた倍率で
+DMOTION = [f'{d}_{m}' for m in ('run', 'bite') for d in ('shiba', 'akita', 'tosa')]
+dimgs = {n: cv2.imread(f'assets/game/parts/dogs/{n}.png', cv2.IMREAD_UNCHANGED) for n in DMOTION}
+kd = akita_h / (bounds(dimgs['akita_bite'])[3] - bounds(dimgs['akita_bite'])[1])
+for n, img in dimgs.items():
+    imgs[n] = cv2.resize(img, (int(img.shape[1] * kd), int(img.shape[0] * kd)), interpolation=cv2.INTER_AREA)
 k = 360 / akita_h
 meta = {}
 for n, img in imgs.items():
@@ -75,7 +92,8 @@ for n, img in imgs.items():
     a = small[:, :, 3] > 128
     bottom = np.nonzero(a.any(axis=1))[0].max()
     xs = np.nonzero(a[int(bottom - small.shape[0] * 0.12):bottom + 1].any(axis=0))[0]
-    meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [float((xs.min() + xs.max()) / 2), float(bottom)],
+    fx = small.shape[1] / 2 if n in DMOTION else float((xs.min() + xs.max()) / 2)  # 動きの絵は絵の真ん中を基準に
+    meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [fx, float(bottom)],
                'h': round(float((y1 - y0) / akita_h), 3)}
 json.dump(meta, open(f'{OUT}/meta.json', 'w'), indent=1)
 total = sum(os.path.getsize(f'{OUT}/{f}') for f in os.listdir(OUT))

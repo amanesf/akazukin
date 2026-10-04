@@ -1,4 +1,4 @@
-// 点検用：題字の画面と、ストーリー・キャラクター・ゲーム概要を上から順に撮る。node scripts/story-shot.mjs 出力先
+// 点検用：題字の画面と、ストーリー画面（ストーリー・キャラクター・ゲーム概要が1本に続く）を上から順に撮る。node scripts/story-shot.mjs 出力先
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -17,14 +17,11 @@ await p.waitForTimeout(2500);
 await p.screenshot({ path: `${out}/t-title.png` });
 await p.click('.storybtn');
 await p.waitForTimeout(800);
-for (const tab of ['story', 'chara', 'game']) {
-  await p.click(`nav button[data-tab="${tab}"]`);
-  await p.waitForTimeout(600);
-  const h = await p.evaluate(() => document.querySelector('.st-body').scrollHeight);
-  for (let y = 0, i = 0; y < h && i < 6; y += 700, i++) {
-    await p.evaluate((y) => (document.querySelector('.st-body').scrollTop = y), y);
-    await p.waitForTimeout(200);
-    await p.screenshot({ path: `${out}/t-${tab}-${i}.png` });
-  }
+// 1本の読みものを上から順に
+const h = await p.evaluate(() => document.querySelector('.st-body').scrollHeight);
+for (let y = 0, i = 0; y < h && i < 16; y += 680, i++) {
+  await p.evaluate((y) => (document.querySelector('.st-body').scrollTop = y), y);
+  await p.waitForTimeout(200);
+  await p.screenshot({ path: `${out}/t-story-${String(i).padStart(2, '0')}.png` });
 }
 await b.close(); srv.close();

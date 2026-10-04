@@ -1,11 +1,12 @@
 // 小さい地図：戦場の全体を、メイン画面を縮小した感じで見せる（2026-10-04・アマネさん
 // 「デフォルメしていいけど、こうげきがあたってるとかわかるようにメイン画面を縮小した感じ」）。
-// 主人公は同じ絵の縮小。狼・番犬は箱を大きめに盛る。当たった光・斬撃・爆発・打ち上げ・煙・家の点滅・いま映している枠。
+// 主人公・狼・番犬は同じ絵の縮小（大きさは盛る）。当たった光・斬撃・爆発・打ち上げ・煙・家の点滅・いま映している枠。
 // タップするとそこへ駆けつける。
 import { Container, Graphics } from 'pixi.js';
 import { DOG_ORDER, DOGS, FIELD_LENGTH, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
 import { place } from './fx';
 import { HeroRig } from './heroRig';
+import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { Sim } from './sim';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 
@@ -14,16 +15,22 @@ export class Minimap {
   private g = new Graphics();
   private top = new Graphics();
   private rig = new HeroRig();
+  // 狼・番犬も同じ絵の縮小（2026-10-04。前は色の箱で、何がいるか分からなかった）
+  private unitBack = new Container();
+  private wolfArt = new UnitArt<string>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha'], this.unitBack, new Container());
+  private dogArt = new UnitArt<string>('dogs', ['shiba', 'akita', 'tosa'], this.unitBack, new Container());
   private w = 0;
   private h = 0;
   private pad = 10;
   private houseBlink = 0;
 
   constructor() {
-    this.root.addChild(this.g, this.rig.root, this.top);
+    this.root.addChild(this.g, this.unitBack, this.rig.root, this.top);
   }
 
   load() {
+    this.wolfArt.load().catch((e) => console.warn('mini wolves', e));
+    this.dogArt.load().catch((e) => console.warn('mini dogs', e));
     return this.rig.load();
   }
 
@@ -76,12 +83,19 @@ export class Minimap {
     g.moveTo(rx, gy - H * 0.38).lineTo(rx - 3, gy - H * 0.2).lineTo(rx + 2, gy).lineTo(rx - 1, H - 4).stroke({ width: 3 + Math.sin(t * 4), color: 0xff3040, alpha: day ? 0.3 : 0.9 });
 
     const u = 0.22; // 体の大きさ1あたりの画素（位置より盛る）
-    // 番犬
-    const dogs = day ? DOG_ORDER.map((kind) => ({ ...Sim.dogHome(kind), kind, size: DOGS[kind].size, hitFlash: 0, down: 0 })) : sim.dogs;
+    // 番犬と狼：同じ絵の縮小（読めなければ箱）。奥から手前へ
+    const art = this.wolfArt.ready && this.dogArt.ready;
+    this.wolfArt.begin();
+    this.dogArt.begin();
+    const dogs = day ? DOG_ORDER.map((kind) => ({ ...Sim.dogHome(kind), kind, size: DOGS[kind].size, hitFlash: 0, down: 0, facing: 1 })) : sim.dogs;
+    const unitH = H * 0.3; // ふつうの狼の背（地図の上の画素）
     for (const d of dogs) {
       if (d.down > 0) continue;
       const w = d.size * u;
-      g.rect(this.mx(d.x) - w / 2, this.my(d.lane) - w * 0.6, w, w * 0.6).fill(d.hitFlash > 0 ? 0xffffff : DOG_COLOR[d.kind]);
+      if (art) {
+        const hh = unitH * 0.75 * DOG_REL[d.kind];
+        this.dogArt.put(0, d.kind, this.mx(d.x), this.my(d.lane) - this.dogArt.center(hh), hh, 0, 1, d.hitFlash > 0 ? 0xff9a9a : 0xffffff, 1, d.facing < 0);
+      } else g.rect(this.mx(d.x) - w / 2, this.my(d.lane) - w * 0.6, w, w * 0.6).fill(d.hitFlash > 0 ? 0xffffff : DOG_COLOR[d.kind]);
     }
     // 狼（打ち上げは宙に、回る）
     for (const wf of [...sim.wolves].sort((a, b) => a.lane - b.lane)) {
@@ -91,18 +105,23 @@ export class Minimap {
       const x = this.mx(wf.x);
       const y = this.my(wf.lane) - wf.z * 0.12;
       const rot = wf.z > 0 && !wf.pouncing ? (wf.hitDir || 1) * Math.min(Math.PI * 1.5, wf.z / 60) : 0;
-      if (!rot) {
-        // 地面にいる狼（ほとんど）は回さずに描く（回すための変換が重い）
-        g.rect(x - w / 2, y - h, w, h).fill(wf.hitFlash > 0 ? 0xffffff : WOLF_COLOR[wf.kind]);
-        g.rect(x - w / 2 + 1, y - h + 1, 2, 2).fill(wf.hasted ? 0xffff60 : 0xff4040);
+      if (rot) g.ellipse(x, this.my(wf.lane), w * 0.5, 1.5).fill({ color: 0x000000, alpha: 0.4 });
+      if (art) {
+        const hh = unitH * WOLF_REL[wf.kind];
+        this.wolfArt.put(0, wf.kind, x, y - this.wolfArt.center(hh), hh, rot, 1, wf.hitFlash > 0 ? 0xffb0b0 : wf.hasted ? 0xfff080 : 0xffffff, wf.age < 0.45 ? wf.age / 0.45 : 1);
         continue;
       }
-      g.ellipse(x, this.my(wf.lane), w * 0.5, 1.5).fill({ color: 0x000000, alpha: 0.4 });
+      if (!rot) {
+        g.rect(x - w / 2, y - h, w, h).fill(wf.hitFlash > 0 ? 0xffffff : WOLF_COLOR[wf.kind]);
+        continue;
+      }
       place(g, x, y - h / 2, rot);
       g.rect(-w / 2, -h / 2, w, h).fill(wf.hitFlash > 0 ? 0xffffff : WOLF_COLOR[wf.kind]);
-      g.rect(-w / 2 + 1, -h / 2 + 1, 2, 2).fill(wf.hasted ? 0xffff60 : 0xff4040);
       g.restore();
     }
+    this.wolfArt.end();
+    this.dogArt.end();
+
     // 主人公：同じ絵の縮小（読めなければ赤い棒）
     const h = sim.hero;
     const px = this.mx(h.x);

@@ -27,6 +27,29 @@ export function hpScale(n: number) {
 
 export const SURGE_WARN = 2;
 
+// 夜の様子（2026-10-04 アマネさん「後半の変化」）。5晩目から、大狼の晩でなければ半分くらいの晩に。同じ晩はいつも同じ様子
+export type Mood = 'kiri' | 'beni' | 'mure' | 'yoroi' | 'toboe' | 'sakura';
+export const MOODS: Record<Mood, { name: string; note: string; from: number }> = {
+  kiri: { name: '霧の夜', note: '霧で弓が近くまでしか届かない', from: 5 },
+  beni: { name: '紅月の夜', note: '狼が速い', from: 8 },
+  mure: { name: '群れの夜', note: '子狼がたくさん来る', from: 5 },
+  yoroi: { name: '鎧の夜', note: '鎧狼が多い', from: 12 },
+  toboe: { name: '遠吠えの夜', note: '遠吠えが多い', from: 15 },
+  sakura: { name: '桜吹雪の夜', note: '桜嵐がよく溜まる', from: 6 },
+};
+export function mood(n: number): Mood | null {
+  if (n < 5 || n % 10 === 0 || n === DAYS_TO_CLEAR) return null;
+  let seed = n * 7919 + 3;
+  const r = () => {
+    seed = (seed * 16807) % 2147483647;
+    return seed / 2147483647;
+  };
+  r();
+  if (r() > 0.5) return null;
+  const list = (Object.keys(MOODS) as Mood[]).filter((m) => MOODS[m].from <= n);
+  return list[Math.floor(r() * list.length)];
+}
+
 export function night(n: number): SpawnLine[] {
   let seed = n * 9973 + 17;
   const rand = () => {
@@ -36,7 +59,8 @@ export function night(n: number): SpawnLine[] {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   const lines: SpawnLine[] = [];
-  let left = budget(n);
+  const md = mood(n);
+  let left = budget(n) * (md === 'mure' ? 1.15 : 1);
   const length = 30 + Math.min(40, n * 0.5); // 晩の長さ（秒）の目安
 
   // 節目：10晩ごとと最後の晩に大狼。99日目は頭目（大狼を3匹）
@@ -59,6 +83,9 @@ export function night(n: number): SpawnLine[] {
     howler: 0.2 + n / 150,
     alpha: 0,
   };
+  if (md === 'mure') weight.pup *= 4;
+  if (md === 'yoroi') weight.armored *= 3;
+  if (md === 'toboe') weight.howler *= 3;
   const total = kinds.reduce((a, k) => a + weight[k], 0);
   for (const k of kinds) {
     // 出てくる晩に入ったら、少なくとも1匹は出す

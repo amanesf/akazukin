@@ -1,11 +1,13 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
 // 夜（戦闘中）は銭・家・日付と主砲・桜嵐。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
-import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, TRACKS, type DogKind, type DogRole, type Track } from './config';
+import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, TRACKS, type DogKind, type DogRole, type Track } from './config';
+import { MOODS, mood } from './nights';
 import type { Sim } from './sim';
 
 // アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
 export const ICON = (n: string) => `<img class="ic" src="${import.meta.env.BASE_URL}ui/icons/${n}.webp" alt="">`;
-const TRACK_ICON: Record<Track, string> = { body: 'heart', near: 'knife', far: 'cannon' };
+const TRACK_ICON: Record<Track, string> = { body: 'heart', near: 'knife', far: 'cannon', dog: '' };
+const trackIcon = (t: Track) => (t === 'dog' ? `<img class="ic" src="${import.meta.env.BASE_URL}dogs/shiba.webp" alt="">` : ICON(TRACK_ICON[t]));
 const ROLE_ICON: Record<DogRole, string> = { guard: 'house', attack: 'knife', support: 'heart' };
 
 export class Panel {
@@ -18,6 +20,7 @@ export class Panel {
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [Track, HTMLButtonElement][] = [];
   private shiki: HTMLButtonElement;
+  private repair: HTMLButtonElement;
   private next: HTMLButtonElement;
   private dawn: HTMLElement;
   private sim: () => Sim;
@@ -39,6 +42,7 @@ export class Panel {
       <div class="shop" hidden>
         <p class="dawn"></p>
         <div class="ups"></div>
+        <button class="repair"></button>
         <div class="dogrow"><p class="dogtitle">番犬の役目 <span>（タップで切り替え）</span></p><div class="dogs"></div></div>
         <button class="next">夜を迎える</button>
       </div>
@@ -51,6 +55,8 @@ export class Panel {
     this.shop = q('.shop');
     this.ouran = q('.ouran');
     this.shiki = q('.shiki');
+    this.repair = q('.repair');
+    this.repair.addEventListener('click', () => this.sim().repair());
     this.next = q('.next');
     this.dawn = q('.dawn');
     this.ouran.addEventListener('pointerdown', () => this.sim().ouran());
@@ -75,7 +81,7 @@ export class Panel {
     for (const t of Object.keys(TRACKS) as Track[]) {
       const b = document.createElement('button');
       b.className = 'up';
-      b.innerHTML = `<b>${ICON(TRACK_ICON[t])}${TRACKS[t].name}</b><span class="lv"></span><small></small><em></em>`;
+      b.innerHTML = `<b>${trackIcon(t)}${TRACKS[t].name}</b><span class="lv"></span><small></small><em></em>`;
       b.addEventListener('click', () => this.sim().buy(t));
       q('.ups').appendChild(b);
       this.ups.push([t, b]);
@@ -107,17 +113,23 @@ export class Panel {
     this.battle.hidden = shop;
     this.shop.hidden = !shop;
     if (shop) {
-      this.dawn.textContent = s.nightKills
+      const m = mood(s.wave + 1);
+      const tonight = m ? `<br><b class="mood">今夜は${MOODS[m].name}：${MOODS[m].note}</b>` : '';
+      this.dawn.innerHTML = (s.nightKills
         ? `夜が明けた。${s.nightKills}匹を倒し、${s.nightEarned}銭を得た`
-        : '昼。鍛えて、番犬の役目を決める';
+        : '昼。鍛えて、番犬の役目を決める') + tonight;
       for (const [t, b] of this.ups) {
         const cost = s.trackCost(t);
         const next = s.nextPerk(t);
         b.disabled = !s.canBuy(t);
         b.querySelector('.lv')!.textContent = `Lv ${s.levels[t]}`;
-        b.querySelector('small')!.textContent = next ? `次：${next.note}` : 'これ以上は上がらない';
-        b.querySelector('em')!.textContent = cost === undefined ? '最大' : `${cost}銭`;
+        b.querySelector('small')!.textContent = `次：${next.note}`;
+        b.querySelector('em')!.textContent = `${cost}銭`;
+        b.classList.toggle('train', s.trained(t) > 0 || s.levels[t] >= TRACKS[t].perks.length);
       }
+      const full = s.houseHp >= HOUSE_HP;
+      this.repair.disabled = !s.canRepair();
+      this.repair.innerHTML = `${ICON('house')}家を直す <span>${full ? '（傷はない）' : `+${REPAIR.hp}`}</span><em>${s.repairCost}銭</em>`;
       for (const [kind, b] of this.dogs) {
         const r = s.roles[kind];
         if (b.dataset.role === r) continue;

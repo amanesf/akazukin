@@ -31,6 +31,15 @@ strong = diff >= 80
 first = np.where(strong.any(axis=0), strong.argmax(axis=0), h)
 above = np.arange(h)[:, None] < first[None, :]
 alpha[above & (diff < 45)] = 0
+# 残ったにじみ（桃色がかった灰色。背景との差は45〜80）：瓦（赤み R−G>45）か輪郭（暗い）が各列で初めて出るより上を抜く。
+# 瓦も輪郭もない列（門・石垣・提灯）には触らない。桜は桃色で赤みが強いので残る（2026-10-04）
+b, g, r = [im[:, :, c].astype(int) for c in range(3)]
+roofish = ((r - g > 45) | (im.max(axis=2) < 80)) & (diff >= 45)
+roofish[int(h * 0.55):] = False
+first2 = np.where(roofish.any(axis=0), roofish.argmax(axis=0), h)
+ys0 = np.nonzero((alpha > 0).any(axis=1))[0]
+has = first2 < ys0.min() + h * 0.12  # 屋根の棟の近くで瓦が出る列だけ（桜の列まで切ると、花の縁が縦に欠けた）
+alpha[(np.arange(h)[:, None] < first2[None, :]) & has[None, :]] = 0
 grown = cv2.dilate((alpha > 0).astype(np.uint8), np.ones((25, 25), np.uint8))
 k, lab, st, cen = cv2.connectedComponentsWithStats(grown)
 blobs = sorted([i for i in range(1, k) if st[i, cv2.CC_STAT_AREA] > 60000], key=lambda i: -st[i, cv2.CC_STAT_AREA])

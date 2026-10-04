@@ -147,44 +147,39 @@ function gamePage() {
     <p class="st-catch">夜は戦い、昼は備える。<br><span>99夜、おばあさんの家を守り抜け。</span></p>
     <div class="st-flow">
       <div class="night"><b>夜</b><p>右の月の裂け目から来る狼を、赤ずきんで迎え撃つ。家が落ちたら、その日の昼からやり直し。</p></div>
-      <div class="day"><b>昼</b><p>倒した狼の銭で「体力・近接・主砲と弓」を鍛え、番犬3匹の役目を決める。</p></div>
+      <div class="day"><b>昼</b><p>倒した狼の銭で「体力・近接・主砲と弓・番犬」を鍛え、家を直し、番犬3匹の役目を決める。</p></div>
       <div class="goal"><b>99夜</b><p>守り抜けば狼は絶滅。完全クリア。</p></div>
     </div>
     <h3 class="st-sub"><small>操作</small>指一本で</h3>
     <dl class="st-ctl">${CONTROLS.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <p class="st-note">5夜目からは、霧の夜・紅月の夜など、夜の様子が変わることがある。節目の夜を越えると、昼におばあさんと話せる。</p>
     <p class="st-note">スマホの縦画面で遊ぶ。1晩目は「やってみよう」で順に教えてくれる。</p>`;
 }
 
-const TABS: [string, string, () => string][] = [
-  ['story', 'ストーリー', storyPage],
-  ['chara', 'キャラクター', charaPage],
-  ['game', 'ゲーム概要', gamePage],
+// ストーリー → キャラクター → ゲーム概要を1本に続けて読む（2026-10-04 アマネさん「タブ切り替えじゃなくて下に続けて」）
+const PARTS: [string, string, string, () => string][] = [
+  ['story', '物語', 'ストーリー', storyPage],
+  ['chara', '登場人物', 'キャラクター', charaPage],
+  ['game', '遊び方', 'ゲーム概要', gamePage],
 ];
 
 let root: HTMLElement | null = null;
 
-export function openStory(tab = 'story') {
+export function openStory() {
   if (!root) {
     root = document.createElement('div');
     root.id = 'story';
     root.innerHTML = `
-      <header>
-        <h2><small>桜狼異聞</small>大正赤ずきん</h2>
-        <nav>${TABS.map(([id, name]) => `<button data-tab="${id}">${name}</button>`).join('')}</nav>
-      </header>
-      <div class="st-body">${TABS.map(([id, , page]) => `<section data-page="${id}">${page()}</section>`).join('')}</div>
+      <header><h2><small>桜狼異聞</small>大正赤ずきん</h2></header>
+      <div class="st-body">${PARTS.map(([id, kanji, name, page], i) => `
+        <section data-page="${id}">
+          ${i ? `<h2 class="st-part"><i></i><span><small>${kanji}</small>${name}</span><i></i></h2>` : ''}
+          ${page()}
+        </section>`).join('')}</div>
       <button class="st-close">もどる</button>`;
     document.body.appendChild(root);
-    root.querySelectorAll<HTMLButtonElement>('nav button').forEach((b) => b.addEventListener('click', () => show(b.dataset.tab!)));
     root.querySelector('.st-close')!.addEventListener('click', () => root!.classList.remove('open'));
   }
-  show(tab);
-  root.classList.add('open');
-}
-
-function show(tab: string) {
-  if (!root) return;
-  root.querySelectorAll<HTMLElement>('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
-  root.querySelectorAll<HTMLElement>('section').forEach((s) => (s.hidden = s.dataset.page !== tab));
   root.querySelector('.st-body')!.scrollTop = 0;
+  root.classList.add('open');
 }

@@ -35,17 +35,19 @@ export class View {
   private paraRoot = new Container();
   private world = new Container(); // カメラで動かす
   private shade = new Graphics(); // 桜嵐で背景を暗くする
+  private dayLift = new Graphics(); // 昼の光：背景（町・地面）だけを明るく足す。人物は明るくしない
   private ground = new Graphics(); // 影・地面の輪・家
   private backG = new Graphics(); // 主人公より奥の箱
   private frontG = new Graphics(); // 主人公より手前の箱
   private wolfBack = new Container(); // 狼の絵（主人公より奥）
   private wolfFront = new Container(); // 狼の絵（主人公より手前）
   private wolfHud = new Graphics(); // 狼の体力の棒（絵の上）
-  // ふつうの狼だけ動きの絵がある（もう1歩・噛みつき・のけぞり・宙で転がる。wolf-motion-v1）
-  private wolves = new UnitArt<WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air'>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air'], this.wolfBack, this.wolfFront);
+  // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
+  // ほかの4種類は噛みつき、遠吠えと大狼はのけぞりも（pack-motion-v1）
+  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit'], this.wolfBack, this.wolfFront);
   private dogBack = new Container();
   private dogFront = new Container();
-  private dogArt = new UnitArt<DogKind>('dogs', ['shiba', 'akita', 'tosa'], this.dogBack, this.dogFront); // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
+  private dogArt = new UnitArt<DogArt>('dogs', ['shiba', 'akita', 'tosa', 'shiba_run', 'akita_run', 'tosa_run', 'shiba_bite', 'akita_bite', 'tosa_bite'], this.dogBack, this.dogFront); // 走り・噛みつきの絵は dogs-motion-v1 // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
   private house = new Sprite(); // おばあさんの家の絵
   private houseOver = new Graphics(); // 家のひび（絵の上）
   private overG = new Graphics(); // 矢・砲弾・衝撃波・斬撃の弧・裂け目
@@ -87,7 +89,8 @@ export class View {
     // resizeTo は窓の大きさしか見ない。下の板（昼と夜で高さが変わる）に合わせて、戦場の大きさを測り直す
     new ResizeObserver(() => this.app.resize()).observe(host);
     const st = this.app.stage;
-    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.rays, this.backdrop.moon, this.paraRoot, this.shade, this.world);
+    st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.rays, this.backdrop.moon, this.paraRoot, this.dayLift, this.shade, this.world);
+    this.dayLift.blendMode = 'add';
     for (let i = 0; i < 7; i++) {
       const f = new Sprite(glowTexture());
       f.anchor.set(0.5);
@@ -145,8 +148,8 @@ export class View {
     this.wolves.load().catch((e) => console.warn('wolves', e));
     this.house.visible = false;
     this.dogArt.load(['house']).then(() => {
-      const m = this.dogArt.meta['house' as DogKind];
-      this.house.texture = this.dogArt.tex['house' as DogKind];
+      const m = this.dogArt.meta['house' as DogArt];
+      this.house.texture = this.dogArt.tex['house' as DogArt];
       this.house.anchor.set(m.feet[0] / m.size[0], m.feet[1] / m.size[1]);
       this.house.visible = true;
     }).catch((e) => console.warn('dogs', e));
@@ -302,6 +305,11 @@ export class View {
     const fr = this.backdrop.front;
     fr.c.position.set(this.cam.x * (1 - fr.f), 0); // 世界の中で、さらに速く流す
     const horizonS = g.horizon * z + oy;
+    const dl = this.dayLift.clear();
+    if (this.dayK > 0.01) {
+      dl.rect(0, horizonS - g.Hm * 0.3 * z, g.W, g.Hm * 0.3 * z).fill({ color: 0x302820, alpha: this.dayK });
+      dl.rect(0, horizonS, g.W, g.Hm - horizonS).fill({ color: 0x584838, alpha: this.dayK });
+    }
     this.backdrop.update(this.vt, g.W, horizonS, this.dayK, 0);
     this.backdrop.moon.position.set(g.W * 0.8 - this.cam.x * 0.02, g.Hm * (0.17 - 0.05 * this.dayK));
 
@@ -324,7 +332,7 @@ export class View {
       f.height = g.Hm * 0.12;
       f.x = ((((i * 0.37 * span - this.vt * (14 + i * 3)) % span) + span) % span) - g.W;
       f.y = this.wy(((i * 0.29) % 1) * 1.1 - 0.05) + g.Hm * 0.02;
-      f.alpha = 0.09 + 0.03 * Math.sin(this.vt * 0.5 + i); // 濃いと画面全体が白くかすんだ
+      f.alpha = (0.09 + 0.03 * Math.sin(this.vt * 0.5 + i)) * (sim.mood === 'kiri' ? 3.2 : 1); // 濃いと画面全体が白くかすんだ（霧の夜だけ濃く）
     });
     this.drawHouse(gr, sim, dt);
     this.drawRift(gr, sim);
@@ -334,7 +342,7 @@ export class View {
     };
     const dogs: Dog[] = day ? DOG_ORDER.map((kind, i) => {
       const home = Sim.dogHome(kind);
-      return { id: -i - 1, x: 230 + i * 75, lane: home.lane, hp: 1, maxHp: 1, size: DOGS[kind].size, cooldown: 0, hitFlash: 0, kind, role: sim.roles[kind], bite: 0, target: 0, down: 0, facing: 1 as const };
+      return { id: -i - 1, x: 230 + i * 75, lane: home.lane, hp: 1, maxHp: 1, size: DOGS[kind].size, cooldown: 0, hitFlash: 0, kind, role: sim.roles[kind], bite: 0, target: 0, down: 0, facing: 1 as const, run: 0 };
     }) : sim.dogs;
     // 番犬の足もとの輪：役目の色（守り＝青・攻撃＝赤・支援＝緑）
     for (const d of dogs) {
@@ -554,7 +562,7 @@ export class View {
       if (this.gustT < -1.6) this.gustT = 6 + Math.random() * 7;
       const gust = this.gustT < 0;
       const SP = this.screenParts;
-      const few = sim.phase === 'shop' ? 0.25 : 1; // 昼は花びらを4分の1に（多すぎた。2026-10-04 アマネさん）
+      const few = sim.phase === 'shop' ? 0.25 : sim.mood === 'sakura' ? 2.5 : 1; // 昼は花びらを4分の1に（多すぎた。2026-10-04 アマネさん）。桜吹雪の夜は多く
       if (Math.random() < 0.7 * few) SP.petal(g.W * (0.2 + Math.random() * 0.9), -10, 0.6, -30 - Math.random() * 40, 20 + Math.random() * 25, 7 + Math.random() * 4);
       if (Math.random() < 0.3 * few) SP.petal(g.W * (0.4 + Math.random() * 0.7), -10, 1.5, -90 - Math.random() * 80, 60 + Math.random() * 50, 3 + Math.random() * 2);
       if (gust && Math.random() < few) for (let i = 0; i < 4; i++) SP.petal(g.W + 10, Math.random() * g.Hm * 0.8, 0.6 + Math.random(), -380 - Math.random() * 300, (Math.random() - 0.3) * 120, 2.5);
@@ -708,7 +716,7 @@ export class View {
 
   // 狼の絵を置く。伸び縮みはさせず、位置・傾き・色で動かす。体力の棒は絵の上に
   private wolfSprite(g: Graphics, w: Wolf, sim: Sim, o: { x: number; ground: number; lift: number; bob: number; rot: number; biteK: number; hit: number; flash: boolean; bw: number }) {
-    const hh = this.heroH(w.lane) * 0.6 * WOLF_REL[w.kind]; // 狼は主人公の0.6倍（0.46倍だと小さな犬に見えた）
+    let hh = this.heroH(w.lane) * 0.6 * WOLF_REL[w.kind]; // 狼は主人公の0.6倍（0.46倍だと小さな犬に見えた）
     let rot = o.rot;
     if (o.biteK) rot -= o.biteK * 0.18; // 噛みつき：頭を上げて飛び出す
     if (w.z <= 0 && w.stun > 0.05 && !o.hit) rot += 0.08; // 落ちたあと、へたりこむ
@@ -720,13 +728,19 @@ export class View {
     const layer: 0 | 1 = g === this.backG ? 0 : 1;
     const cy = o.ground - o.lift - o.bob * 0.6 - this.wolves.center(hh);
     // ふつうの狼は、動きに合わせて絵を差し替える。差し替えた絵は姿勢そのものなので、傾けすぎない
-    let art: Parameters<typeof this.wolves.put>[1] = w.kind;
+    let art: WolfArt = w.kind;
+    const has = (a: string) => a in this.wolves.meta;
     if (w.kind === 'wolf') {
       if (w.z > 0 && !w.pouncing) { art = 'wolf_air'; rot *= 0.5; }
       else if (o.hit > 0 || (w.stun > 0.05 && w.z <= 0)) { art = 'wolf_hit'; rot *= 0.3; }
       else if (o.biteK > 0.15) { art = 'wolf_bite'; rot *= 0.3; }
       else if (w.vx === 0 && Math.sin((sim.clock + w.id * 0.37) * 7) < 0) art = 'wolf_walk2';
-    }
+    } else if ((o.hit > 0 || (w.stun > 0.05 && w.z <= 0)) && has(`${w.kind}_hit`)) { art = `${w.kind}_hit` as WolfArt; rot *= 0.3; }
+    else if ((o.biteK > 0.15 || w.pouncing) && has(`${w.kind}_bite`)) { art = `${w.kind}_bite` as WolfArt; rot *= 0.3; }
+    // 姿勢の絵は、立ち姿との背の高さの違いのまま描く（低い噛みつきまで同じ背に伸ばすと大きく見えた）
+    const mk = this.wolves.meta[art];
+    const base = this.wolves.meta[w.kind];
+    if (mk && base && art !== w.kind) hh *= Math.min(1, (mk as { h?: number }).h! / (base as { h?: number }).h!);
     this.wolves.put(layer, art, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born);
     const top = o.ground - o.lift - hh;
     this.wolfBoxes.push({ id: w.id, lane: w.lane, x0: o.x - hh * 0.7, x1: o.x + hh * 0.7, y0: top, y1: o.ground - o.lift + hh * 0.05 });
@@ -760,8 +774,15 @@ export class View {
         this.dogArt.put(layer, d.kind, x, ground - hh * 0.25, hh, -f * 1.3, 1, 0xb0a0a0, 0.55, f < 0);
         return;
       }
-      const run = sim.phase === 'wave' && d.bite <= 0 ? Math.abs(Math.sin(t * 12)) * hh * 0.05 : 0;
-      this.dogArt.put(layer, d.kind, x + f * bite * bw * 0.3, ground - bob * 2 - run - this.dogArt.center(hh), hh, f * (bite * 0.12 - hit * 0.1), 1, d.hitFlash > 0 ? 0xff9a9a : 0xffffff, alpha, f < 0);
+      // 走っているあいだは立ち姿と走りの絵を交互に・噛むときは噛みつきの絵（伸び縮みはさせない）
+      const running = sim.phase === 'wave' && d.run > 20 && d.bite <= 0;
+      const stride = running && Math.sin(t * (10 + d.run * 0.03)) < 0;
+      const art: DogArt = d.bite > 0 || (d.cooldown > DOGS[d.kind].interval - 0.25 && sim.phase === 'wave') ? `${d.kind}_bite` : stride ? `${d.kind}_run` : d.kind;
+      const mk = this.dogArt.meta[art];
+      const base = this.dogArt.meta[d.kind];
+      const ah = mk && base && art !== d.kind ? hh * Math.min(1, mk.h! / base.h!) : hh;
+      const run = running ? Math.abs(Math.sin(t * 12)) * hh * 0.05 : 0;
+      this.dogArt.put(layer, art, x + f * bite * bw * 0.15, ground - bob * 2 - run - this.dogArt.center(ah), ah, f * (bite * 0.06 - hit * 0.1), 1, d.hitFlash > 0 ? 0xff9a9a : 0xffffff, alpha, f < 0);
       if (d.hp < d.maxHp) {
         const hb = Math.max(bw * 0.8, hh * 0.5);
         const hy = ground - hh * 1.05;
@@ -843,7 +864,7 @@ export class View {
     if (this.house.visible) {
       // 家の絵（2026-10-04 生成）。齧られると赤く、傷むほどひびが入る（ひびは絵の上に描く）
       const hh = this.heroH(1) * 1.9; // 主人公の1.9倍（二階建て。1.5倍で手前の縁に置くと、主人公より低く見えた）
-      const hm = this.dogArt.meta['house' as DogKind];
+      const hm = this.dogArt.meta['house' as DogArt];
       const hk = hh / hm.feet[1];
       this.house.scale.set(hk);
       this.house.position.set(right - (hm.size[0] - hm.feet[0]) * hk * 0.75, base); // 門と石垣は家の位置より少し右へ出す
@@ -1068,8 +1089,9 @@ export class View {
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
       const hh = this.heroH(a.fromLane);
-      const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.25;
-      const y0 = this.wy(a.fromLane) - hh * 0.55;
+      // 弓の絵の矢の高さ（足もとから背の73%・前へ30%）から放つ（55%だと腰のあたりから出て見えた。2026-10-04 アマネさん）
+      const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;
+      const y0 = this.wy(a.fromLane) - hh * 0.73;
       const x1 = this.wx(a.toX);
       const y1 = this.wy(a.lane) - this.geo.Hm * 0.05;
       // ふつうの矢はほぼまっすぐ。矢の雨だけ高い放物線
@@ -1159,8 +1181,10 @@ export class View {
     const s = this.screen.clear();
     const g = this.geo;
     const h = sim.hero;
-    // 桜嵐：背景を暗く
+    // 桜嵐：背景を暗く。夜の様子：紅月は赤く、霧は白くかすむ
     const sh = this.shade.clear();
+    if (sim.phase === 'wave' && sim.mood === 'beni') sh.rect(0, 0, g.W, g.Hm).fill({ color: 0xa01020, alpha: 0.16 });
+    if (sim.phase === 'wave' && sim.mood === 'kiri') sh.rect(0, g.horizon * 0.5, g.W, g.Hm).fill({ color: 0xb8b0d0, alpha: 0.12 });
     if (h.ouran > 0) sh.rect(0, 0, g.W, g.Hm).fill({ color: 0x100008, alpha: 0.45 });
     // 周辺の暗がり（ずっと薄く。体力が少ないと赤く脈打つ）
     const low = sim.phase === 'wave' && h.down <= 0 && h.hp < sim.maxHp * 0.3;
@@ -1248,6 +1272,8 @@ export class View {
   }
 }
 
+type DogArt = DogKind | `${DogKind}_run` | `${DogKind}_bite`;
+type WolfArt = WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air' | 'pup_bite' | 'armored_bite' | 'howler_bite' | 'alpha_bite' | 'howler_hit' | 'alpha_hit';
 const ROLE_COLOR = { guard: 0x70b8ff, attack: 0xff6070, support: 0x80e090 };
 
 // 少し行きすぎて戻る（出てくる・置く）

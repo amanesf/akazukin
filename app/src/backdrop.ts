@@ -29,6 +29,7 @@ export class Backdrop {
   private starList: { x: number; y: number; r: number; ph: number }[] = [];
   moonArt = new Sprite(); // 紅い月の絵（moon-v1）。あれば図形の月の代わり
   town: Texture | null = null;
+  private daylight: Sprite[] = [];
   props: Record<string, Texture> | null = null; // 草と小物の絵（2026-10-04 生成 grass-v1）。あれば手前の影絵の代わり
   private sway: { s: Sprite; ph: number; amp: number }[] = []; // 町並みの絵（2026-10-04 生成）。あれば奥の山と町の影絵の代わりに使う
 
@@ -47,6 +48,7 @@ export class Backdrop {
     if (this.front) this.front.c.destroy({ children: true });
     this.layers = [];
     this.lights = [];
+    this.daylight = [];
     const span = width + w * 4;
     const x0 = -w * 2;
 
@@ -81,6 +83,15 @@ export class Backdrop {
         sp.scale.set(n % 2 ? -k : k, k);
         sp.position.set(n % 2 ? x + tw : x, horizon + 3 - h * 0.36);
         tc.addChild(sp);
+        // 昼の光：同じ絵を明るい色で足し合わせて重ね、昼だけ見せる（夜の絵の色を変えただけで、昼も暗い町だった。2026-10-04）
+        const lit = new Sprite(this.town);
+        lit.scale.copyFrom(sp.scale);
+        lit.position.copyFrom(sp.position);
+        lit.blendMode = 'add';
+        lit.tint = 0x8a7a68;
+        lit.alpha = 0;
+        tc.addChild(lit);
+        this.daylight.push(lit);
       }
       this.layers.push({ c: tc, f: 0.25 });
     } else {
@@ -276,6 +287,7 @@ export class Backdrop {
     this.moonGlow.tint = mix(0xff4050, 0xfff0c0, day);
     const tint = mix(0xffffff, 0xd8c8d0, day);
     for (const l of this.layers) l.c.tint = tint;
+    for (const d of this.daylight) d.alpha = day * 0.75;
     // 手前の草が風で揺れる（ときどき強く）
     const gust = Math.max(0, Math.sin(t * 0.45)) ** 6;
     for (const g of this.sway) g.s.rotation = Math.sin(t * 1.7 + g.ph) * g.amp * (1 + gust * 2) - gust * g.amp;

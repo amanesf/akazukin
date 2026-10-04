@@ -13,7 +13,7 @@ const errors = [];
 p.on('pageerror', (e) => errors.push(e.message));
 await p.goto(`http://127.0.0.1:${srv.address().port}/akazukin/?auto=1`);
 await p.waitForFunction(() => document.body.classList.contains('ready'));
-await p.waitForTimeout(3500);
+await p.waitForTimeout(4500); // 1晩目が始まりきるまで（3.5秒だと始まりと重なって1回目のタップが外れることがあった）
 const out = {};
 for (const [name, lane, hy] of [['head-sameLane', 0.6, 0.15], ['back-farLane', 0.05, 0.3], ['body-nearLane', 0.95, 0.5]]) {
   const box = await p.evaluate(([lane]) => {

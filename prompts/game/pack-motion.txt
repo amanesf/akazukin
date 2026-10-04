@@ -1,0 +1,8 @@
+Sprite sheet of four of the wolves in image 1, redrawn in new poses: the small pup (figure 1 in image 1), the armored wolf (figure 3), the howler with the bluish-gray mane (figure 4) and the huge alpha with the crimson mane (figure 5). Exactly the same designs, colors, glowing red or yellow eyes, glowing crimson crack-like markings, black lacquer armor with gold patterns on the armored wolf, same proportions and relative sizes as image 1 (the alpha about twice the height of the others), same art style, line weight and cel shading. The plain wolf (figure 2) does not appear.
+
+Eight figures on one flat light gray background, in two rows of four, with wide gray space between all of them, all facing right like image 1. Left to right in each row: pup, armored wolf, howler, alpha.
+
+Top row: biting. Each wolf lunges forward low, jaws wide open with fangs, front legs reaching forward, ears back.
+Bottom row: hit. Each wolf recoils backward with its head thrown back, eyes squeezed shut, legs bracing, a pained snarl.
+
+Even soft lighting, the floor the same flat gray. All eight fully in frame, none overlapping.

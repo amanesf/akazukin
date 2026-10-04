@@ -7,7 +7,7 @@ import type { DogKind, WolfKind } from './config';
 export const WOLF_REL: Record<WolfKind, number> = { pup: 0.62, wolf: 1, armored: 1.2, howler: 1.2, alpha: 2.1 };
 export const DOG_REL: Record<DogKind, number> = { shiba: 0.7, akita: 1, tosa: 1.2 };
 
-interface Meta { size: [number, number]; feet: [number, number] }
+interface Meta { size: [number, number]; feet: [number, number]; h?: number }
 
 export class UnitArt<K extends string> {
   ready = false;

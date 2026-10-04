@@ -4,10 +4,10 @@
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO_BASE, COMBO_RESET, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SHOCKWAVE, STEER, STEP,
-  DAWN_REPAIR, DAYS_TO_CLEAR, TRACK_COSTS, TRACKS, WOLF_SPAWN_X, WOLVES, dawnBonus,
+  DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type DogKind, type DogRole, type MoveId, type Perk, type SkillId, type Track, type WolfKind,
 } from './config';
-import { hpScale, night, SURGE_WARN } from './nights';
+import { hpScale, mood, night, SURGE_WARN, type Mood } from './nights';
 
 const FINALE = 0.4; // 晩の最後の1匹のあとのスローの長さ（sim の秒。実時間ではこの約3倍）
 const CHEER = 1.5; // スローが明けてから、拳を上げて昼になるまで（秒）
@@ -36,7 +36,7 @@ export interface Wolf extends Unit {
   hitDir: number; // 最後に当たった向き（描画で傾ける）
 }
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
-export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1 }
+export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
 export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[] }
 export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number }
@@ -110,6 +110,7 @@ export class Sim {
   kills = 0;
   losses = 0; // 家が落ちた回数（負けても1日目には戻らない・2026-10-04）
   nightKills = 0;
+  mood: Mood | null = null; // 今夜の様子（霧・紅月など）
   stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0 }; // 計測用（scripts/balance.mjs）
   nightEarned = 0;
 
@@ -138,7 +139,7 @@ export class Sim {
   fx: Fx[] = [];
 
   cds: Record<'kaiten' | 'tosshin' | 'ame' | 'hougeki', number> = { kaiten: 0, tosshin: 0, ame: 0, hougeki: 0 };
-  levels: Record<Track, number> = { body: 0, near: 0, far: 0 };
+  levels: Record<Track, number> = { body: 0, near: 0, far: 0, dog: 0 };
 
   private spawners: Spawner[] = [];
   private holdWanted = false;
@@ -178,24 +179,34 @@ export class Sim {
   private perks(t: Track): Perk[] {
     return TRACKS[t].perks.slice(0, this.levels[t]);
   }
-  private sum(t: Track, key: 'hp' | 'combo' | 'power' | 'rate' | 'charge') {
+  private sum(t: Track, key: 'hp' | 'combo' | 'power' | 'rate' | 'charge' | 'dogHp' | 'dogPower' | 'dogRevive' | 'dogSpeed') {
     return this.perks(t).reduce((n, p) => n + (p[key] ?? 0), 0);
+  }
+  // 段を上げきったあとの修練の回数
+  trained(t: Track) {
+    return Math.max(0, this.levels[t] - TRACKS[t].perks.length);
+  }
+  get dogHpMul() {
+    return 1 + this.sum('dog', 'dogHp') + TRAIN.dog * this.trained('dog');
+  }
+  get dogPowerMul() {
+    return 1 + this.sum('dog', 'dogPower') + TRAIN.dog * this.trained('dog');
   }
   // 狼の噛む力も晩ごとに少しずつ強くなる（体力の伸びと同じ割合）
   private get bite() {
     return hpScale(this.wave + 1);
   }
   get maxHp() {
-    return HERO.hp + this.sum('body', 'hp');
+    return HERO.hp + this.sum('body', 'hp') + TRAIN.body * this.trained('body');
   }
   get comboLen() {
     return COMBO_BASE + this.sum('near', 'combo');
   }
   private get nearPower() {
-    return 1 + this.sum('near', 'power');
+    return 1 + this.sum('near', 'power') + TRAIN.near * this.trained('near');
   }
   private get farPower() {
-    return 1 + this.sum('far', 'power');
+    return 1 + this.sum('far', 'power') + TRAIN.far * this.trained('far');
   }
   get chargeFull() {
     return CHARGE.full / (1 + this.sum('far', 'charge'));
@@ -449,22 +460,38 @@ export class Sim {
   }
 
   // ── 昼：体力・近接・主砲のどれかを1段上げる ──
-  trackCost(t: Track): number | undefined {
-    return this.levels[t] < TRACKS[t].perks.length ? TRACK_COSTS[this.levels[t]] : undefined;
+  trackCost(t: Track): number {
+    const n = TRACKS[t].perks.length;
+    return this.levels[t] < n ? TRACK_COSTS[this.levels[t]] : TRAIN.cost(this.levels[t] - n);
   }
 
-  nextPerk(t: Track): Perk | undefined {
-    return TRACKS[t].perks[this.levels[t]];
+  nextPerk(t: Track): Perk {
+    return TRACKS[t].perks[this.levels[t]] ?? { note: TRAIN_NOTE[t] };
+  }
+
+  // 家の修繕（昼）
+  get repairCost() {
+    return REPAIR.cost(this.wave);
+  }
+  canRepair() {
+    return this.phase === 'shop' && this.houseHp < HOUSE_HP && this.coins >= this.repairCost;
+  }
+  repair() {
+    if (!this.canRepair()) return false;
+    this.coins -= this.repairCost;
+    this.houseHp = Math.min(HOUSE_HP, this.houseHp + REPAIR.hp);
+    this.sounds.push('buy');
+    return true;
   }
 
   canBuy(t: Track) {
     const cost = this.trackCost(t);
-    return this.phase === 'shop' && cost !== undefined && this.coins >= cost;
+    return this.phase === 'shop' && this.coins >= cost;
   }
 
   buy(t: Track) {
     if (!this.canBuy(t)) return false;
-    this.coins -= this.trackCost(t)!;
+    this.coins -= this.trackCost(t);
     this.levels[t]++;
     this.sounds.push('buy');
     return true;
@@ -478,6 +505,7 @@ export class Sim {
   }
 
   private startWave() {
+    this.mood = mood(this.wave + 1);
     this.spawners = night(this.wave + 1).map((l) => ({ kind: l.kind, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
     this.phase = 'wave';
     const h = this.hero;
@@ -494,7 +522,7 @@ export class Sim {
       const s = DOGS[kind];
       const home = Sim.dogHome(kind);
       // 番犬も晩ごとに鍛えられる（狼の硬さと同じ割合で、体力と噛む力が伸びる）
-      this.dogs.push({ ...this.unit(home.x, s.hp * hpScale(this.wave + 1), s.size), lane: home.lane, kind, role: this.roles[kind], bite: 0, target: 0, down: 0, facing: 1 });
+      this.dogs.push({ ...this.unit(home.x, s.hp * hpScale(this.wave + 1) * this.dogHpMul, s.size), lane: home.lane, kind, role: this.roles[kind], bite: 0, target: 0, down: 0, facing: 1, run: 0 });
     }
     this.events.push('night');
   }
@@ -749,7 +777,7 @@ export class Sim {
         w.lane = clamp(w.lane + (w.lane >= front.lane ? 1 : -1) * 0.5 * dt, 0, 1);
         continue;
       }
-      w.x -= s.speed * (w.hasted ? HOWL.speedMul : 1) * dt;
+      w.x -= s.speed * (w.hasted ? HOWL.speedMul : 1) * (this.mood === 'beni' ? 1.3 : 1) * dt;
     }
   }
 
@@ -788,6 +816,7 @@ export class Sim {
       d.bite = Math.max(0, d.bite - dt);
       d.cooldown -= dt;
       const home = Sim.dogHome(d.kind);
+      d.run = 0;
       if (d.down > 0) {
         d.down -= dt;
         d.x += clamp(home.x - d.x, -s.speed * 2 * dt, s.speed * 2 * dt);
@@ -820,7 +849,7 @@ export class Sim {
         if (d.cooldown <= 0) {
           d.cooldown = s.interval;
           d.bite = 0.2;
-          this.hit(bitee, s.damage * hpScale(this.wave + 1), { stop: 0, quiet: true });
+          this.hit(bitee, s.damage * hpScale(this.wave + 1) * this.dogPowerMul, { stop: 0, quiet: true });
         }
         if (bitee === t || !t) continue;
       }
@@ -839,9 +868,11 @@ export class Sim {
         tl = clamp(h.lane + (DOG_ORDER.indexOf(d.kind) - 1) * 0.3, 0, 1);
       }
       tx = clamp(tx, HOUSE_X + 20, DOG_MAX_X);
-      const dx = clamp(tx - d.x, -s.speed * dt, s.speed * dt);
+      const sp = s.speed * (1 + this.sum('dog', 'dogSpeed'));
+      const dx = clamp(tx - d.x, -sp * dt, sp * dt);
       if (Math.abs(tx - d.x) > 4) d.facing = tx > d.x ? 1 : -1;
       d.x += dx;
+      d.run = Math.abs(dx) / dt;
       d.lane += clamp(tl - d.lane, -1.6 * dt, 1.6 * dt);
     }
   }
@@ -986,7 +1017,7 @@ export class Sim {
       return;
     }
     if (h.bowT > 0) return;
-    const far = this.wolves.filter((w) => Math.abs(w.x - h.x) <= AUTO.bowRange && w.age > 0.6);
+    const far = this.wolves.filter((w) => Math.abs(w.x - h.x) <= AUTO.bowRange * (this.mood === 'kiri' ? 0.55 : 1) && w.age > 0.6);
     // 家へ向かって主人公の後ろへ抜けた狼が先。いなければ前の近い狼
     const behind = far.filter((w) => w.x < h.x - 30);
     const t = (behind.length ? behind.reduce((a, b) => (b.x < a.x ? b : a)) : undefined)
@@ -1284,7 +1315,7 @@ export class Sim {
 
   private gain(n: number) {
     if (this.hero.ouran > 0) return;
-    this.gauge = Math.min(100, this.gauge + n);
+    this.gauge = Math.min(100, this.gauge + n * (this.mood === 'sakura' ? 1.8 : 1));
   }
 
   // 画面を揺らす。dir があれば当てた向きへ押す
@@ -1317,7 +1348,7 @@ export class Sim {
     for (const d of this.dogs) {
       if (d.hp > 0 || d.down > 0) continue;
       d.hp = 0;
-      d.down = DOG_REVIVE;
+      d.down = DOG_REVIVE * (1 - this.sum('dog', 'dogRevive'));
       d.target = 0;
       this.fx.push(this.mk({ kind: 'land', x: d.x, lane: d.lane, r: d.size }));
     }

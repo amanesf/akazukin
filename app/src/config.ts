@@ -83,7 +83,7 @@ export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数
 
 // ── 昼に買うもの：体力・近接・主砲の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」
 // 「技選択までボタン増えると多くてしんどい」）。技は近接・遠隔の段を上げると自然に覚える ──
-export type Track = 'body' | 'near' | 'far';
+export type Track = 'body' | 'near' | 'far' | 'dog';
 export type SkillId = 'kaiten' | 'tosshin' | 'shiki' | 'ame' | 'hougeki';
 export interface Perk {
   note: string; // 昼のボタンに出す「次は何が起きるか」
@@ -93,6 +93,10 @@ export interface Perk {
   power?: number; // その系統の威力 +割合
   rate?: number; // 弓の速さ +割合
   charge?: number; // 溜めの速さ +割合
+  dogHp?: number; // 番犬の体力 +割合
+  dogPower?: number; // 番犬の噛む力 +割合
+  dogRevive?: number; // 番犬が戻るまでの時間 -割合
+  dogSpeed?: number; // 番犬の速さ +割合
 }
 export const TRACK_COSTS = [80, 180, 340, 560, 850, 1200]; // 2026-10-04 99晩のあいだ鍛え続けられるよう、狼の賞金を減らして値段を上げた（自動操作で15晩目に全部上がった）
 export const TRACKS: Record<Track, { name: string; perks: Perk[] }> = {
@@ -129,7 +133,25 @@ export const TRACKS: Record<Track, { name: string; perks: Perk[] }> = {
       { note: '主砲と弓の威力 +3割', power: 0.3 },
     ],
   },
+  // 番犬（2026-10-04 アマネさん。番犬の費用がなくなり、40晩あたりで銭の使い道がなくなったので）
+  dog: {
+    name: '番犬',
+    perks: [
+      { note: '番犬の体力 +3割', dogHp: 0.3 },
+      { note: '番犬の噛む力 +3割', dogPower: 0.3 },
+      { note: '倒れても半分の時間で戻る', dogRevive: 0.5 },
+      { note: '番犬の体力 +4割', dogHp: 0.4 },
+      { note: '番犬が2割速く走る', dogSpeed: 0.2 },
+      { note: '番犬の噛む力 +5割', dogPower: 0.5 },
+    ],
+  },
 };
+// 段を上げきったあとも「修練」で少しずつ伸びる（銭がいつまでも使える）。1段ごとの伸びと、値段
+// 2026-10-04 1段 +5% / 値段 +250 では自動操作が99晩を守りきった（前は80晩で止まった）→ 伸びを小さく、値段の上がり方を急に
+export const TRAIN = { cost: (n: number) => 1300 + 450 * n, body: 10, near: 0.03, far: 0.03, dog: 0.05 };
+export const TRAIN_NOTE: Record<Track, string> = { body: '修練：体力 +10', near: '修練：近接の威力 +3%', far: '修練：主砲と弓の威力 +3%', dog: '修練：番犬の体力と噛む力 +5%' };
+// 家の修繕（昼に銭で買う）。値段は晩が進むほど少し上がる
+export const REPAIR = { hp: 150, cost: (wave: number) => 60 + 4 * wave };
 export const DAWN_REPAIR = 100; // 夜が明けると家が直る（家の修繕を買う代わり。案）
 
 export const COMBO_BASE = 4; // 斬り・斬り・斬り上げ・叩き落とし
