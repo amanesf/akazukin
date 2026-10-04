@@ -7,6 +7,7 @@ import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MO
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
+import { WOLF_REL, WolfArt } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 import type { Dog, Fx, Sim, Wolf } from './sim';
 
@@ -36,6 +37,10 @@ export class View {
   private ground = new Graphics(); // 影・地面の輪・家
   private backG = new Graphics(); // 主人公より奥の箱
   private frontG = new Graphics(); // 主人公より手前の箱
+  private wolfBack = new Container(); // 狼の絵（主人公より奥）
+  private wolfFront = new Container(); // 狼の絵（主人公より手前）
+  private wolfHud = new Graphics(); // 狼の体力の棒（絵の上）
+  private wolves = new WolfArt(this.wolfBack, this.wolfFront);
   private overG = new Graphics(); // 矢・砲弾・衝撃波・斬撃の弧・裂け目
   private ghostLayer = new Container();
   private rig = new HeroRig();
@@ -74,7 +79,7 @@ export class View {
     new ResizeObserver(() => this.app.resize()).observe(host);
     const st = this.app.stage;
     st.addChild(this.backdrop.sky, this.backdrop.stars, this.backdrop.moon, this.paraRoot, this.shade, this.world);
-    this.world.addChild(this.ground, this.backG, this.ghostLayer, this.rig.root, this.frontG, this.overG, this.parts.root);
+    this.world.addChild(this.ground, this.backG, this.wolfBack, this.ghostLayer, this.rig.root, this.frontG, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontStyle: 'italic', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -102,6 +107,8 @@ export class View {
       this.edgeText.push(t);
     }
     st.addChild(this.mini.root);
+    // 狼の絵。読み込めなければ箱のまま
+    this.wolves.load().catch((e) => console.warn('wolves', e));
     // 赤ずきんの絵。読み込めなければ箱のまま遊べる（?rig=0 で箱：見比べ用）
     if (new URLSearchParams(location.search).get('rig') !== '0') {
       const all = [this.rig, ...Array.from({ length: GHOSTS }, () => new HeroRig())];
@@ -272,6 +279,8 @@ export class View {
     // ── 体（奥から手前へ。主人公より奥は backG、手前は frontG）──
     const bg = this.backG.clear();
     const fg = this.frontG.clear();
+    this.wolfHud.clear();
+    this.wolves.begin();
     type Item = { lane: number; draw: (gg: Graphics) => void };
     const items: Item[] = [];
     const dogs: Dog[] = day ? sim.posts.map((p, i) => ({ id: -i - 1, x: p.x, lane: p.lane, hp: 1, maxHp: 1, size: dogSize(p.kind), cooldown: 0, hitFlash: 0, kind: p.kind, post: p, bite: 0 })) : sim.dogs;
@@ -283,6 +292,7 @@ export class View {
     for (const w of seen) items.push({ lane: w.lane, draw: (gg) => this.drawWolf(gg, w, sim) });
     items.sort((a, b) => a.lane - b.lane);
     for (const it of items) it.draw(it.lane <= h.lane ? bg : fg);
+    this.wolves.end();
 
     // ── 主人公 ──
     const hx = this.wx(h.x);
@@ -546,6 +556,7 @@ export class View {
     const color = WOLF_COLOR[w.kind];
     const flash = w.hitFlash > 0;
     const cy = ground - lift - bob;
+    if (this.wolves.ready) return this.wolfSprite(g, w, sim, { x: x + lunge, ground, lift, bob, rot, biteK, hit, flash, bw });
     place(g, x + lunge, cy, rot, sx, sy);
     // 脚（4本。走ると交互に）
     const legH = bh * 0.28;
@@ -590,6 +601,27 @@ export class View {
       g.rect(x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
       g.rect(x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
     }
+  }
+
+  // 狼の絵を置く。伸び縮みはさせず、位置・傾き・色で動かす。体力の棒は絵の上に
+  private wolfSprite(g: Graphics, w: Wolf, sim: Sim, o: { x: number; ground: number; lift: number; bob: number; rot: number; biteK: number; hit: number; flash: boolean; bw: number }) {
+    const hh = this.heroH(w.lane) * 0.46 * WOLF_REL[w.kind];
+    let rot = o.rot;
+    if (o.biteK) rot -= o.biteK * 0.18; // 噛みつき：頭を上げて飛び出す
+    if (w.z <= 0 && w.stun > 0.05 && !o.hit) rot += 0.08; // 落ちたあと、へたりこむ
+    // 裂け目から出てくる：ふわっと現れる（大きさは少しだけ）
+    const born = w.age < 0.45 ? w.age / 0.45 : 1;
+    const tint = o.flash ? 0xff9a9a : w.hasted ? 0xfff0a0 : 0xffffff;
+    const layer: 0 | 1 = g === this.backG ? 0 : 1;
+    const cy = o.ground - o.lift - o.bob * 0.6 - this.wolves.center(hh);
+    this.wolves.put(layer, w.kind, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born);
+    if (w.hp < w.maxHp && w.age > 0.4) {
+      const hb = Math.max(o.bw * 0.8, hh * 0.5);
+      const hy = o.ground - o.lift - hh * 1.05;
+      this.wolfHud.rect(o.x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
+      this.wolfHud.rect(o.x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
+    }
+    void sim;
   }
 
   // ── 番犬（箱。右を向いて構える）──
@@ -1032,7 +1064,7 @@ export class View {
 
   // 主人公の絵が揃ったか（揃うまでは仮の細い姿になるので、始めるボタンを止めておく）
   get ready() {
-    return this.rig.ready;
+    return this.rig.ready && this.wolves.ready;
   }
 
   // 撮影・点検用：主人公の今の姿勢（残像を作るのと同じ値）

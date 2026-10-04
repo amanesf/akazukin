@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""狼の絵（assets/game/parts/wolves/*.png。wolves-v1 から切り抜き）を、ゲームで使う大きさに縮めて app/public/wolves/ に書き出す。無料。
+
+- 絵は右向きに描かれた（頼んだのは左向き）。狼は家（左）へ向かうので、左右反転して左向きにする
+- meta.json の h は、絵の中の、ふつうの狼を1とした高さ（参考。画面での大きさは試作の側でゲームの大きさに合わせる。
+  絵の大狼はふつうの狼の1.5倍しかなく、ゲームの大きさ（2.1倍）より小さかった）
+- 足もと（脚の下端の真ん中）を基準にする
+
+    python3 tools/export-wolves.py
+"""
+import json
+import os
+
+import cv2
+import numpy as np
+from PIL import Image
+
+OUT = 'app/public/wolves'
+SRC = 'assets/game/parts/wolves'
+NAMES = ['pup', 'wolf', 'armored', 'howler', 'alpha']
+WOLF_PX = 420  # ふつうの狼の高さ（書き出す画素）。画面で約130画素×端末の解像度3倍
+
+os.makedirs(OUT, exist_ok=True)
+imgs = {n: cv2.flip(cv2.imread(f'{SRC}/{n}.png', cv2.IMREAD_UNCHANGED), 1) for n in NAMES}
+
+
+def bounds(img):
+    a = img[:, :, 3] > 128
+    ys = np.nonzero(a.any(axis=1))[0]
+    xs = np.nonzero(a.any(axis=0))[0]
+    return xs.min(), ys.min(), xs.max(), ys.max()
+
+
+wolf_h = bounds(imgs['wolf'])[3] - bounds(imgs['wolf'])[1]
+k = WOLF_PX / wolf_h
+meta = {}
+for n, img in imgs.items():
+    x0, y0, x1, y1 = bounds(img)
+    img = img[max(0, y0 - 4):y1 + 5, max(0, x0 - 4):x1 + 5]
+    small = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
+    Image.fromarray(cv2.cvtColor(small, cv2.COLOR_BGRA2RGBA)).save(f'{OUT}/{n}.webp', quality=88, method=6)
+    a = small[:, :, 3] > 128
+    bottom = np.nonzero(a.any(axis=1))[0].max()
+    # 前足と後ろ足のあいだの真ん中（下から背の高さの12%の行に写る脚の端と端）
+    xs = np.nonzero(a[int(bottom - small.shape[0] * 0.12):bottom + 1].any(axis=0))[0]
+    meta[n] = {'size': [small.shape[1], small.shape[0]], 'feet': [float((xs.min() + xs.max()) / 2), float(bottom)],
+               'h': round(float((y1 - y0) / wolf_h), 3)}
+json.dump(meta, open(f'{OUT}/meta.json', 'w'), indent=1)
+total = sum(os.path.getsize(f'{OUT}/{f}') for f in os.listdir(OUT))
+print(meta, f'{total / 1024:.0f}KB')
