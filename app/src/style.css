@@ -474,10 +474,12 @@ body.tutorial #next { display: none; }
   background: linear-gradient(rgba(30, 18, 26, 0.94), rgba(20, 12, 18, 0.94));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 230, 180, 0.12);
   font-family: var(--mincho);
-  animation: hint-in 0.25s ease-out;
+  animation: talk-in 0.25s ease-out;
   z-index: 3;
 }
 #talk[hidden] { display: none; }
+/* #hint の hint-in は真ん中寄せの translate(-50%) 込みなので使わない（左右いっぱいの板が左から滑ってきて、最後にぱっと戻って見えた） */
+@keyframes talk-in { 0% { opacity: 0; transform: translateY(8px) scale(0.97); } 100% { opacity: 1; transform: none; } }
 #talk b { display: inline-block; font-size: 13px; letter-spacing: 0.15em; padding: 1px 10px; border-radius: 3px; margin-bottom: 6px; }
 #talk b.hero { background: #b3202a; color: #fff; }
 #talk b.oba { background: #c8a860; color: #1e161a; }
