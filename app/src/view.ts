@@ -20,6 +20,8 @@ const COLOR = {
   shock: 0x9ab0ff,
 };
 
+// 画面の中の文字も明朝に（ダメージの数字・番犬の役目・画面の外の狼の数）
+const MINCHO = '"Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif';
 const VIEW_UNITS = 250; // 夜のカメラが横に映す間合い（戦場は 1000＝画面4つ分。全体は小さい地図で）
 const GHOSTS = 7;
 
@@ -145,7 +147,7 @@ export class View {
     this.rimRig.root.blendMode = 'add';
     this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.wolfHud, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
-      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontStyle: 'italic', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
+      const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
       t.visible = false;
       this.world.addChild(t);
@@ -153,14 +155,14 @@ export class View {
       this.numOwner.push(-1);
     }
     for (let i = 0; i < 4; i++) {
-      const t = new Text({ text: '♪', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 30, fill: 0xffe070, stroke: { color: 0x40202a, width: 5 } } });
+      const t = new Text({ text: '♪', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 30, fill: 0xffe070, stroke: { color: 0x40202a, width: 5 } } });
       t.anchor.set(0.5);
       t.visible = false;
       this.world.addChild(t);
       this.markText.push(t);
     }
     for (let i = 0; i < DOG_ORDER.length; i++) {
-      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 22, fill: 0xffe0a0, stroke: { color: 0x000000, width: 5 } } });
+      const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 22, fill: 0xffe0a0, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5, 1);
       t.visible = false;
       this.world.addChild(t);
@@ -169,12 +171,16 @@ export class View {
     this.grade.blendMode = 'multiply';
     st.addChild(this.grade, this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
-      const t = new Text({ text: '', style: { fontFamily: 'system-ui, sans-serif', fontWeight: '900', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
+      const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
       t.anchor.set(0.5);
       st.addChild(t);
       this.edgeText.push(t);
     }
     st.addChild(this.mini.root);
+    // 明朝の字が読み込まれる前に作った文字は、代わりの字で描かれたまま残る → 読み込めたら描き直す
+    document.fonts?.ready.then(() => {
+      for (const t of [...this.nums, ...this.markText, ...this.roleText, ...this.edgeText]) t.style.fontFamily = MINCHO;
+    }).catch(() => {});
     Assets.load<Texture>(`${import.meta.env.BASE_URL}ui/moon.webp`).then((t) => {
       this.backdrop.moonArt.texture = t;
       this.backdrop.moonArt.visible = true;

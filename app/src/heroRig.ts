@@ -480,8 +480,9 @@ export class HeroRig {
     // 手前：構えると付け根は体より後ろのまま、腰の高さで前を向く
     place2(this.cannon2, REST + 0.18, 0.06, -0.14 * H, -0.3 * H, shoulderY + 0.01 * H, shoulderY + 0.3 * H, 46); // 胸の高さだと胴と手を隠したので、腰の高さ
     // 手前の砲は、たたんでいるあいだは体の後ろ（体の前に何も重ねない）。構えると体の前へ
+    // （前は「奥の砲より上の層か」で見ていて、体の後ろのまま前に出ていなかった。体の前＝いちばん上の層かで見る）
     const front = g > 0.5;
-    if (front !== (this.body.getChildIndex(this.cannon2) > this.body.getChildIndex(this.cannon))) {
+    if (front !== (this.body.getChildIndex(this.cannon2) === this.body.children.length - 1)) {
       this.body.removeChild(this.cannon2);
       if (front) this.body.addChild(this.cannon2);
       else this.body.addChildAt(this.cannon2, this.body.getChildIndex(this.cannon) + 1);

@@ -15,7 +15,9 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  /* 全体を明朝に（大正ロマン。2026-10-04 アマネさん「ゴシック体使われているところある」） */
+  --mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  font-family: var(--mincho);
   overflow: hidden;
   touch-action: manipulation;
   user-select: none;
@@ -169,7 +171,7 @@ button::after {
   position: absolute;
   left: 14px;
   top: 64px;
-  font: italic 900 34px/1 system-ui, sans-serif;
+  font: 800 34px/1 var(--mincho);
   color: #ffd040;
   -webkit-text-stroke: 1.5px #000;
   pointer-events: none;
@@ -193,7 +195,7 @@ button::after {
   pointer-events: none;
   animation: card 2s ease-out forwards;
 }
-#card b { font: 900 34px/1.2 system-ui, sans-serif; letter-spacing: 0.25em; color: #fff; text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 60, 80, 0.7); }
+#card b { font: 800 34px/1.2 var(--mincho); letter-spacing: 0.25em; color: #fff; text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 60, 80, 0.7); }
 #card small { font-size: 14px; color: #f0d0d8; letter-spacing: 0.2em; text-shadow: 0 1px 0 #000; }
 body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8); }
 @keyframes card {
@@ -238,7 +240,7 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   justify-content: flex-start;
   padding-left: 18%;
   transform: skewY(-6deg);
-  font: italic 900 38px/1 system-ui, sans-serif;
+  font: 800 38px/1 var(--mincho);
   letter-spacing: 0.2em;
   color: #fff;
   -webkit-text-stroke: 1.5px #000;
@@ -295,7 +297,7 @@ body.day #card b { text-shadow: 0 2px 0 #000, 0 0 18px rgba(255, 220, 120, 0.8);
   position: absolute;
   inset: 22% 0 auto 0;
   text-align: center;
-  font: italic 900 30px/1.6 system-ui, sans-serif;
+  font: 800 30px/1.6 var(--mincho);
   color: #ffd040;
   -webkit-text-stroke: 1.5px #000;
   background: linear-gradient(90deg, transparent, rgba(120, 20, 30, 0.75) 20%, rgba(120, 20, 30, 0.75) 80%, transparent);
@@ -364,7 +366,7 @@ body.tutorial #next { display: none; }
     repeating-linear-gradient(-60deg, rgba(179, 32, 42, 0.05) 0 16px, transparent 16px 32px),
     var(--plum);
   color: var(--ink);
-  font-family: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  font-family: var(--mincho);
   opacity: 0;
   pointer-events: none;
   transform: translateY(16px);
@@ -456,7 +458,7 @@ body.tutorial #next { display: none; }
 .st-ctl dd { color: #eadbd2; }
 .st-note { margin: 14px 0 0; font-size: 12px; color: var(--dim); line-height: 1.7; }
 /* 題字の画面の「ストーリー」 */
-#overlay button.storybtn { background: rgba(20, 12, 18, 0.7); border-color: var(--brass); color: var(--brass); font-family: "Shippori Mincho", serif; letter-spacing: 0.2em; }
+#overlay button.storybtn { background: rgba(20, 12, 18, 0.7); border-color: var(--brass); color: var(--brass); font-family: var(--mincho); letter-spacing: 0.2em; }
 
 /* 今夜の様子（昼の板） */
 .dawn .mood { color: #ffb0c0; font-weight: normal; }
@@ -471,7 +473,7 @@ body.tutorial #next { display: none; }
   border-radius: 10px;
   background: linear-gradient(rgba(30, 18, 26, 0.94), rgba(20, 12, 18, 0.94));
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 230, 180, 0.12);
-  font-family: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  font-family: var(--mincho);
   animation: hint-in 0.25s ease-out;
   z-index: 3;
 }
@@ -527,7 +529,7 @@ body.tutorial #next { display: none; }
   text-align: center;
 }
 #tonight[hidden] { display: none; }
-#tonight b { font-size: 13px; letter-spacing: 0.1em; color: #f0e6e0; font-family: "Shippori Mincho", "Hiragino Mincho ProN", serif; }
+#tonight b { font-size: 13px; letter-spacing: 0.1em; color: #f0e6e0; font-family: var(--mincho); }
 #tonight em { font-style: normal; color: #ffb0c0; }
 #tonight small { font-size: 11px; color: var(--dim); }
 #tonight div { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; }
