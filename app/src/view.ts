@@ -45,6 +45,7 @@ export class View {
   private screenParts = new Particles(); // 画面の粒（速度線・桜嵐の花吹雪）
   private screen = new Graphics(); // 画面に固定の演出（周辺の暗がり・閃光・矢印・指の軌跡）
   private nums: Text[] = [];
+  private numOwner: number[] = []; // 数字の枠ごとに、受け持つ fx の id（-1 は空き）。枠を固定して、文字の絵を作り直すのは出た瞬間だけにする
   private edgeText: Text[] = [];
   private mini = new Minimap();
   private seen = 0; // 処理済みの fx の id
@@ -73,6 +74,7 @@ export class View {
       t.visible = false;
       this.world.addChild(t);
       this.nums.push(t);
+      this.numOwner.push(-1);
     }
     st.addChild(this.screenParts.root, this.screen);
     for (let i = 0; i < 2; i++) {
@@ -684,32 +686,39 @@ export class View {
       for (let i = 0; i < 3; i++) crescent(o, x + 10 + i * 9, y, r * (1 - i * 0.2), Math.PI * 0.65, Math.PI * 1.35, 6 - i * 1.5, COLOR.shock, 0.8 - i * 0.25);
     }
     // 数字：跳ねて上へ消える。出た瞬間に大きく、すぐ締まる。大きい一撃は大きく黄色く
-    let ni = 0;
-    for (const f of sim.fx) {
-      if ((f.kind !== 'num' && !(f.kind === 'poof' && f.n)) || ni >= this.nums.length) continue;
+    const live = new Map<number, Fx>();
+    for (const f of sim.fx) if (f.kind === 'num' || (f.kind === 'poof' && f.n)) live.set(f.id, f);
+    for (let i = 0; i < this.nums.length; i++) {
+      if (this.numOwner[i] >= 0 && !live.has(this.numOwner[i])) this.numOwner[i] = -1;
+    }
+    for (const f of live.values()) {
+      let i = this.numOwner.indexOf(f.id);
+      if (i < 0) {
+        i = this.numOwner.indexOf(-1);
+        if (i < 0) continue; // 枠が足りなければ出さない
+        this.numOwner[i] = f.id;
+        const t = this.nums[i];
+        t.text = f.kind === 'poof' ? `+${f.n}銭` : String(f.n);
+        t.style.fontSize = f.kind === 'poof' ? 15 : f.big ? 34 : 22;
+        t.style.fill = f.kind === 'poof' ? 0xffd860 : f.big ? 0xffd040 : 0xffffff;
+      }
+      const t = this.nums[i];
       const q = f.t / (f.kind === 'num' ? 0.8 : 0.6);
-      const t = this.nums[ni++];
       t.visible = true;
       const x = this.wx(f.x);
       const y = this.wy(f.lane) - (f.z ?? 0) * this.zk() - this.geo.Hm * 0.12;
       if (f.kind === 'poof') {
-        t.text = `+${f.n}銭`;
-        t.style.fontSize = 15;
-        t.style.fill = 0xffd860;
         t.scale.set(1);
         t.alpha = 1 - q;
         t.position.set(x, y - this.geo.Hm * 0.04 - q * 40);
         continue;
       }
-      t.text = String(f.n);
-      t.style.fontSize = f.big ? 34 : 22;
-      t.style.fill = f.big ? 0xffd040 : 0xffffff;
       const pop = 1 + 0.7 * Math.max(0, 1 - q * 7);
       t.scale.set(pop);
       t.alpha = q < 0.6 ? 1 : 1 - (q - 0.6) / 0.4;
       t.position.set(x + ((f.id * 37) % 41) - 20, y - ((f.id * 53) % 17) - easeOut(Math.min(1, q * 3)) * 34);
     }
-    for (; ni < this.nums.length; ni++) this.nums[ni].visible = false;
+    for (let i = 0; i < this.nums.length; i++) if (this.numOwner[i] < 0) this.nums[i].visible = false;
     void K;
     void dt;
   }

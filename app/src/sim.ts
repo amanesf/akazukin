@@ -209,13 +209,13 @@ export class Sim {
   }
 
   // 技の途中・ひるみの途中の入力は覚えておき、空いたらすぐ出す（先行入力）。
-  // 突進だけは、技が当たったあとなら割り込める（すぐ動ける気持ちよさ）
+  // 突進だけは、技が当たったあとなら割り込める（すぐ動ける気持ちよさ）。突進から突進へは割り込めない（連発で無敵になる）
   private queue(act: Act, cancel = false) {
     const h = this.hero;
     if (!this.canAct) return;
     if (h.charge >= 0) return;
     // 自動の斬り・弓はいつでも指の操作で打ち消せる
-    const busy = h.stun > 0 || (h.move && !h.auto && !(cancel && h.moveT >= MOVES[h.move].dur * 0.5));
+    const busy = h.stun > 0 || (h.move && !h.auto && !(cancel && h.move !== 'tosshin' && h.moveT >= MOVES[h.move].dur * 0.5));
     if (!busy) {
       if (h.move) h.move = null;
       act();
@@ -274,19 +274,21 @@ export class Sim {
     this.sounds.push('charge');
   }
 
-  holdEnd() {
+  // 溜め不足で離したら撃たずに 'short' を返す（指の操作ではタップとして扱う。ゆっくりめのタップが空振りにならないように）
+  holdEnd(): 'fired' | 'short' | 'none' {
     const h = this.hero;
-    if (h.charge < 0) return;
+    if (h.charge < 0) return 'none';
     const c = h.charge;
     h.charge = -1;
-    if (!this.canAct) return;
-    if (c < this.chargeMin) return; // 溜め不足は不発
+    if (!this.canAct) return 'none';
+    if (c < this.chargeMin) return 'short';
     h.stun = 0;
     const full = c >= this.chargeFull;
     const t = this.nearest(this.wolves.filter((w) => Math.abs(w.lane - h.lane) <= 0.6), h.x);
     if (t) h.facing = t.x >= h.x ? 1 : -1;
     this.startMove('shiki', 0);
     h.dashTo = full ? 2 : 1; // 溜めの段（strike で使う）
+    return 'fired';
   }
 
   // 斬る：相手に踏み込んで連撃の次の手。遠ければ走って行ってから
@@ -746,8 +748,10 @@ export class Sim {
     h.hp -= dmg;
     this.stats.heroDmg += dmg;
     h.hitFlash = 0.18;
-    if (h.armor <= 0 && h.charge < 0 && (!h.move || h.auto)) {
-      // 溜めているあいだと、指で出した技のあいだはひるまない（噛まれても体力が減るだけ。攻めるほど止まらない）。
+    const heavy = h.move === 'shiki' || h.move === 'slam' || h.move === 'kaiten';
+    if (h.armor <= 0 && h.charge < 0 && !(heavy && !h.auto)) {
+      // 溜めているあいだと、指で出した大技（主砲・叩き落とし・回転斬り）のあいだはひるまない。
+      // 斬りの連打はひるむ（2026-10-04 指の技すべてをひるまなくしたら、連打が最強になった）。
       // ひるむと技も溜めも途切れる。そのあと少しのあいだは、噛まれてもひるまない
       h.stun = HERO.hitStunTime;
       h.armor = 0.7;
@@ -938,7 +942,7 @@ export class Sim {
     for (const w of this.wolves) {
       if (h.dashHit.includes(w.id) || w.x < lo || w.x > hi || Math.abs(w.lane - h.lane) > 0.42) continue;
       h.dashHit.push(w.id);
-      this.hit(w, m.damage * this.nearPower, { kb: m.kb! * h.facing, lift: w.z > 0 ? 200 : 140, stop: m.stop });
+      this.hit(w, m.damage * this.nearPower, { kb: m.kb! * h.facing, lift: w.z > 0 ? 200 : 140, stop: m.stop, stun: DASH.stun });
       this.fx.push(this.mk({ kind: 'slash', x: w.x, lane: w.lane, z: 0, move: 'tosshin', dir: h.facing }));
     }
   }
@@ -1105,7 +1109,7 @@ export class Sim {
   }
 
   // ── 当てる ──
-  private hit(w: Wolf, dmg: number, o: { kb?: number; lift?: number; slam?: boolean; stop?: number; quiet?: boolean }) {
+  private hit(w: Wolf, dmg: number, o: { kb?: number; lift?: number; slam?: boolean; stop?: number; quiet?: boolean; stun?: number }) {
     if (w.age < 0.4) return; // 裂け目から出てくる途中は当たらない
     const light = 1 - (WOLVES[w.kind].heavy ?? 0);
     this.hurt(w, dmg);
@@ -1122,7 +1126,7 @@ export class Sim {
       w.vz = -900;
     }
     w.pouncing = false;
-    w.stun = Math.max(w.stun, 0.25);
+    w.stun = Math.max(w.stun, o.stun ?? 0.25);
     const big = dmg >= 30;
     this.fx.push(this.mk({ kind: 'num', x: w.x, lane: w.lane, n: Math.round(dmg), z: w.z, big }));
     if (o.quiet) return; // 番犬の噛みつきはコンボに数えない

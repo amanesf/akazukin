@@ -36,7 +36,9 @@ export const HERO = {
   buffer: 0.4, // 技の途中の入力を覚えておく秒数（先行入力）
 };
 export const AUTO = { slash: 0.5, bow: 1.3, bowRange: 460 }; // 触っていないとき：斬りの間隔・弓の間隔・弓の届く距離
-export const DASH = { dist: 230, iframes: 0.22, cd: 0.25 }; // 突進斬り：その方向へ突き抜け、通り道の狼を全部斬る
+// 突進斬り：その方向へ突き抜け、通り道の狼を全部斬る。2026-10-04 連発でほぼ無敵だった（狼がひるみ続けて噛めない）ので、
+// 無敵は出始めだけ・斬られた狼のひるみは短く・次の突進まで間を空ける・威力は下げる（突進は動くための技。削るのは斬り）
+export const DASH = { dist: 230, iframes: 0.12, cd: 1.0, stun: 0.1 };
 export const CHARGE = { min: 0.4, full: 1.1, gain: 0.35 }; // 主砲の溜め（秒）。満タンは威力が倍
 
 // 狼の体の動き：弾く（横の勢い）・打ち上げる（上の勢い）・叩き落とす（下へ叩きつけて跳ねる）
@@ -69,7 +71,7 @@ export const MOVES: Record<MoveId, MoveSpec> = {
   slam: { name: '叩き落とし', dur: 0.3, reach: 80, damage: 22, slam: true, stop: 0.1, shake: 7 },
   shiki: { name: '主砲', dur: 0.42, reach: 70, damage: 40, kb: 650, area: 180, stop: 0.13, shake: 11 },
   kaiten: { name: '回転斬り', dur: 0.36, reach: 0, damage: 16, kb: 280, area: 150, stop: 0.05, shake: 4 },
-  tosshin: { name: '突進斬り', dur: 0.26, reach: 30, damage: 15, kb: 120, stop: 0.04, shake: 3 },
+  tosshin: { name: '突進斬り', dur: 0.26, reach: 30, damage: 7, kb: 120, stop: 0.04, shake: 3 },
   bow: { name: '弓', dur: 0.42, reach: 0, damage: 13 },
   ame: { name: '矢の雨', dur: 0.6, reach: 0, damage: 11 },
   hougeki: { name: '主砲の撃ち込み', dur: 0.7, reach: 0, damage: 32, area: 75, shake: 5 },

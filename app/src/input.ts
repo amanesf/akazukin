@@ -30,6 +30,9 @@ export class Input {
     window.addEventListener('pointermove', (e) => this.onMove(e));
     window.addEventListener('pointerup', (e) => this.onUp(e));
     window.addEventListener('pointercancel', (e) => this.onUp(e));
+    // 指を離した合図を取りこぼしても操作が止まらないように、画面を離れたら押していた指を忘れる
+    window.addEventListener('blur', () => this.forget());
+    document.addEventListener('visibilitychange', () => document.hidden && this.forget());
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     this.keys();
   }
@@ -59,7 +62,11 @@ export class Input {
       if (i >= 0) this.drag = { i, moved: false, x: p.x, y: p.y };
       return;
     }
-    if (this.down) return; // 2本目の指は見ない
+    if (this.down) {
+      // 2本目の指は見ない。ただし最初の指（isPrimary）が来たなら、前の指の離した合図を取りこぼしている
+      if (!e.isPrimary) return;
+      this.forget();
+    }
     const f = this.view.toField(p.x, p.y);
     this.down = { id: e.pointerId, x: p.x, y: p.y, t: this.now(), mini: !!f?.mini, done: false, holding: false };
     this.view.trail = [{ ...p, t: this.viewTime() }];
@@ -122,13 +129,26 @@ export class Input {
     if (!d || e.pointerId !== d.id) return;
     this.down = null;
     clearTimeout(this.holdTimer);
-    if (d.holding) return s.holdEnd();
-    if (d.done) return;
-    if (Math.hypot(p.x - d.x, p.y - d.y) > TAP_SLOP) return;
+    if (Math.hypot(p.x - d.x, p.y - d.y) > TAP_SLOP) {
+      if (d.holding) s.holdEnd();
+      return;
+    }
+    if (d.holding) {
+      if (s.holdEnd() !== 'short') return;
+      // 溜め不足で離した：ゆっくりめのタップとして斬る／走る
+    } else if (d.done) return;
     const f = this.view.toField(d.x, d.y);
     if (!f) return;
     if (f.mini) s.runTo(f.x, f.lane, true);
     else s.tap(f.x, f.lane);
+  }
+
+  // 押していた指を忘れる（溜めていたら撃たずに止める）
+  private forget() {
+    const d = this.down;
+    this.down = null;
+    clearTimeout(this.holdTimer);
+    if (d?.holding) this.sim().hero.charge = -1;
   }
 
   private viewTime() {
