@@ -1,7 +1,7 @@
 // 戦場の描画。主人公のアップをカメラで追い、下に戦場全体の小さい地図（minimap.ts）を出す（2026-10-04）。
 // 狼・番犬はまだ灰色の箱（絵は生成で作る・plan.md §6）。動き・演出は箱のままでも作り込む：
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
-import { Application, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Application, Assets, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
 import { DOG_POST_MAX, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { crescent, easeOut, glowTexture, Particles, place } from './fx';
@@ -113,6 +113,11 @@ export class View {
       this.edgeText.push(t);
     }
     st.addChild(this.mini.root);
+    // 背景の町並みの絵。読み込めたら背景を作り直す（読めなければ影絵のまま）
+    Assets.load<Texture>(`${import.meta.env.BASE_URL}bg/town.webp`).then((t) => {
+      this.backdrop.town = t;
+      this.lastWave = ''; // 次の draw で作り直す
+    }).catch((e) => console.warn('town', e));
     // 狼の絵。読み込めなければ箱のまま
     this.wolves.load().catch((e) => console.warn('wolves', e));
     this.house.visible = false;

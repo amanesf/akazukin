@@ -1,6 +1,6 @@
 // 背景：奥行きの層に分け、カメラが動くと層ごとにずれる（スピード感）。
 // いまは仮の影絵（山・町の屋根・桜・電柱・石灯籠）。絵が入ったら層ごとに差し替える（plan.md §0.5）。
-import { Container, Graphics, Sprite } from 'pixi.js';
+import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import { glowTexture, PINK } from './fx';
 
 export interface Layer { c: Container; f: number } // f：カメラに付いてくる割合（1＝地面と同じ）
@@ -26,6 +26,7 @@ export class Backdrop {
   private moonGlow = new Sprite(glowTexture());
   private lights: { s: Sprite; x: number; y: number; ph: number }[] = [];
   private starList: { x: number; y: number; r: number; ph: number }[] = [];
+  town: Texture | null = null; // 町並みの絵（2026-10-04 生成）。あれば奥の山と町の影絵の代わりに使う
 
   constructor() {
     this.moonGlow.anchor.set(0.5);
@@ -61,46 +62,61 @@ export class Backdrop {
     this.moonGlow.tint = 0xff4050;
     this.moonGlow.alpha = 0.35;
 
-    // 遠い山
-    const far = new Graphics();
-    const rf = rng(11);
-    const ridge = (base: number, amp: number, step: number, color: number) => {
-      const pts = [x0, horizon + 4];
-      for (let x = x0; x <= x0 + span; x += step) pts.push(x, base - amp * (0.4 + rf() * 0.6) - Math.sin(x * 0.004) * amp * 0.5);
-      pts.push(x0 + span, horizon + 4);
-      far.poly(pts).fill(color);
-    };
-    ridge(horizon - h * 0.12, h * 0.1, 70, 0x2a1626);
-    ridge(horizon - h * 0.04, h * 0.07, 50, 0x22121e);
-    this.layers.push({ c: wrap(far), f: 0.12 });
-
-    // 町の屋根（瓦屋根の影絵）と窓の灯り
-    const town = new Graphics();
-    const rt = rng(23);
-    const tc = new Container();
-    tc.addChild(town);
-    for (let x = x0; x < x0 + span; x += 50 + rt() * 70) {
-      const bw = 50 + rt() * 60;
-      const bh = h * (0.05 + rt() * 0.08);
-      const top = horizon - bh;
-      town.rect(x, top, bw, bh + 6).fill(0x1c0f19);
-      town.poly([x - 8, top, x + bw + 8, top, x + bw * 0.8, top - bh * 0.45, x + bw * 0.2, top - bh * 0.45]).fill(0x180c15);
-      if (rt() < 0.7) {
-        const wx = x + bw * (0.2 + rt() * 0.5);
-        const wy = top + bh * 0.35;
-        town.rect(wx, wy, 7, 6).fill({ color: 0xe8b060, alpha: 0.85 });
-        const s = new Sprite(glowTexture());
-        s.anchor.set(0.5);
-        s.blendMode = 'add';
-        s.tint = 0xe89040;
-        s.width = s.height = 40;
-        s.alpha = 0.35;
-        s.position.set(wx + 3, wy + 3);
-        tc.addChild(s);
-        this.lights.push({ s, x: wx, y: wy, ph: rt() * 6 });
+    if (this.town) {
+      // 町並みの絵を、左右反転しながら並べる（つなぎ目が鏡になって目立たない）
+      const tc = new Container();
+      const k = (h * 0.36) / this.town.height;
+      const tw = this.town.width * k;
+      let n = 0;
+      for (let x = x0; x < x0 + span; x += tw, n++) {
+        const sp = new Sprite(this.town);
+        sp.scale.set(n % 2 ? -k : k, k);
+        sp.position.set(n % 2 ? x + tw : x, horizon + 3 - h * 0.36);
+        tc.addChild(sp);
       }
+      this.layers.push({ c: tc, f: 0.25 });
+    } else {
+      // 遠い山
+      const far = new Graphics();
+      const rf = rng(11);
+      const ridge = (base: number, amp: number, step: number, color: number) => {
+        const pts = [x0, horizon + 4];
+        for (let x = x0; x <= x0 + span; x += step) pts.push(x, base - amp * (0.4 + rf() * 0.6) - Math.sin(x * 0.004) * amp * 0.5);
+        pts.push(x0 + span, horizon + 4);
+        far.poly(pts).fill(color);
+      };
+      ridge(horizon - h * 0.12, h * 0.1, 70, 0x2a1626);
+      ridge(horizon - h * 0.04, h * 0.07, 50, 0x22121e);
+      this.layers.push({ c: wrap(far), f: 0.12 });
+
+      // 町の屋根（瓦屋根の影絵）と窓の灯り
+      const town = new Graphics();
+      const rt = rng(23);
+      const tc = new Container();
+      tc.addChild(town);
+      for (let x = x0; x < x0 + span; x += 50 + rt() * 70) {
+        const bw = 50 + rt() * 60;
+        const bh = h * (0.05 + rt() * 0.08);
+        const top = horizon - bh;
+        town.rect(x, top, bw, bh + 6).fill(0x1c0f19);
+        town.poly([x - 8, top, x + bw + 8, top, x + bw * 0.8, top - bh * 0.45, x + bw * 0.2, top - bh * 0.45]).fill(0x180c15);
+        if (rt() < 0.7) {
+          const wx = x + bw * (0.2 + rt() * 0.5);
+          const wy = top + bh * 0.35;
+          town.rect(wx, wy, 7, 6).fill({ color: 0xe8b060, alpha: 0.85 });
+          const s = new Sprite(glowTexture());
+          s.anchor.set(0.5);
+          s.blendMode = 'add';
+          s.tint = 0xe89040;
+          s.width = s.height = 40;
+          s.alpha = 0.35;
+          s.position.set(wx + 3, wy + 3);
+          tc.addChild(s);
+          this.lights.push({ s, x: wx, y: wy, ph: rt() * 6 });
+        }
+      }
+      this.layers.push({ c: tc, f: 0.3 });
     }
-    this.layers.push({ c: tc, f: 0.3 });
 
     // 中景：桜の木・電柱と電線・石灯籠（大正の夜道）
     const mid = new Graphics();
@@ -109,7 +125,8 @@ export class Backdrop {
     const rm = rng(41);
     const poles: [number, number][] = [];
     for (let x = x0; x < x0 + span; x += 140 + rm() * 160) {
-      const kind = rm();
+      const kind = this.town ? 0.9 : rm(); // 町並みの絵には桜と電柱が描いてあるので、石灯籠だけ
+      if (this.town && rm() > 0.35) continue; // 石灯籠だけだと並びすぎるので間引く
       if (kind < 0.5) {
         // 桜：幹と枝、花の塊
         const th = h * (0.16 + rm() * 0.08);
