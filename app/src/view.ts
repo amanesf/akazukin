@@ -1434,14 +1434,30 @@ export class View {
       }
       // ふつうの矢はほぼまっすぐ。矢の雨だけ高い放物線
       const arc = Math.abs(x1 - x0) * (a.rain ? 0.3 : 0.04);
-      const x = x0 + (x1 - x0) * a.t;
-      const y = y0 + (y1 - y0) * a.t - Math.sin(Math.PI * a.t) * arc;
-      const vx = x1 - x0;
-      const vy = y1 - y0 - Math.cos(Math.PI * a.t) * Math.PI * arc;
-      const len = Math.hypot(vx, vy) || 1;
-      const ux = vx / len;
-      const uy = vy / len;
+      const at = (t: number) => {
+        const vx = x1 - x0;
+        const vy = y1 - y0 - Math.cos(Math.PI * t) * Math.PI * arc;
+        const len = Math.hypot(vx, vy) || 1;
+        return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * arc, ux: vx / len, uy: vy / len };
+      };
+      const { x, y, ux, uy } = at(a.t);
       const L = hh * 0.3; // 矢の長さ
+      // 残像：少し前の位置に、桜色の矢の影を4本。古いほど薄く小さい（主人公の残像とそろえる）
+      for (let i = 4; i >= 1; i--) {
+        const t = a.t - i * 0.06;
+        if (t <= 0) continue;
+        const p = at(t);
+        const k = 1 - i / 5;
+        const l = L * (0.75 + 0.25 * k);
+        const al = 0.42 * k;
+        o.moveTo(p.x - p.ux * l, p.y - p.uy * l).lineTo(p.x, p.y).stroke({ width: 3.5 * k + 1, color: 0xff9cc0, alpha: al, cap: 'round' });
+        o.poly([p.x + p.ux * 10, p.y + p.uy * 10, p.x - p.uy * 5, p.y + p.ux * 5, p.x + p.uy * 5, p.y - p.ux * 5]).fill({ color: 0xffd0e2, alpha: al });
+        for (const sg of [1, -1]) {
+          const fx = p.x - p.ux * l;
+          const fy = p.y - p.uy * l;
+          o.poly([fx, fy, fx + p.ux * 14 - p.uy * 6 * sg, fy + p.uy * 14 + p.ux * 6 * sg, fx + p.ux * 18, fy + p.uy * 18]).fill({ color: 0xffd0e2, alpha: al });
+        }
+      }
       // 光の尾（桜色）：飛んだ道に沿って長く
       const tail = Math.min(a.t, 0.35) * Math.hypot(x1 - x0, y1 - y0);
       o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 7, color: 0xff7aa8, alpha: 0.18, cap: 'round' });
