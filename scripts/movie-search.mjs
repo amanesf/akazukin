@@ -26,9 +26,10 @@ for (let seed = a; seed <= (b ?? a); seed++) for (const k of KS) {
   const mem = {};
   const count = {};
   let seen = 0, frames = 0, ouran = 0, hp0 = s.houseHp;
+  const sps = [];
   while (s.result === 'playing' && s.phase === 'wave' && frames < FPS * 60 * 5) {
     if (frames % 3 === 0) director(s, mem, k);
-    if (s.events.includes('ouran')) ouran++;
+    if (s.events.includes('ouran')) { ouran++; sps.push(s.hero.special); }
     s.events.length = 0; // ページでは main が毎コマ読んで空にする
     s.sounds.length = 0;
     s.advance(1 / FPS);
@@ -37,8 +38,8 @@ for (let seed = a; seed <= (b ?? a); seed++) for (const k of KS) {
   }
   const won = s.phase === 'shop';
   const score = (won ? 100 : -500) + s.nightKills * 1 + s.bestCombo * 0.6 + (count['blast!'] ?? 0) * 10 + (count.blast ?? 0) * 3 + (count.pound ?? 0) * 2
-    + s.did.launch * 1.5 + s.did.slam * 2 + (count.dash ?? 0) * 1.5 + (count.spin ?? 0) * 2 + ouran * 15 - s.stats.heroDmg / s.maxHp * 30 - s.stats.downs * 60 - (hp0 - s.houseHp) * 0.08;
-  runs.push({ seed, k, score: Math.round(score), sec: +(frames / FPS).toFixed(1), won, kills: s.nightKills, combo: s.bestCombo, heroDmg: Math.round(s.stats.heroDmg), downs: s.stats.downs, house: Math.round(hp0 - s.houseHp), ouran, blastBig: count['blast!'] ?? 0, blast: count.blast ?? 0, pound: count.pound ?? 0, dash: count.dash ?? 0, spin: count.spin ?? 0, did: { ...s.did } });
+    + s.did.launch * 1.5 + s.did.slam * 2 + (count.dash ?? 0) * 1.5 + (count.spin ?? 0) * 2 + ouran * 15 + new Set(sps).size * 10 - s.stats.heroDmg / s.maxHp * 30 - s.stats.downs * 60 - (hp0 - s.houseHp) * 0.08;
+  runs.push({ seed, k, score: Math.round(score), sec: +(frames / FPS).toFixed(1), won, kills: s.nightKills, combo: s.bestCombo, heroDmg: Math.round(s.stats.heroDmg), downs: s.stats.downs, house: Math.round(hp0 - s.houseHp), ouran, sps: sps.join(','), blastBig: count['blast!'] ?? 0, blast: count.blast ?? 0, pound: count.pound ?? 0, dash: count.dash ?? 0, spin: count.spin ?? 0, did: { ...s.did } });
 }
 runs.sort((x, y) => y.score - x.score);
 for (const r of runs.slice(0, 8)) console.log(JSON.stringify(r));
