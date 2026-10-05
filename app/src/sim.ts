@@ -175,6 +175,7 @@ export class Sim {
   beatT = 0;
   chain = 0;
   finished = { name: '', grade: 0, chain: 0, n: 0 };
+  private finGrade = 0; // 締めを出したときの格。締めが当たるまでに連撃が切れても（カラス・噛まれる）この格で出す
   nightHp = 1000; // 今夜の狼の体力の合計（必殺技の溜まり方の物差し）
   bestCombo = 0;
   sinceHit = 99;
@@ -1390,7 +1391,7 @@ export class Sim {
         return this.breakCombo();
       }
       this.chain++;
-      this.finished = { name: FINISHERS[fin].name, grade: this.gradeOf(this.beats), chain: this.chain, n: this.finished.n + 1 };
+      this.finished = { name: FINISHERS[fin].name, grade: this.finGrade, chain: this.chain, n: this.finished.n + 1 };
       this.beats = [];
       this.beatT = 0;
       this.punch = Math.max(this.punch, 0.7);
@@ -1411,8 +1412,9 @@ export class Sim {
   }
 
   // 1〜3発目に何種類混ぜたか → 格（0 並・1 上・2 極）
+  // 拍が空でも 0（前は -1 になり、締めの最中に連撃が切れると画面の札が COMBO.grades[-1] を読んで止まった。27晩目のフリーズ）
   private gradeOf(beats: Beat[]) {
-    return Math.min(COMBO.grades.length, new Set(beats).size) - 1;
+    return Math.max(0, Math.min(COMBO.grades.length, new Set(beats).size) - 1);
   }
   get atFinish() {
     return this.beats.length >= COMBO.beats;
@@ -1421,7 +1423,8 @@ export class Sim {
   private startFinish(fin: Finisher) {
     const h = this.hero;
     h.fin = fin;
-    h.finMul = COMBO.grades[Math.max(0, this.gradeOf(this.beats))].mul * (1 + this.sum('near', 'finish'));
+    this.finGrade = this.gradeOf(this.beats);
+    h.finMul = COMBO.grades[this.finGrade].mul * (1 + this.sum('near', 'finish'));
   }
 
   // 必殺技：桜の竜巻でまわりの狼を吸い寄せ（竜巻は斬らない）、主人公が体ごと暴れて（連撃）、最後に大きく決める（締め）
