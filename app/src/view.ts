@@ -1852,7 +1852,21 @@ export class View {
       const pop = 1 + 0.7 * Math.max(0, 1 - q * 7);
       t.scale.set(pop);
       t.alpha = q < 0.6 ? 1 : 1 - (q - 0.6) / 0.4;
-      t.position.set(x + ((f.id * 37) % 41) - 20, y - ((f.id * 53) % 17) - easeOut(Math.min(1, q * 3)) * 34);
+      let nx = x + ((f.id * 37) % 41) - 20;
+      // 画面の外の狼に当てた数字は、その向きの画面の端に寄せて出す（2026-10-05 アマネさん「メイン画面の外の敵に当たったことわからない」）
+      const zs = this.world.scale.x;
+      const m = 34 / zs;
+      const lo = -this.world.x / zs + m;
+      const hi = (this.geo.W - this.world.x) / zs - m;
+      const out = nx < lo || nx > hi;
+      const label = !out ? String(f.n) : nx > hi ? `${f.n}▶` : `◀${f.n}`; // 向きの矢印を添える
+      if (t.text !== label) t.text = label;
+      if (out) {
+        nx = Math.max(lo, Math.min(hi, nx));
+        t.scale.set(pop * 0.8 / zs); // 端の数字は引いた画面でも同じ大きさで読めるように
+        t.alpha *= 0.9;
+      }
+      t.position.set(nx, y - ((f.id * 53) % 17) - easeOut(Math.min(1, q * 3)) * 34);
     }
     for (let i = 0; i < this.nums.length; i++) if (this.numOwner[i] < 0) this.nums[i].visible = false;
     void K;
