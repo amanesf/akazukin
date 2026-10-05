@@ -1,6 +1,6 @@
 import './style.css';
 import { Sfx } from './audio';
-import { COLORS, COMBO, FINISHERS, SPECIALS, WOLVES, type Beat, type Finisher, type Special, type WolfColor, type WolfKind } from './config';
+import { COLORS, COMBO, FINISHERS, HOUSE_HP, SPECIALS, WOLVES, type Beat, type Track, type Finisher, type Special, type WolfColor, type WolfKind } from './config';
 import { Input } from './input';
 import { MOODS, mood as moodOf, newColors, night as nightOf } from './nights';
 import { TALKS } from './talks';
@@ -14,9 +14,13 @@ const params = new URLSearchParams(location.search);
 const SPEED = Number(params.get('speed') ?? 1);
 const SAVE_KEY = 'akazukin.save.v1';
 
+// デバッグモードのあいだは、保存をこの端末に書かずに覚えておくだけ（遊んでいる続きを消さない）
+let debug = false;
+let debugSave: Save | null = null;
 // 保存はこの端末のブラウザだけ。読めない環境（非公開窓など）でも遊べるように、失敗は黙って無視する
 const store = {
   read(): Save | null {
+    if (debug) return debugSave;
     try {
       const d = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
       return d && (d.v === 1 || d.v === 2 || d.v === 3) ? d : null;
@@ -25,9 +29,11 @@ const store = {
     }
   },
   write(d: Save) {
+    if (debug) return void (debugSave = d);
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); } catch { /* 保存できなくても続ける */ }
   },
   clear() {
+    if (debug) return void (debugSave = null);
     try { localStorage.removeItem(SAVE_KEY); } catch { /* 同上 */ }
   },
 };
@@ -379,7 +385,8 @@ async function main() {
   const pause = () => {
     if (!running || sim.result !== 'playing' || !overlay.hidden) return;
     running = false;
-    show(`<h1>一時停止</h1><p>${Math.min(sim.wave + 1, 99)}日目・${sim.phase === 'shop' ? '昼' : '夜'}</p>`, [['続ける', () => {}]]);
+    show(`<h1>一時停止</h1><p>${Math.min(sim.wave + 1, 99)}日目・${sim.phase === 'shop' ? '昼' : '夜'}${debug ? '<br><small>デバッグモード</small>' : ''}</p>`,
+      debug ? [['続ける', () => {}], ['デバッグをやめる（題字へ）', () => location.reload()]] : [['続ける', () => {}]]);
   };
   document.getElementById('pause')!.addEventListener('click', pause);
   document.addEventListener('visibilitychange', () => document.hidden && !manual && pause());
@@ -388,15 +395,77 @@ async function main() {
   const title = `<h1><small>桜狼異聞</small>大正赤ずきん</h1>
      <p>紅い月の裂け目から狼が来る。99夜、おばあさんの家を守り抜け。</p>
      <p class="how">操作は1晩目に「やってみよう」で</p>`; // 操作の一覧は、絵が見えるように外した（2026-10-04 アマネさん「画像しっかり見えるように」）
-  show(title, saved
-    ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
-    : [['はじめる', () => {}]], true);
-  // ストーリー・キャラクター・ゲーム概要（題字の画面だけ。押しても始まらない）
-  const sb = document.createElement('button');
-  sb.className = 'storybtn';
-  sb.textContent = 'ストーリー';
-  sb.addEventListener('click', () => openStory());
-  overlay.querySelector('.choices')!.appendChild(sb);
+  const showTitle = () => {
+    show(title, saved
+      ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
+      : [['はじめる', () => {}]], true);
+    // ストーリー・キャラクター・ゲーム概要（題字の画面だけ。押しても始まらない）
+    const sb = document.createElement('button');
+    sb.className = 'storybtn';
+    sb.textContent = 'ストーリー';
+    sb.addEventListener('click', () => openStory());
+    overlay.querySelector('.choices')!.appendChild(sb);
+    // デバッグモード：題字の画面のいちばん下に小さく（誰でも押せる）
+    const db = document.createElement('button');
+    db.className = 'debugbtn';
+    db.textContent = 'デバッグモード';
+    db.addEventListener('click', openDebug);
+    overlay.appendChild(db);
+  };
+
+  // デバッグモード（2026-10-05 アマネさん「好きな夜から。成長度もあわせて。お金無限で昼から」）。
+  // 選んだ晩の昼から始まる。銭はいつも満タン。強化は「その晩らしく」（自動操作が平均でその晩に着く段）か、なし。
+  // この端末の保存には書かない。やめるときは一時停止の「デバッグをやめる」（読み直して題字へ。続きはそのまま）
+  const DEBUG_COINS = 999999;
+  // 自動操作（scripts/bot.mjs・弱い武器を使い分ける版・種1〜3の平均）が、その晩の前の昼に着いていた段
+  // [晩, 体力, 近接, 主砲, 番犬]。あいだの晩は直線でつなぐ
+  const GROWTH: [number, number, number, number, number][] = [
+    [1, 0, 0, 0, 0], [2, 1, 1, 0, 0], [6, 2, 2, 1, 1], [11, 3, 3, 3, 2], [21, 4, 5, 4, 4], [31, 5, 7, 5, 5], [41, 7, 9, 7, 6],
+    [51, 8, 9, 9, 8], [61, 9, 11, 10, 8], [71, 11, 13, 11, 9], [81, 12, 15, 12, 11], [91, 15, 16, 13, 13], [99, 15, 17, 15, 13],
+  ];
+  const growthAt = (n: number): Record<Track, number> => {
+    const i = Math.max(1, GROWTH.findIndex((g) => g[0] >= n));
+    const [a, b] = [GROWTH[i - 1], GROWTH[i]];
+    const k = b[0] === a[0] ? 1 : Math.min(1, Math.max(0, (n - a[0]) / (b[0] - a[0])));
+    const v = (j: number) => Math.round(a[j] + (b[j] - a[j]) * k);
+    return { body: v(1), near: v(2), far: v(3), dog: v(4) };
+  };
+  function openDebug() {
+    overlay.classList.remove('title');
+    overlay.innerHTML = `<h1>デバッグモード</h1>
+      <p>選んだ晩の昼から始める。銭は無限<br><small>この端末の保存には書かない（続きはそのまま）</small></p>
+      <div class="dbg">
+        <label>始める晩 <input type="number" min="1" max="99" value="99" inputmode="numeric"> 日目</label>
+        <div class="quick">${[1, 10, 15, 30, 50, 70, 99].map((n) => `<button type="button" data-n="${n}">${n}</button>`).join('')}</div>
+        <label class="grow"><input type="checkbox" checked> 強化をその晩らしくそろえる</label>
+        <p class="lv"></p>
+      </div>
+      <div class="choices"><button class="go">この晩の昼から始める</button><button class="back">もどる</button></div>`;
+    const input = overlay.querySelector('input[type=number]') as HTMLInputElement;
+    const grow = overlay.querySelector('.grow input') as HTMLInputElement;
+    const lv = overlay.querySelector('.lv') as HTMLElement;
+    const night = () => Math.min(99, Math.max(1, Math.round(Number(input.value) || 1)));
+    const note = () => {
+      const g = growthAt(night());
+      lv.textContent = grow.checked ? `体力 ${g.body}・近接 ${g.near}・主砲 ${g.far}・番犬 ${g.dog}（昼に銭で足せる）` : 'すべて 0（昼に銭で上げる）';
+    };
+    input.addEventListener('input', note);
+    grow.addEventListener('change', note);
+    overlay.querySelectorAll<HTMLButtonElement>('.quick button').forEach((b) => b.addEventListener('click', () => { input.value = b.dataset.n!; note(); }));
+    note();
+    overlay.querySelector('.back')!.addEventListener('click', showTitle);
+    overlay.querySelector('.go')!.addEventListener('click', () => {
+      const n = night();
+      debug = true;
+      const s0 = new Sim(seed());
+      sim = Sim.load({ ...s0.save(), wave: n - 1, coins: DEBUG_COINS, houseHp: HOUSE_HP, levels: grow.checked ? growthAt(n) : s0.levels }, seed());
+      store.write(sim.save()); // 負けたらこの昼に戻る
+      shown = sim.result;
+      overlay.hidden = true;
+      running = true;
+    });
+  }
+  showTitle();
   if (params.get('auto')) {
     overlay.hidden = true;
     running = true;
@@ -404,6 +473,7 @@ async function main() {
 
   // ?manual=1：時計を止め、外から akazukin.tick(秒) で1コマずつ進める（動きをコマ送りで点検する）
   const frame = (dt: number) => {
+    if (debug) sim.coins = DEBUG_COINS; // デバッグモード：銭は無限
     if (running) sim.advance(dt);
     view.draw(sim, dt);
     panel.update();

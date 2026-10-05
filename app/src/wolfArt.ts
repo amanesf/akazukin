@@ -34,10 +34,23 @@ export class UnitArt<K extends string> {
   }
 
   // 毛の色を付けた絵（グラデーションマップ）。掛け算で色を重ねると暗い所が沈むので、絵の明るさで色を引き当てる。
-  // 赤い目・裂け目など色の濃い所はそのまま残す。初めて使うときに作って取っておく
+  // 赤い目・裂け目など色の濃い所はそのまま残す。初めて使うときに作って取っておく。
+  // 1枚が元の絵と同じ大きさなので、ためこむと重い（2026-10-05 レビュー1：70晩で 35MB＋描いた紙の分）。
+  // 昼に keepDyed で今夜使わない分を捨て、warmDyed で今夜の分を先に作る
   private dyed = new Map<string, Texture>();
+  // 色付けを別の UnitArt に任せる（小さい地図は本画面の色付きの絵を借りる。同じ絵を2枚作らない）。lend で貸す
+  private dyer?: UnitArt<K>;
+  private borrowers: UnitArt<K>[] = [];
+  lend(to: UnitArt<K>) {
+    to.dyer = this;
+    this.borrowers.push(to);
+  }
+  static dyeKey(kind: string, fur: [number, number, number]) {
+    return `${kind}:${fur.join(',')}`;
+  }
   dye(kind: K, fur: [number, number, number]): Texture {
-    const key = `${kind}:${fur.join(',')}`;
+    if (this.dyer) return this.dyer.ready ? this.dyer.dye(kind, fur) : this.tex[kind];
+    const key = UnitArt.dyeKey(kind, fur);
     const hit = this.dyed.get(key);
     if (hit) return hit;
     const src = this.tex[kind];
@@ -81,6 +94,23 @@ export class UnitArt<K extends string> {
     const t = Texture.from(cv);
     this.dyed.set(key, t);
     return t;
+  }
+
+  // keep に入っていない色付きの絵を捨てる。捨てる絵を持っている入れ物の絵（借りている側も）は空にしておく（隠れているだけなので）
+  keepDyed(keep: Set<string>) {
+    const drop = new Set<Texture>();
+    for (const [key, t] of this.dyed) if (!keep.has(key)) { drop.add(t); this.dyed.delete(key); }
+    if (!drop.size) return;
+    for (const p of [this, ...this.borrowers].flatMap((a) => [...a.pools, ...a.rims])) for (const c of p.root.children) if (drop.has((c as Sprite).texture)) (c as Sprite).texture = Texture.EMPTY;
+    for (const t of drop) t.destroy(true);
+  }
+
+  // まだ作っていない色付きの絵を1枚だけ作る（1コマに1枚ずつ。昼のうちに今夜の分をそろえる）。作ったら true
+  warmDyed(want: [K, [number, number, number]][]) {
+    if (!this.ready) return false;
+    const w = want.find(([k, fur]) => this.tex[k] && !this.dyed.has(UnitArt.dyeKey(k, fur)));
+    if (w) this.dye(w[0], w[1]);
+    return !!w;
   }
 
   async load(extra: string[] = []) {

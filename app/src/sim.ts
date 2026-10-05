@@ -2112,7 +2112,10 @@ export class Sim {
         this.kick(5, 0);
         const dmg = BLAST.damage * hpScale(this.wave + 1);
         for (const o of this.wolves) {
-          if (o !== b && o.hp > 0 && Math.abs(o.x - b.x) <= BLAST.radius + o.size / 2 && Math.abs(o.lane - b.lane) <= 0.5) this.hit(o, dmg, { kb: 220, lift: 220, stop: 0, stun: 0.5 });
+          if (o !== b && o.hp > 0 && Math.abs(o.x - b.x) <= BLAST.radius + o.size / 2 && Math.abs(o.lane - b.lane) <= 0.5) {
+            o.lastSrc = undefined; // 爆ぜは武器なし。前に当てた武器（必殺技）を残すと、爆ぜで倒れた緑が寝ずに消えた（2026-10-05 レビュー2）
+            this.hit(o, dmg, { kb: 220, lift: 220, stop: 0, stun: 0.5 });
+          }
         }
         const h = this.hero;
         if (h.down <= 0 && h.iframes <= 0 && h.ouran <= 0 && Math.abs(h.x - b.x) <= BLAST.radius && Math.abs(h.lane - b.lane) <= 0.5) this.hurtHero(BLAST.hero * this.bite);

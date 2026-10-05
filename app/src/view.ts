@@ -7,6 +7,7 @@ import { COLORS, GRAY_FUR, HOWL, KING, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_L
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
+import { night } from './nights';
 import { DOG_CROWN, DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 import { Sim, type Dog, type Fx, type Wolf } from './sim';
@@ -103,7 +104,7 @@ export class View {
   private nums: Text[] = [];
   private numOwner: number[] = []; // 数字の枠ごとに、受け持つ fx の id（-1 は空き）。枠を固定して、文字の絵を作り直すのは出た瞬間だけにする
   private edgeText: Text[] = [];
-  private mini = new Minimap();
+  private mini = new Minimap(this.wolves as unknown as UnitArt<string>);
   private seen = 0; // 処理済みの fx の id
   private cam = { x: 0, y: 0, z: 1 };
   private flash = 0; // 画面の白い閃光
@@ -334,6 +335,7 @@ export class View {
     const pdt = frozen ? dt * 0.08 : dt; // ヒットストップのあいだは粒もほぼ止める
     const h = sim.hero;
     const day = sim.phase === 'shop' ? 1 : 0;
+    if (day) this.tidyDye(sim);
     this.dayK += (day - this.dayK) * (1 - Math.exp(-dt * 3));
     if (Math.abs(day - this.dayK) < 0.002) this.dayK = day;
 
@@ -1076,6 +1078,29 @@ export class View {
       const half = (KING.slam.reach / 2) * this.geo.K;
       H.ellipse(this.wx(c), this.wy(w.lane), half, half * 0.2).fill({ color: 0xff2030, alpha: 0.22 + 0.14 * Math.sin(this.vt * 20) });
     }
+  }
+
+  // 昼：色付きの狼の絵を今夜の分だけにする（2026-10-05 レビュー1。ためこむと 70晩で 35MB＋描いた紙の分）。
+  // 前の晩の分は、倒した狼の割れる絵が消えてから捨てる。今夜の分は1コマに1枚ずつ先に作る（夜の途中で作ると一瞬引っかかる）
+  private dyeWave = -1;
+  private dyeWant: [WolfArt, [number, number, number]][] = [];
+  private tidyDye(sim: Sim) {
+    if (!this.wolves.ready) return;
+    if (this.dyeWave !== sim.wave) {
+      if (this.splits.length) return;
+      this.dyeWave = sim.wave;
+      const lines: { kind: WolfKind; color?: WolfColor }[] = night(sim.wave + 1);
+      if (lines.some((l) => l.kind === 'howler')) lines.push({ kind: 'pup' }); // 遠吠えが呼ぶ子狼
+      if (lines.some((l) => l.kind === 'king')) for (const color of ['red', 'black', 'purple', 'orange'] as const) lines.push({ kind: 'wolf', color }); // 狼王が呼ぶ手下
+      const arts = Object.keys(this.wolves.tex) as WolfArt[];
+      this.dyeWant = [];
+      for (const l of lines) {
+        const fur = this.furOf(l.kind, l.color);
+        if (fur) for (const a of arts) if (a === l.kind || a.startsWith(`${l.kind}_`)) this.dyeWant.push([a, fur]);
+      }
+      this.wolves.keepDyed(new Set(this.dyeWant.map(([a, fur]) => UnitArt.dyeKey(a, fur))));
+    }
+    this.wolves.warmDyed(this.dyeWant);
   }
 
   // 毛の色：色の狼はその色、色の付かない狼は明るい銀灰（黒と見分けるため）。鎧狼は鎧の色を残す

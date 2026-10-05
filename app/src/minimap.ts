@@ -24,7 +24,9 @@ export class Minimap {
   private pad = 10;
   private houseBlink = 0;
 
-  constructor() {
+  // dyer：本画面の狼の絵。色付きの絵はそちらで作ったものを借りる（同じ絵を2枚作らない。2026-10-05 レビュー1）
+  constructor(dyer?: UnitArt<string>) {
+    dyer?.lend(this.wolfArt);
     this.root.addChild(this.g, this.unitBack, this.rig.root, this.top);
   }
 
