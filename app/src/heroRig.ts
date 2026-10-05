@@ -577,6 +577,17 @@ export class HeroRig {
     m.mesh.geometry.getBuffer('aPosition').update();
   }
 
+  // 主砲（0＝奥・1＝手前）の砲口と砲身の向き（単位ベクトル。space の座標）。隠れていれば null
+  cannonAxis(space: Container, i: number): { tip: { x: number; y: number }; ux: number; uy: number } | null {
+    const c = i ? this.cannon2 : this.cannon;
+    if (!this.ready || !c.visible || !this.root.visible) return null;
+    const t = c.texture;
+    const tip = space.toLocal(c.toGlobal({ x: (0.5 - c.anchor.x) * t.width, y: (0.97 - c.anchor.y) * t.height }));
+    const base = space.toLocal(c.toGlobal({ x: (0.5 - c.anchor.x) * t.width, y: 0 }));
+    const len = Math.hypot(tip.x - base.x, tip.y - base.y) || 1;
+    return { tip, ux: (tip.x - base.x) / len, uy: (tip.y - base.y) / len };
+  }
+
   // いま見えているナイフの刃先（space の座標）。斬撃の軌跡を刃の通り道に描く（2026-10-04 レビュー A4）
   tips(space: Container): ({ x: number; y: number } | null)[] {
     const out: ({ x: number; y: number } | null)[] = [null, null];

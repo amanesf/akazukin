@@ -1,11 +1,12 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
-// 夜（戦闘中）は銭・家・日付と桜嵐の3つの必殺技（斬り・弓・主砲で別々に溜まる・2026-10-04）（主砲は戦場の長押し。ボタンは連打で強すぎたのでやめた・2026-10-04）。昼は体力・近接・主砲の鍛えと、番犬3匹の役目（タップで切り替え）。
-import { DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, SPECIAL_ORDER, SPECIALS, TRACKS, type DogKind, type DogRole, type Special, type Track } from './config';
+// 夜（戦闘中）は銭・家・日付と、武器の持ち替え（ナイフ⇔弓・2026-10-05）、桜嵐の3つの必殺技（斬り・弓・主砲で別々に溜まる・2026-10-04）（主砲は戦場の長押し。ボタンは連打で強すぎたのでやめた・2026-10-04）。
+// 昼は10個の強化（上段＝基本・何回でも／下段＝特殊・各3つ。2026-10-05）と、番犬の役目（タップで切り替え）。
+import { BASIC, DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, SPECIAL_ORDER, SPECIAL_UPS, SPECIALS, TRACK_NAME, TRACK_ORDER, type DogKind, type DogRole, type Special, type Track } from './config';
 import type { Sim } from './sim';
 
 // アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
 export const ICON = (n: string) => `<img class="ic" src="${import.meta.env.BASE_URL}ui/icons/${n}.webp" alt="">`;
-const TRACK_ICON: Record<Track, string> = { body: 'heart', near: 'knife', far: 'cannon', dog: '' };
+const TRACK_ICON: Record<Track, string> = { body: 'heart', knife: 'knife', cannon: 'cannon', bow: 'bow', dog: '' };
 const trackIcon = (t: Track) => (t === 'dog' ? `<img class="ic" src="${import.meta.env.BASE_URL}dogs/shiba.webp" alt="">` : ICON(TRACK_ICON[t]));
 const ROLE_ICON: Record<DogRole, string> = { guard: 'house', attack: 'knife', support: 'heart' };
 
@@ -18,6 +19,8 @@ export class Panel {
   private specials: [Special, HTMLButtonElement][] = [];
   private dogs: [DogKind, HTMLButtonElement][] = [];
   private ups: [Track, HTMLButtonElement][] = [];
+  private specialUps: [Track, HTMLButtonElement][] = [];
+  private weapon: HTMLButtonElement;
   private repair: HTMLButtonElement;
   private next: HTMLButtonElement;
   private dawn: HTMLElement;
@@ -38,6 +41,7 @@ export class Panel {
       <div class="shop" hidden>
         <p class="dawn"></p>
         <div class="ups"></div>
+        <div class="ups sp"></div>
         <button class="repair"></button>
         <div class="dogrow"><p class="dogtitle">番犬の役目 <span>（タップで切り替え）</span></p><div class="dogs"></div></div>
         <button class="next">夜を迎える</button>
@@ -49,6 +53,11 @@ export class Panel {
     this.wave = q('.wave');
     this.battle = q('.battle');
     this.shop = q('.shop');
+    // 武器の持ち替え：押すたびにナイフ⇔弓。いま持っている武器の絵を出す
+    this.weapon = document.createElement('button');
+    this.weapon.className = 'weapon';
+    this.weapon.addEventListener('pointerdown', () => this.sim().switchWeapon());
+    this.battle.appendChild(this.weapon);
     for (const sp of SPECIAL_ORDER) {
       const b = document.createElement('button');
       b.className = 'ouran';
@@ -70,13 +79,19 @@ export class Panel {
       q('.dogs').appendChild(b);
       this.dogs.push([kind, b]);
     }
-    for (const t of Object.keys(TRACKS) as Track[]) {
+    for (const t of TRACK_ORDER) {
       const b = document.createElement('button');
       b.className = 'up';
-      b.innerHTML = `<b>${trackIcon(t)}${TRACKS[t].name}</b><span class="lv"></span><small></small><em></em>`;
-      b.addEventListener('click', () => this.sim().buy(t));
+      b.innerHTML = `<b>${trackIcon(t)}${TRACK_NAME[t]}</b><span class="lv"></span><small>${BASIC[t].note}</small><em></em>`;
+      b.addEventListener('click', () => this.sim().buy(t, 'basic'));
       q('.ups').appendChild(b);
       this.ups.push([t, b]);
+      const c = document.createElement('button');
+      c.className = 'up special';
+      c.innerHTML = `<span class="lv"></span><small></small><em></em>`;
+      c.addEventListener('click', () => this.sim().buy(t, 'special'));
+      q('.ups.sp').appendChild(c);
+      this.specialUps.push([t, c]);
     }
   }
 
@@ -109,24 +124,45 @@ export class Panel {
         ? `夜が明けた。${s.nightKills}匹を倒し、${s.nightEarned}銭を得た`
         : '昼。鍛えて、番犬の役目を決める'); // 今夜の様子は戦場の下の帯に出す
       for (const [t, b] of this.ups) {
-        const cost = s.trackCost(t);
-        const next = s.nextPerk(t);
-        b.disabled = !s.canBuy(t);
-        b.querySelector('.lv')!.textContent = `Lv ${s.levels[t]}`;
-        b.querySelector('small')!.textContent = `次：${next.note}`;
-        b.querySelector('em')!.textContent = `${cost}銭`;
-        b.classList.toggle('train', s.trained(t) > 0 || s.levels[t] >= TRACKS[t].perks.length);
+        b.disabled = !s.canBuy(t, 'basic');
+        const n = s.basic[t];
+        b.querySelector('.lv')!.textContent = t === 'body' ? `Lv${n} +${n * BASIC.body.step}` : `Lv${n} +${Math.round(n * BASIC[t].step * 100)}%`;
+        b.querySelector('em')!.textContent = `${s.basicCost(t)}銭`;
+      }
+      for (const [t, b] of this.specialUps) {
+        const up = s.nextUp(t);
+        const k = s.special[t];
+        b.disabled = !up || !s.canBuy(t, 'special');
+        b.classList.toggle('done', !up);
+        b.querySelector('.lv')!.textContent = `特殊 ${k}/${SPECIAL_UPS[t].length}`;
+        b.querySelector('small')!.textContent = up ? up.note : '覚えきった';
+        b.querySelector('em')!.textContent = up ? `${s.specialCost(t)}銭` : '';
       }
       const full = s.houseHp >= HOUSE_HP;
       this.repair.disabled = !s.canRepair();
       this.repair.innerHTML = `${ICON('house')}家を直す <span>${full ? '（傷はない）' : `+${REPAIR.hp}`}</span><em>${s.repairCost}銭</em>`;
+      const owned = s.dogKinds;
       for (const [kind, b] of this.dogs) {
         const r = s.roles[kind];
+        const has = owned.includes(kind);
+        b.disabled = !has;
+        b.classList.toggle('locked', !has);
+        if (!has) {
+          if (b.dataset.role === 'locked') continue;
+          b.dataset.role = 'locked';
+          b.querySelector('.role')!.innerHTML = `まだいない<small>番犬の特殊で仲間に</small>`;
+          continue;
+        }
         if (b.dataset.role === r) continue;
         b.dataset.role = r;
         b.querySelector('.role')!.innerHTML = `${ICON(ROLE_ICON[r])}${DOG_ROLES[r].name}<small>${DOG_ROLES[r].note}</small>`;
       }
       return;
+    }
+    const wp = s.weapon;
+    if (this.weapon.dataset.w !== wp) {
+      this.weapon.dataset.w = wp;
+      this.weapon.innerHTML = `<span class="row">${ICON(wp)}${wp === 'knife' ? 'ナイフ' : '弓'}</span><small>持ち替え</small>`;
     }
     for (const [sp, b] of this.specials) {
       const g = s.gauges[sp];

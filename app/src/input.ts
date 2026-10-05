@@ -1,6 +1,6 @@
 // 指一本の操作（2026-10-04）。戦場の上で：
-//   タップ＝斬り（狼に触れればその狼へ・遠くの地面ならそこへ走る）／はじく＝左右：突進斬り・上：斬り上げ・下：叩き落とし／
-//   長押し→離す＝主砲。小さい地図のタップ＝そこへ駆けつける。
+//   タップ＝触った所にいちばん近い狼を、持っている武器で攻撃（ナイフ：走って行って斬る・弓：その場から撃つ。2026-10-05）／
+//   はじく＝左右：突進（移動）・上：斬り上げ・下：叩き落とし／長押し→離す＝主砲。小さい地図のタップ＝そこへ駆けつける。
 // 昼は戦場では何もしない（番犬は自分で動く。役目は下の板で決める）。
 // はじきは指を離すのを待たず、動いた瞬間に出す（手応えを早く返す）。
 import type { Sim } from './sim';
@@ -117,7 +117,7 @@ export class Input {
     return this.view.vt;
   }
 
-  // 机の上で試すとき：矢印＝はじき、空白＝主人公の前をタップ、C を押しているあいだ溜め
+  // 机の上で試すとき：矢印＝はじき、空白＝主人公の前をタップ、C を押しているあいだ溜め、B＝ナイフ⇔弓
   private keys() {
     window.addEventListener('keydown', (e) => {
       const s = this.sim();
@@ -127,6 +127,7 @@ export class Input {
       if (e.key === ' ') s.tap(s.hero.x + s.hero.facing * 30, s.hero.lane);
       if (e.key === 'c') s.holdStart();
       if (e.key === 'x') s.ouran();
+      if (e.key === 'b' && s.phase === 'wave') s.switchWeapon();
     });
     window.addEventListener('keyup', (e) => {
       if (e.key === 'c') this.sim().holdEnd();

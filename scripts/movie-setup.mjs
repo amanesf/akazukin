@@ -3,7 +3,7 @@
 export const FPS = 30;
 export function setupNight(s, night) {
   s.wave = night - 1;
-  for (const t of Object.keys(s.levels)) s.levels[t] = 12;
+  for (const t of Object.keys(s.basic)) { s.basic[t] = 20; s.special[t] = 3; }
   s.houseHp = 600;
   s.coins = 0;
   s.hero.hp = s.maxHp;

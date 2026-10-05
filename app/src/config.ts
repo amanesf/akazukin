@@ -18,8 +18,8 @@ export const FIRST_WAVE_DELAY = 2.5; // 最初の晩の前の間（秒）。「1
 export const LANE_TOL = 0.3;
 
 // ── 主人公（指一本アクション・2026-10-04・アマネさん「Aでお願い。スピード感もほしい」）──
-// タップ＝斬り（連打で連撃）、左右にはじく＝突進斬り、上＝斬り上げ、下＝叩き落とし、長押し→離す＝主砲。
-// 触っていないときは軽く自動で斬り、離れた狼には弓で補助する（アマネさん「軽く自動」）
+// タップ＝触った所にいちばん近い狼を、持っている武器（ナイフ／弓・ボタンで持ち替え）で攻撃。左右にはじく＝突進（移動）、上＝斬り上げ、下＝叩き落とし、長押し→離す＝主砲。
+// 自動の攻撃はない・地面をタップして走るのもやめた（2026-10-05 アマネさん「自動攻撃一切なくす」「はじくのほうが直感的」）
 export const HERO = {
   hp: 220,
   size: 50, // 体の幅（2026-10-04 アップにしたので、絵の幅に合わせて大きく。狼・番犬も同じ倍率）
@@ -36,10 +36,14 @@ export const HERO = {
   lunge: 130, // タップした狼がこれより近ければ、踏み込んで斬る（遠ければ走って行って斬る）
   buffer: 0.4, // 技の途中の入力を覚えておく秒数（先行入力）
 };
-export const AUTO = { slash: 0.9, bow: 1.5, bowRange: 520 }; // 弓は速く・遠くまで（2026-10-04 アマネさん「弓矢もっと役に立たせたい」） // 触っていないとき：斬りの間隔・弓の間隔・弓の届く距離
+// 弓：届く距離・タップがこれより遠い狼には撃たない。矢の雨になる群れの数と、その群れの広さ
+export const BOW = { range: 520, crowd: 3, crowdSpan: 160 };
+// タップした所から、この距離までの狼を「触った狼」として探す（地面の位置で。いなければ空振り）
+export const TAP_REACH = 420;
 // 突進斬り：その方向へ突き抜け、通り道の狼を全部斬る。2026-10-04 連発でほぼ無敵だった（狼がひるみ続けて噛めない）ので、
 // 無敵は出始めだけ・斬られた狼のひるみは短く・次の突進まで間を空ける・威力は下げる（突進は動くための技。削るのは斬り）
-export const DASH = { dist: 230, iframes: 0.12, cd: 1.0, stun: 0.1 };
+// 2026-10-05 はじくが移動の手段になったので、待ち時間を 1.0→0.5秒
+export const DASH = { dist: 230, iframes: 0.12, cd: 0.5, stun: 0.1 };
 export const CHARGE = { min: 0.4, full: 1.1, gain: 0.35 }; // 主砲の溜め（秒）。満タンは威力が倍
 
 // 狼の体の動き：弾く（横の勢い）・打ち上げる（上の勢い）・叩き落とす（下へ叩きつけて跳ねる）
@@ -73,7 +77,8 @@ export const MOVES: Record<MoveId, MoveSpec> = {
   shiki: { name: '主砲', dur: 0.42, reach: 70, damage: 40, kb: 650, area: 180, stop: 0.13, shake: 11 },
   kaiten: { name: '回転斬り', dur: 0.36, reach: 0, damage: 16, kb: 280, area: 150, stop: 0.05, shake: 4 },
   tosshin: { name: '突進斬り', dur: 0.26, reach: 30, damage: 7, kb: 120, stop: 0.04, shake: 3 },
-  bow: { name: '弓', dur: 0.36, reach: 0, damage: 16 },
+  // 2026-10-05 自分で撃つようになったので、引く時間を 0.36→0.5秒（連打で離れた所から安全に削れすぎた。ナイフより遅く）
+  bow: { name: '弓', dur: 0.5, reach: 0, damage: 16 },
   ame: { name: '矢の雨', dur: 0.6, reach: 0, damage: 11 },
   hougeki: { name: '主砲の撃ち込み', dur: 0.7, reach: 0, damage: 32, area: 75, shake: 5 },
   // コンボの締め（4発目）。威力は格（並・上・極）と近接の「締めの威力」で伸びる
@@ -109,7 +114,8 @@ export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce:
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
 export const MOVE_CD = { kaiten: 2.5, tosshin: DASH.cd, ame: 5, hougeki: 0 };
 // 主砲の撃ち込みの砲弾：速さ・届く距離・4発の間（秒）・貫いたときの威力の割合（届いた先の爆発は hougeki の威力そのまま）
-export const SHELL = { speed: 1500, range: 620, gap: 0.07, pierce: 0.6 };
+// 2026-10-05 4発は同時に（アマネさん「4連装で一斉なのにバラバラ」）
+export const SHELL = { speed: 1500, range: 620, pierce: 0.6 };
 // 桜嵐：3つの必殺技（2026-10-04 アマネさん「連撃して主砲みたいな感じ」「その夜の武器の使い方に応じて3種類がそれぞれ溜まる。ボタン3つ」）。
 // どれも最初に桜の竜巻でまわりの狼を吸い寄せる（竜巻そのものは斬らない・アマネさん「竜巻は全部残す。ダメージはない。吸い寄せのみ」）。
 // そのあと主人公が体ごと暴れて（連撃）、最後に大きく決める（締め）。2026-10-04 アマネさん「千本桜はナイフ持ちながら画面左右に駆け抜けて、
@@ -121,7 +127,7 @@ export const SPECIAL_ORDER: Special[] = ['senbon', 'nagare', 'midare'];
 export const SPECIALS: Record<Special, { name: string; icon: string; share: number }> = {
   // share：その夜の狼の体力の合計のうち、この割合をその武器で削ると満タン
   senbon: { name: '千本桜', icon: 'knife', share: 0.45 }, // 斬り（連撃・突進・斬り上げ・叩き落とし・回転）で溜まる
-  nagare: { name: '桜流れ矢', icon: 'bow', share: 0.1 }, // 弓（自動の弓・矢の雨）で溜まる
+  nagare: { name: '桜流れ矢', icon: 'bow', share: 0.1 }, // 弓（弓・矢の雨）で溜まる
   midare: { name: '主砲乱れ撃ち', icon: 'cannon', share: 0.16 }, // 主砲（長押し・撃ち込み・連撃の締めの主砲）で溜まる
 };
 export const OURAN = {
@@ -142,76 +148,80 @@ export const OURAN = {
 };
 export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数が0に戻る
 
-// ── 昼に買うもの：体力・近接・主砲の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」
-// 「技選択までボタン増えると多くてしんどい」）。技は近接・遠隔の段を上げると自然に覚える ──
-export type Track = 'body' | 'near' | 'far' | 'dog';
-export type SkillId = 'ame' | 'hougeki';
-export interface Perk {
-  note: string; // 昼のボタンに出す「次は何が起きるか」
-  hp?: number;
-  finish?: number; // 締めの威力 +割合
-  learn?: SkillId;
-  power?: number; // その系統の威力 +割合
-  rate?: number; // 弓の速さ +割合
-  charge?: number; // 溜めの速さ +割合
-  dogHp?: number; // 番犬の体力 +割合
-  dogPower?: number; // 番犬の噛む力 +割合
-  dogRevive?: number; // 番犬が戻るまでの時間 -割合
-  dogSpeed?: number; // 番犬の速さ +割合
-}
-export const TRACK_COSTS = [80, 180, 340, 560, 850, 1200]; // 2026-10-04 99晩のあいだ鍛え続けられるよう、狼の賞金を減らして値段を上げた（自動操作で15晩目に全部上がった）
-export const TRACKS: Record<Track, { name: string; perks: Perk[] }> = {
-  body: {
-    name: '体力',
-    perks: [
-      { note: '体力 +50', hp: 50 },
-      { note: '体力 +50', hp: 50 },
-      { note: '体力 +60', hp: 60 },
-      { note: '体力 +60', hp: 60 },
-      { note: '体力 +80', hp: 80 },
-    ],
-  },
-  // はじく技（突進・斬り上げ・叩き落とし・主砲）は最初から。段で伸ばすのは手数・威力と、自動の技
-  near: {
-    name: '近接',
-    perks: [
-      // コンボは4拍子で長さは変わらない・締めは最初から全部使える（2026-10-05）。段で伸ばすのは威力
-      { note: '締めの威力 +3割', finish: 0.3 },
-      { note: '近接の威力 +2割', power: 0.2 },
-      { note: '締めの威力 +3割', finish: 0.3 },
-      { note: '近接の威力 +2割', power: 0.2 },
-      { note: '締めの威力 +4割', finish: 0.4 },
-      { note: '近接の威力 +3割', power: 0.3 },
-    ],
-  },
-  far: {
-    name: '主砲・弓',
-    perks: [
-      { note: '主砲と弓の威力 +2割', power: 0.2 },
-      { note: '溜めが3割速く', charge: 0.3 },
-      { note: '弓が群れに矢の雨', learn: 'ame' },
-      { note: '弓が3割速く', rate: 0.3 },
-      { note: '満タンの主砲で4連装の砲弾も撃つ', learn: 'hougeki' },
-      { note: '主砲と弓の威力 +3割', power: 0.3 },
-    ],
-  },
-  // 番犬（2026-10-04 アマネさん。番犬の費用がなくなり、40晩あたりで銭の使い道がなくなったので）
-  dog: {
-    name: '番犬',
-    perks: [
-      { note: '番犬の体力 +3割', dogHp: 0.3 },
-      { note: '番犬の噛む力 +3割', dogPower: 0.3 },
-      { note: '倒れても半分の時間で戻る', dogRevive: 0.5 },
-      { note: '番犬の体力 +4割', dogHp: 0.4 },
-      { note: '番犬が2割速く走る', dogSpeed: 0.2 },
-      { note: '番犬の噛む力 +5割', dogPower: 0.5 },
-    ],
-  },
+// ── 昼に買うもの：10個（2026-10-05 アマネさん「強化はわかりやすいのがいい。安めの金額で攻撃力アップ、高い金額で機能アップ」
+// 「今の強化は比率でアップしたり機能もアップしたりルールわからん」）。列は 体力・ナイフ・主砲・弓・番犬 の5つ。
+// 上段（基本）：安い・何回でも・毎回同じだけ上がる（攻撃力は足し算で +10% ずつ）。下段（特殊）：高い・各3つを順に・新しいことができる ──
+export type Track = 'body' | 'knife' | 'cannon' | 'bow' | 'dog';
+export const TRACK_ORDER: Track[] = ['body', 'knife', 'cannon', 'bow', 'dog'];
+export const TRACK_NAME: Record<Track, string> = { body: '体力', knife: 'ナイフ', cannon: '主砲', bow: '弓', dog: '番犬' };
+// 上段：1回で step 上がる（体力は数、ほかは割合・足し算）。値段は買った回数 n で 1.35倍ずつ（最初は安く、たくさん買うほど高い）。
+// 2026-10-05 +10%・値段 60+25n だと、自動操作が40晩で +100%・99晩で +400% になり、後半は何もしなくても勝てた。
+// 前の強化（99晩で近接の威力 約2倍）に合わせ、+5%・1.35倍に：30晩で約+50%・99晩で約+100%（1つの列に約20回）
+export const BASIC: Record<Track, { note: string; step: number }> = {
+  body: { note: '体力 +20', step: 20 },
+  knife: { note: '攻撃力 +5%', step: 0.05 },
+  cannon: { note: '攻撃力 +5%', step: 0.05 },
+  bow: { note: '攻撃力 +5%', step: 0.05 },
+  dog: { note: '体力・噛む力 +5%', step: 0.05 },
 };
-// 段を上げきったあとも「修練」で少しずつ伸びる（銭がいつまでも使える）。1段ごとの伸びと、値段
-// 2026-10-04 1段 +5% / 値段 +250 では自動操作が99晩を守りきった（前は80晩で止まった）→ 伸びを小さく、値段の上がり方を急に
-export const TRAIN = { cost: (n: number) => 1300 + 450 * n, body: 10, near: 0.03, far: 0.03, dog: 0.05 };
-export const TRAIN_NOTE: Record<Track, string> = { body: '修練：体力 +10', near: '修練：近接の威力 +3%', far: '修練：主砲と弓の威力 +3%', dog: '修練：番犬の体力と噛む力 +5%' };
+export const basicCost = (n: number) => Math.round((25 * 1.35 ** n) / 5) * 5;
+// 下段：順に覚える。id で効き目を見る
+export type UpId =
+  | 'rise' | 'tough' | 'regen' // 体力：起き上がりが早い・ひるみにくい・体力が少しずつ戻る
+  | 'dashFar' | 'finBig' | 'drain' // ナイフ：突進が遠くまで・締めの威力 1.5倍・斬ると体力が戻る
+  | 'quick' | 'cool' | 'hougeki' // 主砲：溜めが速く・熱の上限 +1・4連装の撃ち込み
+  | 'draw' | 'ame' | 'pierce' // 弓：引く速さ・矢の雨・貫く数 +2
+  | 'akita' | 'tosa' | 'dogRevive'; // 番犬：秋田を仲間に・土佐を仲間に・倒れても半分の時間で戻る
+export const SPECIAL_UPS: Record<Track, { id: UpId; note: string }[]> = {
+  body: [
+    { id: 'rise', note: '倒れても早く起きる' },
+    { id: 'tough', note: '噛まれてもひるみにくい' },
+    { id: 'regen', note: '体力が少しずつ戻る' },
+  ],
+  knife: [
+    { id: 'dashFar', note: '突進が遠くまで' },
+    { id: 'finBig', note: '締めの威力 1.5倍' },
+    { id: 'drain', note: '斬ると体力が戻る' },
+  ],
+  cannon: [
+    { id: 'quick', note: '溜めが速く' },
+    { id: 'cool', note: '熱の上限 +1' },
+    { id: 'hougeki', note: '満タンで4連装の砲弾' },
+  ],
+  bow: [
+    { id: 'draw', note: '弓を引くのが速く' },
+    { id: 'ame', note: '群れに矢の雨' },
+    { id: 'pierce', note: '矢が貫く数 +2' },
+  ],
+  dog: [
+    { id: 'akita', note: '秋田（白雪）が仲間に' },
+    { id: 'tosa', note: '土佐（鉄丸）が仲間に' },
+    { id: 'dogRevive', note: '倒れても半分の時間で戻る' },
+  ],
+};
+export const SPECIAL_COSTS = [300, 700, 1200];
+// デバッグモードの「強化をその晩らしく」：自動操作（scripts/bot.mjs）がその晩の前の昼に着いていた強化。[晩, 上段の回数（5つの平均）, 下段の数（5つの平均）]
+export const GROWTH_TABLE: [number, number, number][] = [[1, 0, 0], [10, 3, 0], [30, 8, 1], [60, 14, 2], [99, 20, 3]];
+// 下段の効き目の数値
+export const UP = {
+  rise: 0.6, // 倒れている時間の倍率
+  tough: 1.6, // 噛まれてひるんだあと、ひるまない秒（ふつう 0.7）
+  regen: 0.01, // 1秒に体力の何割が戻る
+  dashFar: 1.5, // 突進の距離の倍率
+  finBig: 1.5,
+  drain: 0.01, // 斬って当てるたび、体力の何割が戻る
+  quick: 0.3, // 溜めの速さ +割合
+  draw: 0.3, // 弓を引く速さ +割合
+  pierce: 2,
+};
+// 前の版（v3 まで）の強化の値段。読み込むとき、使った銭を返す（作りが変わったので買い直してもらう）
+export const OLD_TRACK_COSTS = [80, 180, 340, 560, 850, 1200];
+export const OLD_TRAIN_COST = (n: number) => 1300 + 450 * n;
+
+// 主砲の熱（2026-10-05 アマネさん「主砲の温度が上昇して一定に達するとしばらく使えなくなる。連続使用の制限。5回とか」）。
+// 半チャージ 0.5・満タン 1（撃ち込みもまとめて1）・零距離主砲 0。撃っている間は冷えない：最後に撃ってから wait 秒たつと rate/秒で冷める。
+// max でオーバーヒート：lock 秒撃てない（そのあと 0）
+export const HEAT = { half: 0.5, full: 1, max: 5, wait: 1.5, rate: 1, lock: 10 };
 // 家の修繕（昼に銭で買う）。値段は晩が進むほど少し上がる
 export const REPAIR = { hp: 150, cost: (wave: number) => 60 + 4 * wave };
 export const DAWN_REPAIR = 100; // 夜が明けると家が直る（家の修繕を買う代わり。案）

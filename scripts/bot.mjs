@@ -1,15 +1,25 @@
 /*
- * 素朴な自動操作（指一本アクションの版・2026-10-04）。撮影（capture.js）と難しさの計測（balance.mjs）で同じものを使う。
+ * 素朴な自動操作（指一本アクションの版・2026-10-05 タップ＝持っている武器で攻撃・自動の攻撃なし・主砲の熱）。撮影（capture.js）と難しさの計測（balance.mjs）で同じものを使う。
  * 0.1秒ごとに呼ぶ（指を動かすのは1秒に4回まで）。mem は呼び出しをまたいで覚えておく入れ物。
- *   昼：近接→体力→主砲→番犬の順に買えるだけ（段を上げきったら修練）。家が傷んでいれば直す。番犬3匹は自分で動く（dogs=false なら全員休ませる＝計測用）
- *   夜：近い狼をタップで斬る。連撃の途中で上・下にはじく。離れた群れへは突進。家に狼が迫れば地図で駆けつける。
- *       群れが目の前に3匹以上なら溜めて主砲。桜嵐は溜まったら押す
+ *   昼：下段（特殊）を買えるだけ（番犬→主砲→弓→ナイフ→体力の順）、残りは上段（基本）を安い順に。家が傷んでいれば直す。番犬は自分で動く（dogs=false なら全員休ませる＝計測用）
+ *   夜：近い狼にはナイフでタップ（連撃の途中で上・下にはじく）。離れた狼には弓に持ち替えてタップ。離れた群れへは突進。家に狼が迫れば地図で駆けつける。
+ *       群れが目の前に3匹以上なら溜めて主砲（熱があふれそうなら撃たない）。桜嵐は溜まったら押す
  * 文字列にしてページの中でも動かすので、外の変数は使わない。
  */
 export function bot(s, mem, dogs = true) {
   if (s.phase === 'shop') {
-    for (let i = 0; i < 6; i++) for (const t of ['near', 'body', 'far', 'dog']) s.buy(t);
     if (s.houseHp < 450) s.repair();
+    for (let i = 0; i < 40; i++) {
+      let bought = false;
+      for (const t of ['dog', 'cannon', 'bow', 'knife', 'body']) if (s.buy(t, 'special')) bought = true;
+      if (bought) continue;
+      // 下段がまだ残っているなら、その分は少し取っておく（上段ばかり買って下段に届かない、を避ける）
+      const next = Math.min(...['dog', 'cannon', 'bow', 'knife', 'body'].map((t) => s.specialCost(t)));
+      const tracks = ['knife', 'body', 'cannon', 'bow', 'dog'].sort((a, b) => s.basicCost(a) - s.basicCost(b));
+      const t = tracks[0];
+      if (Number.isFinite(next) && s.coins - s.basicCost(t) < next * 0.5) break;
+      if (!s.buy(t, 'basic')) break;
+    }
     s.nextWave();
     if (!dogs) s.dogs = [];
     mem.charging = 0;
@@ -42,17 +52,21 @@ export function bot(s, mem, dogs = true) {
       if (Math.abs(h.x - c) < 190) { s.flick(toward > 0 ? 'right' : 'left'); return; }
     }
     const want = king.mode === 'down' ? 'senbon' : king.seq?.[king.markIdx ?? 0];
-    if (want === 'nagare') { // 弓：離れて待つ（自動の弓が射る）
+    if (want === 'nagare') { // 弓：離れて射る（離れるのは小さい地図で駆けつける）
       const away = h.x <= king.x ? Math.max(90, king.x - 430) : Math.min(800, king.x + 430);
-      if (Math.abs(h.x - away) > 40) s.runTo(away, king.lane);
+      if (Math.abs(h.x - away) > 120) { s.runTo(away, king.lane, true); return; }
+      if (s.weapon !== 'bow') s.switchWeapon('bow');
+      s.tap(king.x, king.lane, king.id);
       return;
     }
     if (want === 'midare') { // 主砲：長押しで溜めて離す
-      if (Math.abs(h.x - king.x) > 400) { s.runTo(king.x - 300, king.lane); return; }
+      if (Math.abs(h.x - king.x) > 400) { s.runTo(king.x - 300, king.lane, true); return; }
+      if (h.overheat > 0) return;
       s.holdStart();
       mem.charging = 1.1;
       return;
     }
+    if (s.weapon !== 'knife') s.switchWeapon('knife');
     s.tap(king.x, king.lane, king.id);
     return;
   }
@@ -71,15 +85,19 @@ export function bot(s, mem, dogs = true) {
   // 遠吠えは放っておくと子狼を呼び続けるので、家が危なくなければ倒しに行く（人もそうする）
   const howler = ws.find((w) => w.kind === 'howler' && w.x <= 640 && w.age > 0.5);
   if (howler && Math.random() < 0.6) {
+    if (Math.abs(howler.x - h.x) > 200) { if (s.weapon !== 'bow') s.switchWeapon('bow'); }
+    else if (s.weapon !== 'knife') s.switchWeapon('knife');
     s.tap(howler.x, howler.lane, howler.id);
     return;
   }
-  if (near.length >= 3 && Math.random() < 0.15) {
+  // 主砲：熱があふれない（満タン1発ぶんの余裕がある）ときだけ
+  if (near.length >= 3 && h.overheat <= 0 && h.heat + 1 < s.heatMax && Math.random() < 0.15) {
     s.holdStart();
     mem.charging = 1.2;
     return;
   }
   if (near.length) {
+    if (s.weapon !== 'knife') s.switchWeapon('knife');
     const t = near.reduce((a, b) => (Math.abs(a.x - h.x) < Math.abs(b.x - h.x) ? a : b));
     const r = Math.random();
     if (t.z > 30 && r < 0.3) s.flick('down');
@@ -88,6 +106,14 @@ export function bot(s, mem, dogs = true) {
     return;
   }
   const t = ws.reduce((a, b) => (Math.abs(a.x - h.x) < Math.abs(b.x - h.x) ? a : b));
-  if (Math.abs(t.x - h.x) < 300 && Math.random() < 0.2) s.flick(t.x > h.x ? 'right' : 'left');
+  // 離れた狼：黒（弓に弱い）や遠い狼は弓で。ほかはナイフで走って行くか突進
+  const far = Math.abs(t.x - h.x);
+  if (far > 160 && far <= 520 && (t.color === 'black' || Math.random() < 0.5)) {
+    if (s.weapon !== 'bow') s.switchWeapon('bow');
+    s.tap(t.x, t.lane);
+    return;
+  }
+  if (s.weapon !== 'knife') s.switchWeapon('knife');
+  if (far < 400 && Math.random() < 0.2) s.flick(t.x > h.x ? 'right' : 'left');
   else s.tap(t.x, t.lane);
 }

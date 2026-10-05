@@ -1,11 +1,11 @@
 // 戦いの中身。描画を知らない。固定ステップで進め、同じ入力なら同じ結果になる。
-// 指一本アクション（2026-10-04）：プレイヤーの指で技を出す。触っていないときは軽く自動で斬り、弓で補助する。
+// 指一本アクション（2026-10-04）：プレイヤーの指で技を出す。自動の攻撃はない（2026-10-05）。タップは持っている武器（ナイフ／弓）で攻撃。
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
-  AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
+  BASIC, BODY, BOW, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
-  DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
-  type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
+  DAWN_REPAIR, DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, REPAIR, SPECIAL_COSTS, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus,
+  type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Special, type Track, type UpId, type WolfColor, type WolfKind,
 } from './config';
 import { dogScale, hpScale, mood, newColors, night, SURGE_WARN, themeColors, type Mood } from './nights';
 
@@ -63,7 +63,8 @@ export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; 
 // sp：必殺技が出したもの（当てても必殺技は溜まらない）。fromZ：跳んだ高さから放つ。big：大きい矢・giant：奥行き全部を貫く大きな一本
 export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean }
 // 主砲の撃ち込み：4連装の砲身から真っすぐ飛ぶ砲弾。通り道の狼を貫き、届く所まで行くと爆ぜる（t が負のあいだはまだ撃っていない）
-export interface Shell { x: number; dir: number; t: number; lane: number; left: number; damage: number; area: number; hit: number[] }
+// row：どの砲口から出たか（0〜3。2本の砲×上下2段。描画の高さ）
+export interface Shell { x: number; dir: number; t: number; lane: number; left: number; damage: number; area: number; hit: number[]; row: number }
 export type FxKind = 'howl' | 'wake' | 'sunfade' | 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge' | 'beam';
 export interface Fx {
   id: number;
@@ -81,14 +82,17 @@ export type Result = 'playing' | 'won' | 'lost';
 // lead：最初の晩の前／wave：夜（戦闘中）／shop：昼（鍛える・番犬の役目を決める。「夜を迎える」で進む）
 export type Phase = 'lead' | 'wave' | 'shop';
 // 画面の演出と主人公の吹き出しのための出来事（main が受け取って消す）
-export type Sound = 'swing' | 'hit' | 'heavy' | 'slam' | 'boom' | 'bow' | 'hurt' | 'ouran' | 'horn' | 'buy' | 'dash' | 'charge' | 'full' | 'jump';
-export type Event = 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge' | 'combo10' | 'combo30' | 'newface' | 'weak' | 'kingdown' | 'kingdie';
+export type Sound = 'swing' | 'hit' | 'heavy' | 'slam' | 'boom' | 'bow' | 'hurt' | 'ouran' | 'horn' | 'buy' | 'dash' | 'charge' | 'full' | 'jump' | 'steam';
+export type Event = 'overheat' | 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge' | 'combo10' | 'combo30' | 'newface' | 'weak' | 'kingdown' | 'kingdie';
 
+// v4（2026-10-05）：強化は 上段（basic・何回でも）と 下段（special・各3つ）の10個。武器の持ち替え（weapon）
 export interface Save {
-  v: 3; wave: number; coins: number; houseHp: number; levels: Record<Track, number>; kills: number; bestCombo: number;
-  roles: Record<DogKind, DogRole>; losses: number;
+  v: 4; wave: number; coins: number; houseHp: number; basic: Record<Track, number>; special: Record<Track, number>; kills: number; bestCombo: number;
+  roles: Record<DogKind, DogRole>; losses: number; weapon?: Weapon;
 }
-type OldSave = Omit<Save, 'v' | 'roles' | 'losses'> & { v: 1 | 2; losses?: number };
+// v3 まで：体力・近接・主砲と弓・番犬の4本の段（levels）。読み込むとき、使った銭を返す
+type OldSave = Omit<Save, 'v' | 'basic' | 'special' | 'roles' | 'losses' | 'weapon'> & { v: 1 | 2 | 3; levels: Record<string, number>; roles?: Record<DogKind, DogRole>; losses?: number };
+export type Weapon = 'knife' | 'bow';
 
 interface Spawner { kind: WolfKind; color?: WolfColor; left: number; interval: number; next: number; surge: boolean; warned: boolean }
 type Flick = 'left' | 'right' | 'up' | 'down';
@@ -107,7 +111,7 @@ export interface Hero {
   lungeTo: number | null; // 踏み込みの行き先
   lungeLane: number;
   dashHit: number[]; // 突進で斬った狼
-  auto: boolean; // 自動で出した技（連撃の手数を進めない）
+  auto: boolean; // 自分で出していない技（連撃の手数を進めない）。2026-10-05 自動の攻撃はやめたので、いまは使わない
   step: number; // 連撃の何手目か
   down: number; // 倒れている残り秒数
   stun: number;
@@ -125,13 +129,15 @@ export interface Hero {
   facing0: 1 | -1; // 必殺技を始めたときの向き
   aimX: number; // 主砲を向ける先
   aimLane: number;
+  aimId: number; // 乱れ撃ちで撃った狼（砲身をその狼へ向ける。0 は無し）
   ouranTick: number;
   facing: 1 | -1;
   order: { x: number; lane: number; target: number; sprint: boolean } | null; // 走って行く先（target は着いたら斬る狼）
   running: number; // 走っている速さ（描画の脚と土煙）
   charge: number; // 主砲の溜め（秒）。溜めていなければ -1
-  autoT: number;
-  bowT: number;
+  heat: number; // 主砲の熱（0〜上限）。上限でオーバーヒート
+  heatWait: number; // 最後に撃ってからの秒（HEAT.wait を過ぎると冷める）
+  overheat: number; // オーバーヒートの残り秒（0 なら撃てる）
   beat: Beat | null; // 出している技が何の拍か（自動の技・締めは null）
   fin: Finisher | null; // 出している締め
   finMul: number; // 締めの威力の倍率（空中連舞は続く技にも）
@@ -158,8 +164,8 @@ export class Sim {
 
   hero: Hero = {
     x: GIRL_X + 60, lane: 0.5, z: 0, vz: 0, hp: HERO.hp, move: null, moveT: 0, moveTarget: 0, dashTo: 0, lungeTo: null, lungeLane: 0.5,
-    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, special: 'senbon', spT: 0, spX: 0, spLane: 0.5, spShot: -1, spFire: 0, facing0: 1, aimX: 0, aimLane: 0.5, ouranTick: 0, facing: 1,
-    order: null, running: 0, charge: -1, autoT: 0, bowT: 0, beat: null, fin: null, finMul: 1, seq: [], follow: false,
+    dashHit: [], jumps: 0, auto: false, step: 0, down: 0, stun: 0, iframes: 0, armor: 0, hitFlash: 0, ouran: 0, special: 'senbon', spT: 0, spX: 0, spLane: 0.5, spShot: -1, spFire: 0, facing0: 1, aimX: 0, aimLane: 0.5, aimId: 0, ouranTick: 0, facing: 1,
+    order: null, running: 0, charge: -1, heat: 0, heatWait: 99, overheat: 0, beat: null, fin: null, finMul: 1, seq: [], follow: false,
   };
   gauges: Record<Special, number> = { senbon: 0, nagare: 0, midare: 0 }; // 必殺技3つのゲージ（0〜100）
   // いちばん溜まっているゲージ。代入すると3つとも（点検・撮影の台本が s.gauge=100 を使う）
@@ -199,7 +205,9 @@ export class Sim {
   fx: Fx[] = [];
 
   cds: Record<'kaiten' | 'tosshin' | 'ame' | 'hougeki', number> = { kaiten: 0, tosshin: 0, ame: 0, hougeki: 0 };
-  levels: Record<Track, number> = { body: 0, near: 0, far: 0, dog: 0 };
+  basic: Record<Track, number> = { body: 0, knife: 0, cannon: 0, bow: 0, dog: 0 }; // 上段：買った回数
+  special: Record<Track, number> = { body: 0, knife: 0, cannon: 0, bow: 0, dog: 0 }; // 下段：覚えた数（0〜3）
+  weapon: Weapon = 'knife'; // 持っている武器（ボタンで持ち替え）
 
   private spawners: Spawner[] = [];
   // まもなく裂け目から出てくる狼（画面の予告：裂け目の中で赤い目が開く）。next＝出てくるまでの秒
@@ -219,64 +227,79 @@ export class Sim {
   // 保存は夜明け（昼の始まり）だけ。家が落ちたら、この保存（その晩の前の昼）に戻る（2026-10-04）
   save(): Save {
     return {
-      v: 3, wave: this.wave, coins: Math.floor(this.coins), houseHp: this.houseHp, levels: { ...this.levels }, kills: this.kills,
-      bestCombo: this.bestCombo, roles: { ...this.roles }, losses: this.losses,
+      v: 4, wave: this.wave, coins: Math.floor(this.coins), houseHp: this.houseHp, basic: { ...this.basic }, special: { ...this.special }, kills: this.kills,
+      bestCombo: this.bestCombo, roles: { ...this.roles }, losses: this.losses, weapon: this.weapon,
     };
   }
 
   static load(d: Save | OldSave, seed: number) {
     const s = new Sim(seed);
     s.wave = d.wave;
-    s.coins = d.coins;
+    s.coins = d.coins; // 前の版なら、このあと強化に使った銭を足す
     s.houseHp = d.houseHp;
-    s.levels = { ...s.levels, ...d.levels };
+    if (d.v === 4) {
+      s.basic = { ...s.basic, ...d.basic };
+      s.special = { ...s.special, ...d.special };
+      if (d.weapon) s.weapon = d.weapon;
+    } else {
+      // 前の強化（4本の段）は作りが変わったので、使った銭を全部返して買い直してもらう（2026-10-05 アマネさん）
+      for (const lv of Object.values(d.levels ?? {})) {
+        for (let i = 0; i < lv; i++) s.coins += i < OLD_TRACK_COSTS.length ? OLD_TRACK_COSTS[i] : OLD_TRAIN_COST(i - OLD_TRACK_COSTS.length);
+      }
+    }
     s.kills = d.kills;
     s.bestCombo = d.bestCombo;
     s.losses = d.losses ?? 0;
-    if (d.v === 3) s.roles = { ...s.roles, ...d.roles };
+    if (d.roles) s.roles = { ...s.roles, ...d.roles };
     s.phase = 'shop';
     s.hero.hp = s.maxHp;
     return s;
   }
 
-  // 3本の段から、いま効いているものを数える
-  private perks(t: Track): Perk[] {
-    return TRACKS[t].perks.slice(0, this.levels[t]);
+  // 下段で覚えたか
+  has(id: UpId) {
+    for (const t of TRACK_ORDER) if (SPECIAL_UPS[t].slice(0, this.special[t]).some((u) => u.id === id)) return true;
+    return false;
   }
-  private sum(t: Track, key: 'hp' | 'finish' | 'power' | 'rate' | 'charge' | 'dogHp' | 'dogPower' | 'dogRevive' | 'dogSpeed') {
-    return this.perks(t).reduce((n, p) => n + (p[key] ?? 0), 0);
-  }
-  // 段を上げきったあとの修練の回数
-  trained(t: Track) {
-    return Math.max(0, this.levels[t] - TRACKS[t].perks.length);
+  // 上段：攻撃力などの倍率（足し算で +10% ずつ）
+  private boost(t: Track) {
+    return 1 + BASIC[t].step * this.basic[t];
   }
   get dogHpMul() {
-    return 1 + this.sum('dog', 'dogHp') + TRAIN.dog * this.trained('dog');
+    return this.boost('dog');
   }
   get dogPowerMul() {
-    return 1 + this.sum('dog', 'dogPower') + TRAIN.dog * this.trained('dog');
+    return this.boost('dog');
   }
   // 狼の噛む力も晩ごとに少しずつ強くなる（体力の伸びと同じ割合）
   private get bite() {
     return hpScale(this.wave + 1);
   }
   get maxHp() {
-    return HERO.hp + this.sum('body', 'hp') + TRAIN.body * this.trained('body');
+    return HERO.hp + BASIC.body.step * this.basic.body;
   }
   private get nearPower() {
-    return 1 + this.sum('near', 'power') + TRAIN.near * this.trained('near');
+    return this.boost('knife');
   }
-  private get farPower() {
-    return 1 + this.sum('far', 'power') + TRAIN.far * this.trained('far');
+  private get cannonPower() {
+    return this.boost('cannon');
+  }
+  private get bowPower() {
+    return this.boost('bow');
   }
   get chargeFull() {
-    return CHARGE.full / (1 + this.sum('far', 'charge'));
+    return CHARGE.full / (1 + (this.has('quick') ? UP.quick : 0));
   }
   get chargeMin() {
-    return CHARGE.min / (1 + this.sum('far', 'charge'));
+    return CHARGE.min / (1 + (this.has('quick') ? UP.quick : 0));
   }
-  knows(id: SkillId) {
-    return [...this.perks('near'), ...this.perks('far')].some((p) => p.learn === id);
+  // 主砲の熱の上限（下段「熱の上限 +1」で 6）
+  get heatMax() {
+    return HEAT.max + (this.has('cool') ? 1 : 0);
+  }
+  // 番犬：最初は柴だけ。下段で秋田・土佐が仲間に
+  get dogKinds(): DogKind[] {
+    return DOG_ORDER.filter((k) => k === 'shiba' || this.has(k as UpId));
   }
 
   // ── 入力（夜）──
@@ -291,7 +314,6 @@ export class Sim {
     const h = this.hero;
     if (!this.canAct) return;
     if (h.charge >= 0) return;
-    // 自動の斬り・弓はいつでも指の操作で打ち消せる
     const busy = h.stun > 0 || (h.move && !h.auto && !(cancel && h.move !== 'tosshin' && h.moveT >= MOVES[h.move].dur * 0.5));
     if (!busy) {
       if (h.move) h.move = null;
@@ -301,37 +323,58 @@ export class Sim {
     this.queued = { act, t: this.clock };
   }
 
-  // 戦場のタップ。狼に触れたらその狼を斬りに行く／主人公の近くなら、その向きの狼を斬る／それ以外はそこへ走る
+  // 戦場のタップ（2026-10-05）：触った所にいちばん近い狼を、持っている武器で攻撃する。ナイフはその狼まで走って行って斬る、弓はその場から撃つ。
+  // 近くに狼がいなければ、触った側へ空振り。地面をタップして走るのはやめた（移動ははじく・小さい地図。アマネさん「はじくのほうが直感的」）
   // wolfId：画面で狼の絵に触れたとき（view が絵の範囲で決める）。地面の位置から探すと、絵の上の方に触れたときに外れた
   tap(x: number, lane: number, wolfId = 0) {
     if (!this.canAct) return;
     const h = this.hero;
     let best: Wolf | undefined = wolfId ? this.wolves.find((w) => w.id === wolfId) : undefined;
-    let bd = best ? -1 : Infinity;
-    for (const w of this.wolves) {
-      if (bd < 0) break;
-      const dx = Math.abs(w.x - x);
-      if (dx > w.size / 2 + 45) continue;
-      const d = dx + Math.abs(w.lane - lane) * 140;
-      if (d < bd) { bd = d; best = w; }
+    if (!best) {
+      let bd = TAP_REACH;
+      for (const w of this.wolves) {
+        if (w.age < 0.4) continue;
+        const d = Math.max(0, Math.abs(w.x - x) - w.size / 2) + Math.abs(w.lane - lane) * 140;
+        if (d < bd) { bd = d; best = w; }
+      }
     }
-    if (best) {
-      const t = best;
-      this.did.tap++;
-      return this.queue(() => this.attack(t));
+    const t = best;
+    const dir = (Math.sign(x - h.x) || h.facing) as 1 | -1;
+    if (this.weapon === 'bow') {
+      this.did.bow++;
+      return this.queue(() => this.shoot(t, x, dir));
     }
-    if (Math.abs(x - h.x) <= 120 && Math.abs(lane - h.lane) > 0.3) {
-      // 主人公の近くでも、奥行きが離れた地面なら、そこへ動く（奥行きのずれた狼を追えなかった）
-      this.runTo(x, lane);
-      return;
+    this.did.tap++;
+    if (t) return this.queue(() => this.attack(t));
+    return this.queue(() => this.attack(undefined, dir));
+  }
+
+  // 武器の持ち替え（ナイフ⇔弓）。技の途中でもすぐ替わる（次のタップから）
+  switchWeapon(w?: Weapon) {
+    this.weapon = w ?? (this.weapon === 'knife' ? 'bow' : 'knife');
+    this.sounds.push('buy');
+  }
+
+  // 弓：その場から撃つ。狙った狼が届かなければ、触った側の届くいちばん近い狼。それもいなければ触った所へ空撃ち。
+  // 群れ（BOW.crowd 匹以上）を狙って、矢の雨を覚えていて使えるなら矢の雨
+  private shoot(t: Wolf | undefined, x: number, dir: 1 | -1): boolean {
+    const h = this.hero;
+    const range = BOW.range * (this.mood === 'kiri' ? 0.55 : 1);
+    const reach = (w: Wolf) => Math.abs(w.x - h.x) <= range && w.age >= 0.4;
+    if (t && !reach(t)) t = undefined;
+    t ??= this.nearest(this.wolves.filter((w) => reach(w) && (w.x - h.x) * dir >= -20), h.x);
+    h.order = null;
+    if (t) h.facing = t.x >= h.x ? 1 : -1;
+    else h.facing = dir;
+    if (t && this.has('ame') && this.cds.ame <= 0) {
+      const n = this.wolves.filter((w) => reach(w) && Math.abs(w.x - t!.x) <= BOW.crowdSpan && Math.abs(w.lane - t!.lane) <= 0.6).length;
+      if (n >= BOW.crowd) {
+        this.startMove('ame', 0, t.x);
+        return true;
+      }
     }
-    if (Math.abs(x - h.x) <= 120) {
-      // 主人公の近く：触れた側を先に、いなければ反対側でも、届く狼を斬る
-      const dir = (Math.sign(x - h.x) || h.facing) as 1 | -1;
-      this.did.tap++;
-      return this.queue(() => this.attack(undefined, dir));
-    }
-    this.runTo(x, lane);
+    this.startMove('bow', t?.id ?? 0, clamp(h.x + dir * Math.min(range, Math.abs(x - h.x) || range), HOUSE_X, WOLF_SPAWN_X));
+    return true;
   }
 
   // 走って行く。sprint は小さい地図のタップ（駆けつける）
@@ -365,6 +408,12 @@ export class Sim {
   holdStart() {
     if (!this.canAct) return;
     const h = this.hero;
+    // オーバーヒート中は溜められない（連撃の締めの零距離主砲だけは熱を使わないので撃てる）
+    if (h.overheat > 0 && !this.atFinish) {
+      this.holdWanted = false;
+      this.sounds.push('steam');
+      return;
+    }
     if ((h.move && !h.auto) || h.stun > 0) {
       this.holdWanted = true; // 技の途中なら、終わってから溜めに入る（押したのに何も起きない、をなくす）
       return;
@@ -389,6 +438,7 @@ export class Sim {
     if (!this.canAct) return 'none';
     const fin = this.atFinish && c >= COMBO.reishiki; // 4発目：零距離主砲（短い溜めで満タンの主砲）
     if (c < this.chargeMin && !fin) return 'short';
+    if (h.overheat > 0 && !fin) return 'none';
     h.stun = 0;
     const full = fin || c >= this.chargeFull;
     const t = this.nearest(this.wolves.filter((w) => Math.abs(w.lane - h.lane) <= 0.6), h.x);
@@ -397,6 +447,17 @@ export class Sim {
     if (fin) this.startFinish('reishiki');
     this.did.shiki++;
     h.dashTo = full ? 2 : 1; // 溜めの段（strike で使う）
+    // 熱：半チャージ 0.5・満タン 1・零距離主砲 0。上限でオーバーヒート
+    if (!fin) {
+      h.heat += full ? HEAT.full : HEAT.half;
+      h.heatWait = 0;
+      if (h.heat >= this.heatMax - 1e-6) {
+        h.heat = this.heatMax;
+        h.overheat = HEAT.lock;
+        this.events.push('overheat');
+        this.sounds.push('steam');
+      }
+    }
     return 'fired';
   }
 
@@ -455,7 +516,7 @@ export class Sim {
     if (this.cds.tosshin > 0 && !fin) return false;
     h.facing = dir;
     h.order = null;
-    this.startMove('tosshin', 0, clamp(h.x + dir * DASH.dist * (fin ? COMBO.tsuki : 1), HERO.minX, HERO.maxX));
+    this.startMove('tosshin', 0, clamp(h.x + dir * DASH.dist * (this.has('dashFar') ? UP.dashFar : 1) * (fin ? COMBO.tsuki : 1), HERO.minX, HERO.maxX));
     h.dashHit = [];
     // とまっているカラスを振りほどく
     for (const c of this.wolves) if (c.kind === 'crow' && c.mode === 'cling') this.hit(c, CROW.shake * this.nearPower, { kb: 450, lift: 260, stop: 0.04, stun: 0.6, src: 'senbon' });
@@ -562,14 +623,16 @@ export class Sim {
     return { x: HOUSE_X + 70 + i * 28, lane: [0.2, 0.55, 0.88][i] };
   }
 
-  // ── 昼：体力・近接・主砲のどれかを1段上げる ──
-  trackCost(t: Track): number {
-    const n = TRACKS[t].perks.length;
-    return this.levels[t] < n ? TRACK_COSTS[this.levels[t]] : TRAIN.cost(this.levels[t] - n);
+  // ── 昼：10個の強化。上段（basic）は何回でも、下段（special）は各3つを順に ──
+  basicCost(t: Track): number {
+    return basicCost(this.basic[t]);
   }
-
-  nextPerk(t: Track): Perk {
-    return TRACKS[t].perks[this.levels[t]] ?? { note: TRAIN_NOTE[t] };
+  // 下段の次の1つ（覚えきったら undefined）と値段
+  nextUp(t: Track) {
+    return SPECIAL_UPS[t][this.special[t]];
+  }
+  specialCost(t: Track): number {
+    return SPECIAL_COSTS[this.special[t]] ?? Infinity;
   }
 
   // 家の修繕（昼）
@@ -587,15 +650,15 @@ export class Sim {
     return true;
   }
 
-  canBuy(t: Track) {
-    const cost = this.trackCost(t);
+  canBuy(t: Track, row: 'basic' | 'special' = 'basic') {
+    const cost = row === 'basic' ? this.basicCost(t) : this.specialCost(t);
     return this.phase === 'shop' && this.coins >= cost;
   }
 
-  buy(t: Track) {
-    if (!this.canBuy(t)) return false;
-    this.coins -= this.trackCost(t);
-    this.levels[t]++;
+  buy(t: Track, row: 'basic' | 'special' = 'basic') {
+    if (!this.canBuy(t, row)) return false;
+    this.coins -= row === 'basic' ? this.basicCost(t) : this.specialCost(t);
+    this[row][t]++;
     this.sounds.push('buy');
     return true;
   }
@@ -626,7 +689,7 @@ export class Sim {
     this.nightEarned = 0;
     this.nightDowns = 0;
     this.dogs = [];
-    for (const kind of DOG_ORDER) {
+    for (const kind of this.dogKinds) {
       const s = DOGS[kind];
       const home = Sim.dogHome(kind);
       // 番犬も晩ごとに少し鍛えられる（dogScale。狼より緩い。あとは昼の強化）
@@ -664,7 +727,7 @@ export class Sim {
   get cheer() {
     return this.finale > 0 && this.finale <= CHEER ? CHEER - this.finale : -1;
   }
-  did = { tap: 0, dash: 0, launch: 0, slam: 0, shiki: 0, mini: 0 }; // 指で出した操作の回数（1晩目の「やってみよう」）
+  did = { tap: 0, dash: 0, launch: 0, slam: 0, shiki: 0, mini: 0, bow: 0 }; // 指で出した操作の回数（1晩目の「やってみよう」）
 
   step(dt: number) {
     for (const f of this.fx) f.t += dt;
@@ -1053,7 +1116,7 @@ export class Sim {
         tl = clamp(h.lane + (DOG_ORDER.indexOf(d.kind) - 1) * 0.3, 0, 1);
       }
       tx = clamp(tx, HOUSE_X + 20, DOG_MAX_X);
-      const sp = s.speed * (1 + this.sum('dog', 'dogSpeed')) * (this.finale > 0 ? 2 : 1); // 晩の終わりは急いで駆け寄る
+      const sp = s.speed * (this.finale > 0 ? 2 : 1); // 晩の終わりは急いで駆け寄る
       const dx = clamp(tx - d.x, -sp * dt, sp * dt);
       if (Math.abs(tx - d.x) > 4) d.facing = tx > d.x ? 1 : -1;
       d.x += dx;
@@ -1077,7 +1140,7 @@ export class Sim {
       // 斬りの連打はひるむ（2026-10-04 指の技すべてをひるまなくしたら、連打が最強になった）。
       // ひるむと技も溜めも途切れる。そのあと少しのあいだは、噛まれてもひるまない
       h.stun = HERO.hitStunTime;
-      h.armor = 0.7;
+      h.armor = this.has('tough') ? UP.tough : 0.7;
       this.breakCombo(); // ひるむとコンボが切れる
       h.move = null;
       h.charge = -1;
@@ -1087,7 +1150,7 @@ export class Sim {
     this.kick(3, 0);
     if (h.hp <= 0) {
       h.hp = 0;
-      h.down = this.downFor = Math.min(HERO.reviveMax, HERO.reviveTime + HERO.reviveMore * this.nightDowns);
+      h.down = this.downFor = Math.min(HERO.reviveMax, HERO.reviveTime + HERO.reviveMore * this.nightDowns) * (this.has('rise') ? UP.rise : 1);
       this.nightDowns++;
       this.stats.downs++;
       this.breakCombo();
@@ -1102,9 +1165,14 @@ export class Sim {
     h.hitFlash = Math.max(0, h.hitFlash - dt);
     h.iframes = Math.max(0, h.iframes - dt);
     h.armor = Math.max(0, h.armor - dt);
-    h.autoT -= dt;
-    h.bowT -= dt;
     h.running = 0;
+    // 主砲の熱：撃っている間は冷えない。最後に撃ってから HEAT.wait 秒で冷め始める。オーバーヒート中は lock 秒かけて 0 へ
+    h.heatWait += dt;
+    if (h.overheat > 0) {
+      h.overheat = Math.max(0, h.overheat - dt);
+      h.heat = (this.heatMax * h.overheat) / HEAT.lock;
+    } else if (h.heatWait >= HEAT.wait) h.heat = Math.max(0, h.heat - HEAT.rate * dt);
+    if (this.has('regen') && h.down <= 0 && h.hp > 0) h.hp = Math.min(this.maxHp, h.hp + this.maxHp * UP.regen * dt);
     // 跳び（斬り上げで一緒に跳ぶ）
     if (h.z > 0 || h.vz > 0) {
       h.vz -= BODY.gravity * 1.15 * dt;
@@ -1151,7 +1219,6 @@ export class Sim {
       if (this.clock - q.t <= HERO.buffer && q.act()) return;
     }
     if (h.order) return this.runOrder(dt);
-    this.idle();
   }
 
   private runOrder(dt: number) {
@@ -1192,32 +1259,6 @@ export class Sim {
     }
   }
 
-  // 触っていないとき：目の前の狼を軽く斬る（連撃の手数は進めない）。離れた狼には弓
-  private idle() {
-    const h = this.hero;
-    const inReach = this.wolves.filter((w) => w.z <= 0 && Math.abs(w.lane - h.lane) <= LANE_TOL && this.gap(w) <= MOVES.slash.reach * 0.8);
-    if (inReach.length) {
-      if (h.autoT > 0) return;
-      const t = this.nearest(inReach, h.x)!;
-      h.facing = t.x >= h.x ? 1 : -1;
-      this.startMove('slash', t.id, 0, true);
-      h.autoT = AUTO.slash;
-      return;
-    }
-    if (h.bowT > 0) return;
-    const far = this.wolves.filter((w) => Math.abs(w.x - h.x) <= AUTO.bowRange * (this.mood === 'kiri' ? 0.55 : 1) && w.age > 0.6);
-    // 家へ向かって主人公の後ろへ抜けた狼が先。いなければ前の近い狼
-    const behind = far.filter((w) => w.x < h.x - 30);
-    const t = (behind.length ? behind.reduce((a, b) => (b.x < a.x ? b : a)) : undefined)
-      ?? this.nearest(far.filter((w) => (w.x - h.x) * h.facing > 0), h.x) ?? this.nearest(far, h.x);
-    if (!t) return;
-    h.facing = t.x >= h.x ? 1 : -1;
-    const crowd = this.densest(far);
-    if (crowd && crowd.n >= 3 && this.knows('ame') && this.cds.ame <= 0) this.startMove('ame', 0, crowd.x, true);
-    else this.startMove('bow', t.id, 0, true);
-    h.bowT = AUTO.bow / (1 + this.sum('far', 'rate'));
-  }
-
   private startMove(id: MoveId, targetId: number, at = 0, auto = false) {
     const h = this.hero;
     h.move = id;
@@ -1242,7 +1283,7 @@ export class Sim {
     const id = h.move!;
     const m = MOVES[id];
     const before = h.moveT;
-    h.moveT += dt * (id === 'bow' ? 1 + this.sum('far', 'rate') : 1);
+    h.moveT += dt * (id === 'bow' && this.has('draw') ? 1 + UP.draw : 1);
     const at = m.dur * 0.5;
     if (h.lungeTo !== null && h.moveT < at) {
       h.x += (h.lungeTo - h.x) * Math.min(1, dt * 22);
@@ -1304,13 +1345,14 @@ export class Sim {
   private strike(id: MoveId) {
     const h = this.hero;
     const m = MOVES[id];
-    const far = id === 'bow' || id === 'ame' || id === 'hougeki' || id === 'shiki';
-    let dmg = m.damage * (far ? this.farPower : this.nearPower) * h.finMul;
+    const power = id === 'bow' || id === 'ame' ? this.bowPower : id === 'hougeki' || id === 'shiki' ? this.cannonPower : this.nearPower;
+    let dmg = m.damage * power * h.finMul;
     if (id === 'tosshin') return;
     if (id === 'bow') {
-      const t = this.wolves.find((w) => w.id === h.moveTarget) ?? this.nearest(this.wolves, h.x);
-      // 矢は狙った狼を追いかける（外れて地面に刺さるのが多かった）
+      const t = h.moveTarget ? this.wolves.find((w) => w.id === h.moveTarget) : undefined;
+      // 矢は狙った狼を追いかける（外れて地面に刺さるのが多かった）。狙う狼がいなければ、触った側へ空撃ち
       if (t) this.loose(t.x, t.lane, dmg, 0, false, t.id);
+      else this.loose(h.dashTo, h.lane, dmg);
       return;
     }
     if (id === 'ame') {
@@ -1326,11 +1368,11 @@ export class Sim {
         dmg *= 2;
         area = m.area! * 1.5;
         kb *= 1.3;
-        if (this.knows('hougeki')) {
-          // 4連装：4本の砲身から、少しずつ間をあけて真っすぐ4発（2026-10-05 アマネさん「溜めてドンで真っ直ぐ」「4連装だから4発」。
-          // 前は群れへ山なりに4発落ちて、小銭が飛んでいくように見えた）
+        if (this.has('hougeki')) {
+          // 4連装：2本の砲×上下2段の砲口から、同時に真っすぐ4発（2026-10-05 アマネさん「溜めてドンで真っ直ぐ」「4連装だから4発」
+          // 「4連装で一斉なのにバラバラ」。前は群れへ山なりに落ちた・0.07秒ずつずれていた）
           for (let i = 0; i < 4; i++) {
-            this.shells.push({ x: h.x + h.facing * 40, dir: h.facing, t: -i * SHELL.gap, lane: clamp(h.lane + (i - 1.5) * 0.05, 0, 1), left: SHELL.range, damage: MOVES.hougeki.damage * this.farPower, area: MOVES.hougeki.area!, hit: [] });
+            this.shells.push({ x: h.x + h.facing * 40, dir: h.facing, t: 0, lane: clamp(h.lane + (i - 1.5) * 0.05, 0, 1), left: SHELL.range, damage: MOVES.hougeki.damage * this.cannonPower, area: MOVES.hougeki.area!, hit: [], row: i });
           }
         }
       }
@@ -1424,7 +1466,7 @@ export class Sim {
     const h = this.hero;
     h.fin = fin;
     this.finGrade = this.gradeOf(this.beats);
-    h.finMul = COMBO.grades[this.finGrade].mul * (1 + this.sum('near', 'finish'));
+    h.finMul = COMBO.grades[this.finGrade].mul * (this.has('finBig') ? UP.finBig : 1);
   }
 
   // 必殺技：桜の竜巻でまわりの狼を吸い寄せ（竜巻は斬らない）、主人公が体ごと暴れて（連撃）、最後に大きく決める（締め）
@@ -1530,10 +1572,11 @@ export class Sim {
         if (Math.abs(tx - h.x) > 20) h.facing = tx > h.x ? 1 : -1;
         h.aimX = tx;
         h.aimLane = tl;
+        h.aimId = t?.id ?? 0;
         h.spFire++;
         for (const w of this.wolves) {
           if (w.age >= 0.4 && Math.abs(w.x - tx) <= B.area + w.size / 2 && Math.abs(w.lane - tl) <= 0.35) {
-            this.hit(w, B.damage * this.farPower, { kb: 90, lift: 90, stop: 0.015, stun: 0.4, src: 'sp' });
+            this.hit(w, B.damage * this.cannonPower, { kb: 90, lift: 90, stop: 0.015, stun: 0.4, src: 'sp' });
           }
         }
         this.fx.push(this.mk({ kind: 'beam', x: h.x, lane: h.lane, x2: tx, lane2: tl, n: t?.id ?? 0 }));
@@ -1548,6 +1591,7 @@ export class Sim {
         h.facing = right * 2 >= this.wolves.length ? 1 : -1;
         h.aimX = h.x + h.facing * 300;
         h.aimLane = h.lane;
+        h.aimId = 0;
         this.sounds.push('charge');
         this.fx.push(this.mk({ kind: 'full', x: h.x, lane: h.lane }));
       }
@@ -1556,7 +1600,7 @@ export class Sim {
       // ズドン：前へ、奥行き全部を貫く
       for (const w of this.wolves) {
         const d = (w.x - h.x) * h.facing;
-        if (d >= -40 && d <= B.range) this.hit(w, B.final * this.farPower, { kb: 700, lift: 300, stop: 0, stun: 0.6, src: 'sp' });
+        if (d >= -40 && d <= B.range) this.hit(w, B.final * this.cannonPower, { kb: 700, lift: 300, stop: 0, stun: 0.6, src: 'sp' });
       }
       h.spFire++;
       this.fx.push(this.mk({ kind: 'beam', x: h.x, lane: h.lane, x2: h.x + h.facing * B.range, lane2: h.lane, big: true }));
@@ -1583,7 +1627,7 @@ export class Sim {
         const t = list.length ? list[(n * 5) % list.length] : undefined;
         if (t && Math.abs(t.x - h.x) > 20) h.facing = t.x > h.x ? 1 : -1;
         const tx = t ? t.x : h.x + h.facing * (80 + this.rand() * 300);
-        this.loose(tx, t ? t.lane : this.rand(), R.damage * this.farPower, 0, false, t?.id ?? 0, 2, true);
+        this.loose(tx, t ? t.lane : this.rand(), R.damage * this.bowPower, 0, false, t?.id ?? 0, 2, true);
         this.arrows[this.arrows.length - 1].fromZ = h.z;
         this.arrows[this.arrows.length - 1].big = true;
       }
@@ -1596,7 +1640,7 @@ export class Sim {
     }
     if (e0 < O.final && e >= O.final) {
       // 大きな一本：奥行き全部を、画面の端まで貫く
-      this.loose(h.x + h.facing * R.range, h.lane, R.final * this.farPower, 0, false, 0, 999, true);
+      this.loose(h.x + h.facing * R.range, h.lane, R.final * this.bowPower, 0, false, 0, 999, true);
       const a = this.arrows[this.arrows.length - 1];
       a.giant = true;
       a.flight = 0.3;
@@ -1605,7 +1649,7 @@ export class Sim {
   }
 
   // ── 飛び道具 ──
-  private loose(toX: number, lane: number, damage: number, delay = 0, rain = false, target = 0, pierce = rain ? 1 : BOW_FLIGHT.pierce, sp = false) {
+  private loose(toX: number, lane: number, damage: number, delay = 0, rain = false, target = 0, pierce = rain ? 1 : BOW_FLIGHT.pierce + (this.has('pierce') ? UP.pierce : 0), sp = false) {
     const h = this.hero;
     const F = rain ? RAIN_FLIGHT : BOW_FLIGHT;
     const flight = F.base + Math.abs(toX - h.x) * F.perUnit;
@@ -1705,6 +1749,8 @@ export class Sim {
     else if (o.quiet) w.lastSrc = undefined;
     const light = 1 - (WOLVES[w.kind].heavy ?? 0);
     this.hurt(w, dmg);
+    // 下段「斬ると体力が戻る」：ナイフで当てるたび
+    if (o.src === 'senbon' && !o.quiet && this.hero.down <= 0 && this.has('drain')) this.hero.hp = Math.min(this.maxHp, this.hero.hp + this.maxHp * UP.drain);
     if (o.kb) {
       w.vx = o.kb * light;
       w.hitDir = Math.sign(o.kb);
@@ -2142,15 +2188,6 @@ export class Sim {
     if (dir) this.shakeDir = dir;
   }
 
-  private densest(list: Wolf[] = this.wolves): { x: number; lane: number; n: number } | undefined {
-    let best: { x: number; lane: number; n: number } | undefined;
-    for (const w of list) {
-      const n = list.filter((o) => Math.abs(o.x - w.x) <= 80).length;
-      if (!best || n > best.n) best = { x: w.x, lane: w.lane, n };
-    }
-    return best;
-  }
-
   private reap() {
     // 橙が倒れると爆ぜて、まわりの狼も巻き込む（巻き込まれた橙も爆ぜる）
     for (let guard = 0; guard < 20; guard++) {
@@ -2211,7 +2248,7 @@ export class Sim {
     for (const d of this.dogs) {
       if (d.hp > 0 || d.down > 0) continue;
       d.hp = 0;
-      d.down = DOG_REVIVE * (1 - this.sum('dog', 'dogRevive'));
+      d.down = DOG_REVIVE * (this.has('dogRevive') ? 0.5 : 1);
       d.target = 0;
       this.fx.push(this.mk({ kind: 'land', x: d.x, lane: d.lane, r: d.size }));
     }

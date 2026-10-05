@@ -55,6 +55,7 @@ for (const seed of SEEDS) {
   let saved = s.save();
   // 家が落ちたら、その晩の前の昼に戻る（試作と同じ）。同じ晩で5回落ちたら、そこまで
   let tries = 0;
+  let earned = 0; // 越えた晩に得た銭の累計
   for (;;) {
     if (s.result === 'lost') {
       losses++;
@@ -74,9 +75,10 @@ for (const seed of SEEDS) {
     t += 0.1;
     if (s.phase === 'wave') low = Math.min(low, s.houseHp);
     if (s.wave !== lastWave) {
+      earned += s.nightEarned;
       if (s.wave % 10 === 0) {
         const st = s.stats;
-        console.log(`  ${s.wave}晩：倒れた ${st.downs}回・主人公が受けた ${Math.round(st.heroDmg)}・家が噛まれた ${Math.round(st.houseBite)}・呼ばれた子狼 ${st.summoned}・銭 ${Math.floor(s.coins)}・段 ${Object.values(s.levels).join('')}`);
+        console.log(`  ${s.wave}晩：倒れた ${st.downs}回・主人公が受けた ${Math.round(st.heroDmg)}・家が噛まれた ${Math.round(st.houseBite)}・呼ばれた子狼 ${st.summoned}・銭 ${Math.floor(s.coins)}（累計 ${Math.round(earned)}）・上段 ${Object.values(s.basic).join(',')}・下段 ${Object.values(s.special).join('')}`);
         summonedAll += st.summoned;
         s.stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0, summoned: 0 };
       }
@@ -87,7 +89,7 @@ for (const seed of SEEDS) {
   }
   summonedAll += s.stats.summoned;
   reached.push(s.result === 'won' ? 99 : s.wave);
-  const lv = Object.entries(s.levels).map(([k, v]) => `${k}${v}`).join(' ');
+  const lv = Object.keys(s.basic).map((k) => `${k}${s.basic[k]}/${s.special[k]}`).join(' ');
   console.log(`seed ${seed}: ${s.result === 'lost' ? `${s.wave + 1}日目の夜で5回続けて負け` : s.result === 'won' ? '狼絶滅' : `${s.wave}晩まで`} 家が落ちた ${losses}回 kills ${s.kills} best ${s.bestCombo} ${lv}`);
   console.log(`  晩ごとの家の最低耐久: ${minHouse.join(' ')}`);
   console.log(`  番犬 ${s.dogs.length}匹（最後の晩）／削った量 主人公 ${Math.round(dealt.hero)}・番犬 ${Math.round(dealt.dogs)}`);

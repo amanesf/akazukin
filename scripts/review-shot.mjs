@@ -25,7 +25,7 @@ for (const n of list.split(',').map(Number)) {
     s.spawners = []; s.wolves = []; s.sleepers = [];
     s.wave = n - 1; s.phase = 'shop';
     const lv = Math.round(n / 7);
-    s.levels = { body: lv, near: lv + 2, far: lv, dog: Math.max(0, lv - 1) };
+    for (const k of Object.keys(s.basic)) { s.basic[k] = lv * 2; s.special[k] = Math.min(3, Math.floor(lv / 3)); }
     s.houseHp = 600; s.hero.hp = s.maxHp;
     a.tick(1 / 60, 30);
   }, n);

@@ -83,6 +83,8 @@ export class Sfx {
   // 溜め：上がっていく音。満タン：きらっ
   private charge(t: number) { this.tone(t, 'triangle', 220, 660, 0.9, 0.08); }
   private full(t: number) { this.tone(t, 'sine', 1320, 1320, 0.08, 0.25); this.tone(t + 0.06, 'sine', 1980, 1980, 0.18, 0.2); }
+  // 主砲のオーバーヒート：ジュッと蒸気
+  private steam(t: number) { this.hiss(t, 'highpass', 5000, 1800, 0.5, 0.35); this.tone(t, 'square', 140, 90, 0.12, 0.06); }
   private horn(t: number) {
     this.tone(t, 'sawtooth', 196, 185, 0.9, 0.18);
     this.tone(t, 'sawtooth', 294, 277, 0.9, 0.12);

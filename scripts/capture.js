@@ -47,7 +47,7 @@ await page.waitForFunction(() => document.body.classList.contains('ready'), null
 
 const state = () => page.evaluate(() => {
   const s = window.akazukin.sim;
-  return { phase: s.phase, levels: Object.values(s.levels).join(''), combo: s.combo, heroHp: Math.round(s.hero.hp), best: s.bestCombo, clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
+  return { phase: s.phase, levels: Object.values(s.basic).join(',') + '/' + Object.values(s.special).join(''), combo: s.combo, heroHp: Math.round(s.hero.hp), best: s.bestCombo, clock: s.clock, coins: Math.floor(s.coins), house: Math.round(s.houseHp), wave: s.wave + 1, kills: s.kills, wolves: s.wolves.length, dogs: s.dogs.length, result: s.result };
 });
 const autoplay = () => page.evaluate(`(${bot.toString()})(window.akazukin.sim, window.__mem ||= {})`);
 

@@ -118,6 +118,9 @@ export class View {
   private roleText: Text[] = []; // 昼：番犬の頭の上の役目
   private stuck: { id: number; x: number; lane: number; z: number; rel: number; t: number; dir: number }[] = []; // 狼の頭に刺さった矢（少しのあいだ残す）
   private seenArrows = new WeakSet<object>();
+  private beamGeo = new Map<number, { x0: number; y0: number; x1: number; y1: number }>(); // 乱れ撃ちの光線の道（撃った瞬間に決める）
+  private shellAt = new WeakMap<object, { dx: number; dy: number }>(); // 砲弾が出た砲口（砲弾の位置からのずれ）
+  private arrowAim = new WeakMap<object, { x: number; lane: number; z: number; rel: (typeof WOLF_REL)[keyof typeof WOLF_REL] | null }>(); // 矢の行き先（放った瞬間に決めて動かさない）
   private wolfBoxes: { id: number; lane: number; x0: number; x1: number; y0: number; y1: number }[] = []; // 描いた狼の絵の範囲（世界の座標）。タップで狼を選ぶ
   private xf = { z: 1, ox: 0, oy: 0 }; // 世界→画面
 
@@ -458,7 +461,7 @@ export class View {
       const k = Math.max(0.35, 1 - zz / 300);
       gr.ellipse(this.wx(x), this.wy(lane) + 2, w * 0.55 * k, w * 0.13 * k).fill({ color: 0x000000, alpha: 0.42 * k });
     };
-    const dogs: Dog[] = day ? DOG_ORDER.map((kind, i) => {
+    const dogs: Dog[] = day ? sim.dogKinds.map((kind, i) => {
       const home = Sim.dogHome(kind);
       return { id: -i - 1, x: 230 + i * 75, lane: home.lane, hp: 1, maxHp: 1, size: DOGS[kind].size, cooldown: 0, hitFlash: 0, kind, role: sim.roles[kind], bite: 0, target: 0, down: 0, facing: 1 as const, run: 0 };
     }) : sim.dogs;
@@ -574,6 +577,43 @@ export class View {
       const am = a0 + (Math.PI * 2 * sim.chargeMin) / sim.chargeFull;
       o.moveTo(cx + Math.cos(am) * (r - 5), cy + Math.sin(am) * (r - 5)).lineTo(cx + Math.cos(am) * (r + 5), cy + Math.sin(am) * (r + 5)).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
       if (full) o.circle(cx, cy, r + 6 + 3 * Math.sin(this.vt * 20)).stroke({ width: 2, color: 0xffe070, alpha: 0.7 });
+    }
+    // 主砲の温度計（2026-10-05 アマネさん「温度計表示したいね」）：背中の側に縦の目盛り。熱いほど赤く、オーバーヒート中は点滅して蒸気。
+    // 冷めきったら消す
+    if (!day && h.down <= 0 && (h.heat > 0.01 || h.overheat > 0)) {
+      const o = this.overG;
+      const hh = this.heroH(h.lane);
+      const n = sim.heatMax;
+      const bw = hh * 0.06;
+      const bh = hh * 0.28;
+      const cx = hx - h.facing * hh * 0.3;
+      const by = top + hh * 0.5; // 目盛りの下の端（球の上）。頭の後ろの横
+      const r = bw * 1.05;
+      const k = Math.min(1, h.heat / n);
+      const over = h.overheat > 0;
+      const blink = over && Math.sin(this.vt * 18) > 0;
+      const col = over ? (blink ? 0xffffff : 0xff3020) : mix(0xffc040, 0xff3020, k);
+      o.roundRect(cx - bw / 2 - 2, by - bh - 2, bw + 4, bh + 4, bw / 2 + 2).fill({ color: 0x000000, alpha: 0.55 });
+      o.circle(cx, by + r * 0.6, r + 2).fill({ color: 0x000000, alpha: 0.55 });
+      o.roundRect(cx - bw / 2, by - bh * k, bw, bh * k, bw / 2).fill({ color: col, alpha: 0.95 });
+      o.circle(cx, by + r * 0.6, r).fill({ color: col, alpha: 0.95 });
+      for (let i = 1; i < n; i++) {
+        const y = by - (bh * i) / n;
+        o.moveTo(cx - bw / 2 - 3, y).lineTo(cx - bw / 2 + 2, y).stroke({ width: 1.5, color: 0xffffff, alpha: 0.6 });
+      }
+      if (over && Math.random() < 0.5) this.parts.dust(cx, by - bh, 0.6, 1, 8, 0);
+    }
+    // 弓を持っているとき：頭の横に小さな弓の印（ナイフ⇔弓の持ち替えが見て分かるように）
+    if (!day && h.down <= 0 && sim.weapon === 'bow') {
+      const o = this.overG;
+      const hh = this.heroH(h.lane);
+      const cx = hx + h.facing * hh * 0.3;
+      const cy = top + hh * 0.3; // 頭の前の横
+      const R = hh * 0.07;
+      const f = h.facing;
+      o.moveTo(cx - f * R * 0.4, cy - R).quadraticCurveTo(cx + f * R * 0.9, cy, cx - f * R * 0.4, cy + R).stroke({ width: 3.5, color: 0x5a2a18, alpha: 0.9, cap: 'round' });
+      o.moveTo(cx - f * R * 0.4, cy - R).quadraticCurveTo(cx + f * R * 0.9, cy, cx - f * R * 0.4, cy + R).stroke({ width: 2, color: 0xffb0d0, alpha: 0.95, cap: 'round' });
+      o.moveTo(cx - f * R * 0.4, cy - R).lineTo(cx - f * R * 0.4, cy + R).stroke({ width: 1, color: 0xffffff, alpha: 0.8 });
     }
     // 主人公の体力の棒（減ったときだけ）
     if (!day && h.down <= 0 && h.hp < sim.maxHp) {
@@ -1447,8 +1487,11 @@ export class View {
       tx = this.wx(h.dashTo);
       ty = this.wy(h.lane);
     } else if (h.ouran > 0 && h.special === 'midare') {
-      tx = this.wx(h.aimX);
-      ty = this.wy(h.aimLane) - this.heroH(h.lane) * 0.3;
+      // 乱れ撃ち：撃つ狼の頭へぱっと向ける（光線は砲口から砲身の向きに出す。2026-10-05 アマネさん「弾の飛ぶ方向が主砲の向きとずれて気持ち悪い」）
+      const t = h.aimId ? sim.wolves.find((w) => w.id === h.aimId) : undefined;
+      const hd = t ? this.wolfHead(t.x, t.lane, t.z, WOLF_REL[t.kind]) : null;
+      tx = hd ? hd.x : this.wx(h.aimX);
+      ty = hd ? hd.y : this.wy(h.aimLane) - this.heroH(h.lane) * 0.3;
     } else {
       const t = sim.wolves.filter((w) => (w.x - h.x) * h.facing > 0 && Math.abs(w.lane - h.lane) <= 0.6).sort((a, b) => Math.abs(a.x - h.x) - Math.abs(b.x - h.x))[0];
       if (t) {
@@ -1462,7 +1505,9 @@ export class View {
     const ay = ty - (hy - this.heroH(h.lane) * 0.7); // 肩から見て下が正
     let a = Math.atan2(-ax, ay); // 砲身（絵では下向き）をこの角度回すと、狙う向きになる
     if (a < 0) a += Math.PI * 2;
-    return Math.max(Math.PI * 1.1, Math.min(Math.PI * 1.58, a)); // 前の上70度〜前の下15度（下へ向けすぎると腰から出ているように見えた）
+    // 前の上70度〜前の下15度（下へ向けすぎると腰から出ているように見えた）。乱れ撃ちは狼へ向けきるため、前の下60度まで
+    const low = h.ouran > 0 && h.special === 'midare' ? 1.83 : 1.58;
+    return Math.max(Math.PI * 1.1, Math.min(Math.PI * low, a));
   }
 
   // 刃先の通り道を覚える（技の振り抜きのあいだだけ）。古い点は0.12秒で消える
@@ -1820,13 +1865,30 @@ export class View {
       const k = 1 - f.t / life;
       const h = sim.hero;
       const hh = this.heroH(f.lane);
-      const dir = Math.sign((f.x2 ?? f.x) - f.x) || h.facing;
-      const x0 = this.wx(f.x) + dir * hh * 0.35;
-      const y0 = this.wy(f.lane) - hh * 0.72 - h.z * this.zk() * 0.75;
-      const tw = f.n ? sim.wolves.find((w) => w.id === f.n) : undefined;
-      const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
-      const x1 = hd ? hd.x : this.wx(f.x2 ?? f.x);
-      const y1 = hd ? hd.y : this.wy(f.lane2 ?? f.lane) - hh * (f.big ? 0.5 : 0.25);
+      // 光線の道は撃った瞬間に決める：砲口から、砲身の向きのまま狼の所まで（当たり判定は sim が狙った狼に入れる）
+      let geo = this.beamGeo.get(f.id);
+      if (!geo) {
+        const dir = Math.sign((f.x2 ?? f.x) - f.x) || h.facing;
+        const tw = f.n ? sim.wolves.find((w) => w.id === f.n) : undefined;
+        const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
+        let x1 = hd ? hd.x : this.wx(f.x2 ?? f.x);
+        let y1 = hd ? hd.y : this.wy(f.lane2 ?? f.lane) - hh * (f.big ? 0.5 : 0.25);
+        const gun = this.rig.cannonAxis(this.world, f.id % 2) ?? this.rig.cannonAxis(this.world, 1 - (f.id % 2)); // 2本の砲から交互に
+        const m = gun?.tip;
+        let x0 = this.wx(f.x) + dir * hh * 0.35;
+        let y0 = this.wy(f.lane) - hh * 0.72 - h.z * this.zk() * 0.75;
+        if (m && gun) {
+          x0 = m.x;
+          y0 = m.y;
+          const d = Math.hypot(x1 - x0, y1 - y0);
+          x1 = x0 + gun.ux * d;
+          y1 = y0 + gun.uy * d;
+        }
+        geo = { x0, y0, x1, y1 };
+        this.beamGeo.set(f.id, geo);
+        if (this.beamGeo.size > 64) this.beamGeo.delete(this.beamGeo.keys().next().value!);
+      }
+      const { x0, y0, x1, y1 } = geo;
       if (f.big) {
         const w = hh * 0.85 * (0.4 + 0.6 * k);
         o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w * 1.8, color: 0xff8030, alpha: 0.25 * k, cap: 'round' });
@@ -1848,7 +1910,8 @@ export class View {
     this.drawBeams(o, sim);
     this.drawBlade(o);
     this.drawMarks(o, sim);
-    // 矢（放物線。高さは飛ぶ距離に比例させ、向きは軌道の接線に合わせる）
+    // 矢：まっすぐ（2026-10-05 アマネさん「連続で飛ぶとき放物線みたいに跳んで気持ち悪い」）。行き先は放った瞬間の狼の頭で止めて、
+    // 途中で曲げない（当たり判定だけ sim が狼を追う。前は毎コマ狼の頭へ引き直していたので、狼が弾かれると矢がぐにゃっと曲がった）
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
       const hh = this.heroH(a.fromLane);
@@ -1856,23 +1919,27 @@ export class View {
       // 弓の絵の矢の高さ（足もとから背の73%・前へ30%）から放つ（55%だと腰のあたりから出て見えた。2026-10-04 アマネさん）
       const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;
       const y0 = this.wy(a.fromLane) - hh * 0.73 - (a.fromZ ?? 0) * this.zk() * 0.75;
-      const tw = !a.rain ? sim.wolves.find((w) => w.id === a.target) : undefined;
-      const hd = tw ? this.wolfHead(tw.x, tw.lane, tw.z, WOLF_REL[tw.kind]) : null;
-      const x1 = hd ? hd.x : this.wx(a.toX);
-      const y1 = hd ? hd.y : a.giant ? y0 : this.wy(a.lane) - this.geo.Hm * 0.05;
+      let aim = this.arrowAim.get(a);
+      if (!aim) {
+        const tw = !a.rain ? sim.wolves.find((w) => w.id === a.target) : undefined;
+        aim = tw ? { x: tw.x, lane: tw.lane, z: tw.z, rel: WOLF_REL[tw.kind] } : { x: a.toX, lane: a.lane, z: 0, rel: null };
+        this.arrowAim.set(a, aim);
+      }
+      const hd = aim.rel !== null ? this.wolfHead(aim.x, aim.lane, aim.z, aim.rel) : null;
+      const x1 = hd ? hd.x : this.wx(aim.x);
+      const y1 = hd ? hd.y : a.giant ? y0 : this.wy(aim.lane) - (a.rain ? this.geo.Hm * 0.05 : hh * 0.4);
       // 放った瞬間：弓のまわりに輪と花びら
       if (!this.seenArrows.has(a)) {
         this.seenArrows.add(a);
         this.parts.ring(x0, y0, 4, hh * 0.22, 3, 0xffd0e0, 0.18);
         for (let i = 0; i < 3; i++) this.parts.petal(x0, y0, this.geo.Hm / 600, Math.sign(x1 - x0) * (80 + Math.random() * 120), -60 - Math.random() * 120, 0.5);
       }
-      // ふつうの矢はほぼまっすぐ。矢の雨だけ高い放物線
-      const arc = Math.abs(x1 - x0) * (a.rain ? 0.3 : a.giant || a.fromZ ? 0 : 0.04);
+      // どの矢もまっすぐ（矢の雨も、群れへまっすぐの扇）
       const at = (t: number) => {
         const vx = x1 - x0;
-        const vy = y1 - y0 - Math.cos(Math.PI * t) * Math.PI * arc;
+        const vy = y1 - y0;
         const len = Math.hypot(vx, vy) || 1;
-        return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * arc, ux: vx / len, uy: vy / len };
+        return { x: x0 + vx * t, y: y0 + vy * t, ux: vx / len, uy: vy / len };
       };
       const { x, y, ux, uy } = at(a.t);
       const L = hh * 0.3 * S; // 矢の長さ
@@ -1940,9 +2007,17 @@ export class View {
     // 砲弾（4連装・真っすぐ）：主砲の高さを真横へ。白く光る弾と、後ろへ伸びる火の尾
     for (const sh of sim.shells) {
       if (sh.t < 0) continue;
-      const x = this.wx(sh.x);
       const hh = this.heroH(sh.lane);
-      const y = this.wy(sh.lane) - hh * 0.62;
+      // 4連装：2本の砲×上下2段の砲口から（row 0・1＝奥の砲、2・3＝手前の砲）。出た所の高さのまま真っすぐ
+      let at = this.shellAt.get(sh);
+      if (!at) {
+        const gun = this.rig.cannonAxis(this.world, sh.row < 2 ? 0 : 1);
+        const off = (sh.row % 2 ? 1 : -1) * hh * 0.022;
+        at = gun ? { dx: gun.tip.x - gun.uy * off - this.wx(sh.x), dy: gun.tip.y + gun.ux * off - this.wy(sh.lane) } : { dx: 0, dy: -hh * (0.56 + sh.row * 0.04) };
+        this.shellAt.set(sh, at);
+      }
+      const x = this.wx(sh.x) + at.dx;
+      const y = this.wy(sh.lane) + at.dy;
       const tail = Math.min(hh * 2.4, sh.t * SHELL.speed * this.U(sh.lane) * 0.03);
       o.moveTo(x - sh.dir * tail, y).lineTo(x, y).stroke({ width: hh * 0.07, color: 0xff7a30, alpha: 0.55, cap: 'round' });
       o.moveTo(x - sh.dir * tail * 0.55, y).lineTo(x, y).stroke({ width: hh * 0.035, color: 0xfff0c0, alpha: 0.9, cap: 'round' });

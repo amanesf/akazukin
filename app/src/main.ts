@@ -1,6 +1,6 @@
 import './style.css';
 import { Sfx } from './audio';
-import { COLORS, COMBO, FINISHERS, HOUSE_HP, SPECIALS, WOLVES, type Beat, type Track, type Finisher, type Special, type WolfColor, type WolfKind } from './config';
+import { COLORS, COMBO, FINISHERS, GROWTH_TABLE, HOUSE_HP, SPECIALS, TRACK_ORDER, WOLVES, type Beat, type Track, type Finisher, type Special, type WolfColor, type WolfKind } from './config';
 import { Input } from './input';
 import { MOODS, mood as moodOf, newColors, night as nightOf, surgePack } from './nights';
 import { TALKS } from './talks';
@@ -69,6 +69,7 @@ async function main() {
     finisher: ['ばーん♪', 'おやすみ', 'つぎのひと〜'],
     ouran: ['ぜーんぶ、まとめて――おやすみ'], // 必殺技ごとの台詞は SP_LINES
     hurt: ['いったぁ……噛んだね？'],
+    overheat: ['あちち、主砲が焼けちゃった', 'ちょっと冷まさなきゃ'],
     down: ['おばあちゃん、ちょっと待ってて'],
     revive: ['……お返し、しなきゃ'],
     surge: ['わ、いっぱい来た♪'],
@@ -156,7 +157,8 @@ async function main() {
   type Did = Sim['did'];
   const STEPS: { text: string; done: (d: Did, b: Did) => boolean }[] = [
     { text: '右から来る狼をタップして斬ろう（続けてタップで連撃）', done: (d, b) => d.tap - b.tap >= 3 },
-    { text: '画面を左か右に、さっとはじこう → 突進斬り', done: (d, b) => d.dash > b.dash },
+    { text: '画面を左か右に、さっとはじこう → 突進（動くのもこれ）', done: (d, b) => d.dash > b.dash },
+    { text: '下の「ナイフ／弓」で持ち替えて、遠くの狼をタップ → 弓', done: (d, b) => d.bow > b.bow },
     { text: '上か下にはじこう → 斬り上げ／叩き落とし', done: (d, b) => d.launch + d.slam > b.launch + b.slam },
     { text: '長押しして、光が満ちたら離そう → 背中の主砲', done: (d, b) => d.shiki > b.shiki },
     { text: '下の小さい地図をタップ → そこへ駆けつける', done: (d, b) => d.mini > b.mini },
@@ -453,18 +455,16 @@ async function main() {
   // 選んだ晩の昼から始まる。銭はいつも満タン。強化は「その晩らしく」（自動操作が平均でその晩に着く段）か、なし。
   // この端末の保存には書かない。やめるときは一時停止の「デバッグをやめる」（読み直して題字へ。続きはそのまま）
   const DEBUG_COINS = 999999;
-  // 自動操作（scripts/bot.mjs・弱い武器を使い分ける版・種1〜3の平均）が、その晩の前の昼に着いていた段
-  // [晩, 体力, 近接, 主砲, 番犬]。あいだの晩は直線でつなぐ
-  const GROWTH: [number, number, number, number, number][] = [
-    [1, 0, 0, 0, 0], [2, 1, 1, 0, 0], [6, 2, 2, 1, 1], [11, 3, 3, 3, 2], [21, 4, 5, 4, 4], [31, 5, 7, 5, 5], [41, 7, 9, 7, 6],
-    [51, 8, 9, 9, 8], [61, 9, 11, 10, 8], [71, 11, 13, 11, 9], [81, 12, 15, 12, 11], [91, 15, 16, 13, 13], [99, 15, 17, 15, 13],
-  ];
-  const growthAt = (n: number): Record<Track, number> => {
+  // 自動操作（scripts/bot.mjs）が、その晩の前の昼に着いていた強化（上段は5つの平均の回数・下段は5つの平均の数）
+  // [晩, 上段, 下段]。あいだの晩は直線でつなぐ。2026-10-05 強化を10個にしたので測り直し
+  const GROWTH: [number, number, number][] = GROWTH_TABLE;
+  const growthAt = (n: number): { basic: Record<Track, number>; special: Record<Track, number> } => {
     const i = Math.max(1, GROWTH.findIndex((g) => g[0] >= n));
-    const [a, b] = [GROWTH[i - 1], GROWTH[i]];
+    const [a, b] = [GROWTH[i - 1], GROWTH[i] ?? GROWTH[i - 1]];
     const k = b[0] === a[0] ? 1 : Math.min(1, Math.max(0, (n - a[0]) / (b[0] - a[0])));
     const v = (j: number) => Math.round(a[j] + (b[j] - a[j]) * k);
-    return { body: v(1), near: v(2), far: v(3), dog: v(4) };
+    const each = (x: number, cap = Infinity) => Object.fromEntries(TRACK_ORDER.map((t) => [t, Math.min(cap, x)])) as Record<Track, number>;
+    return { basic: each(v(1)), special: each(v(2), 3) };
   };
   function openDebug() {
     overlay.classList.remove('title');
@@ -483,7 +483,7 @@ async function main() {
     const night = () => Math.min(99, Math.max(1, Math.round(Number(input.value) || 1)));
     const note = () => {
       const g = growthAt(night());
-      lv.textContent = grow.checked ? `体力 ${g.body}・近接 ${g.near}・主砲 ${g.far}・番犬 ${g.dog}（昼に銭で足せる）` : 'すべて 0（昼に銭で上げる）';
+      lv.textContent = grow.checked ? `上段 ${g.basic.body}回ずつ・下段 ${g.special.body}つずつ（昼に銭で足せる）` : 'すべて 0（昼に銭で上げる）';
     };
     input.addEventListener('input', note);
     grow.addEventListener('change', note);
@@ -494,7 +494,7 @@ async function main() {
       const n = night();
       debug = true;
       const s0 = new Sim(seed());
-      sim = Sim.load({ ...s0.save(), wave: n - 1, coins: DEBUG_COINS, houseHp: HOUSE_HP, levels: grow.checked ? growthAt(n) : s0.levels }, seed());
+      sim = Sim.load({ ...s0.save(), wave: n - 1, coins: DEBUG_COINS, houseHp: HOUSE_HP, ...(grow.checked ? growthAt(n) : {}) }, seed());
       store.write(sim.save()); // 負けたらこの昼に戻る
       shown = sim.result;
       overlay.hidden = true;

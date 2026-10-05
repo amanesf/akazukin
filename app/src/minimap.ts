@@ -3,7 +3,7 @@
 // 主人公・狼・番犬は同じ絵の縮小（大きさは盛る）。当たった光・斬撃・爆発・打ち上げ・煙・家の点滅・いま映している枠。
 // タップするとそこへ駆けつける。
 import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
-import { COLORS, DOG_ORDER, DOGS, FIELD_LENGTH, GRAY_FUR, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
+import { COLORS, DOGS, FIELD_LENGTH, GRAY_FUR, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
 import { place } from './fx';
 import { HeroRig } from './heroRig';
 import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
@@ -158,7 +158,7 @@ export class Minimap {
     const art = this.wolfArt.ready && this.dogArt.ready;
     this.wolfArt.begin();
     this.dogArt.begin();
-    const dogs = day ? DOG_ORDER.map((kind) => ({ ...Sim.dogHome(kind), kind, size: DOGS[kind].size, hitFlash: 0, down: 0, facing: 1 })) : sim.dogs;
+    const dogs = day ? sim.dogKinds.map((kind) => ({ ...Sim.dogHome(kind), kind, size: DOGS[kind].size, hitFlash: 0, down: 0, facing: 1 })) : sim.dogs;
     const unitH = H * 0.3; // ふつうの狼の背（地図の上の画素）
     for (const d of dogs) {
       if (d.down > 0) continue;
