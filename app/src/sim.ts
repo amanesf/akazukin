@@ -44,17 +44,19 @@ export interface Wolf extends Unit {
   zgain: number; // 緑：この1匹から溜まった必殺技（上限あり）
   summoned?: boolean; // 遠吠えに呼ばれた子狼（賞金なし）
   naps: number; // 緑が寝た回数（緑の大狼は2回まで。3回目で倒れる）
-  mode: '' | 'wind' | 'rest' | 'leap' | 'land' | 'claw' | 'back' | 'cling' | 'fall' | 'kl' | 'lunge' | 'kr' | 'ks' | 'kw' | 'down'; // 人狼・カラス・狼王の動きの段
+  mode: '' | 'wind' | 'rest' | 'leap' | 'land' | 'claw' | 'back' | 'cling' | 'fall' | 'kl' | 'lunge' | 'kr' | 'ks' | 'kw' | 'down' | 'turn'; // 人狼・カラス・狼王の動きの段
   modeT: number; // その段の残り秒
   clawN: number; // 人狼女：残りのひっかき
   seq?: Special[]; // 狼王：頭の上の印（当てる武器の順）
   markIdx?: number; // 狼王：いま光っている印
   markHp?: number; // 狼王：いまの印に当てた量
-  kdir?: number; // 狼王：攻める向き
+  toLane?: number; // 人狼女：跳んで下りる奥行き
+  kBurst?: number; // 狼王：続けて吠える残りの回数（弓の印のあいだ）
+  kdir?: number; // 狼王：攻める向き。人狼男：向いている向き（-1＝家の側）
   kHit?: boolean; // 狼王：この突進で当てた
 }
 // 狼王の遠吠えの波（地面を走る。跳んでよける）
-export interface Wave { x: number; dir: number; lane: number; hit: boolean; dogs: number[] }
+export interface Wave { x: number; dir: number; lane: number; hit: boolean; dogs: number[]; house?: boolean } // house：家まで届く（狼王の体力が3割を切ってから）
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
@@ -869,6 +871,8 @@ export class Sim {
         if (Math.abs(w.vx) < 5) w.vx = 0;
       }
       if (w.z > 0 || w.vz > 0) {
+        // 人狼女の跳び：宙にいるあいだに奥行きを少しずつ主人公の奥行きへ（前は跳んだ瞬間に移った。レビュー3）
+        if (w.kind === 'wwoman' && w.mode === 'leap' && w.toLane !== undefined) w.lane += clamp(w.toLane - w.lane, -1.6 * dt, 1.6 * dt);
         w.vz -= BODY.gravity * (w.slammed ? 2.2 : 1) * dt;
         w.z += w.vz * dt;
         if (w.z <= 0) {
@@ -1877,12 +1881,23 @@ export class Sim {
         w.modeT = 0.6;
         return true;
       }
-      case 'kw': // 吠えて波・手下を呼ぶ
+      case 'kw': { // 吠えて波・手下を呼ぶ
         if ((w.modeT -= dt) > 0) return true;
-        this.waves.push({ x: w.x + w.kdir! * w.size * 0.4, dir: w.kdir!, lane: w.lane, hit: false, dogs: [] });
+        // 体力が3割を切ったら、波は家まで届く。主人公が裂け目の側にいても、家の側へも1つ出す（レビュー7：最後に家の心配を）
+        const rage = w.hp / w.maxHp < KING.rage;
+        this.waves.push({ x: w.x + w.kdir! * w.size * 0.4, dir: w.kdir!, lane: w.lane, hit: false, dogs: [], house: rage });
+        if (rage && w.kdir! > 0) this.waves.push({ x: w.x - w.size * 0.4, dir: -1, lane: w.lane, hit: true, dogs: [], house: true });
         this.fx.push(this.mk({ kind: 'howl', x: w.x, lane: w.lane, r: w.size }));
         this.sounds.push('horn');
-        if (this.wolves.length < 30) {
+        // 続けて吠える（弓の印のあいだ）：手下は最初の1回だけ呼ぶ
+        if ((w.kBurst ?? 0) > 1) {
+          w.kBurst!--;
+          w.modeT = KING.burst.gap;
+          return true;
+        }
+        const first = !w.kBurst;
+        w.kBurst = 0;
+        if (first && this.wolves.length < 30) {
           const cols: WolfColor[] = ['red', 'black', 'purple', 'orange'];
           for (let i = 0; i < KING.wave.minions; i++) {
             const m = this.makeWolf('wolf', WOLF_SPAWN_X, cols[Math.floor(this.rand() * cols.length)]);
@@ -1896,6 +1911,7 @@ export class Sim {
         w.mode = 'rest';
         w.modeT = 0.6;
         return true;
+      }
       case 'rest':
         if ((w.modeT -= dt) <= 0) { w.mode = ''; w.modeT = KING.gap[ph]; }
         return true;
@@ -1914,6 +1930,12 @@ export class Sim {
     const r = this.rand();
     if (near) { w.mode = r < 0.55 ? 'ks' : 'kl'; }
     else { w.mode = r < 0.5 ? 'kl' : 'kw'; }
+    // 弓の印のあいだに離れていると、波を続けて3つ（間をあけて）。跳んでよけながら矢を当てる
+    // （2026-10-05 アマネさん「狼王の攻撃をジャンプで避けるとか」。前は離れて待つだけだった）
+    if (!near && w.seq![w.markIdx!] === 'nagare') {
+      w.mode = r < 0.75 ? 'kw' : 'kl';
+      if (w.mode === 'kw') w.kBurst = KING.burst.n;
+    }
     w.modeT = w.mode === 'kl' ? KING.lunge.wind : w.mode === 'ks' ? KING.slam.wind : KING.wave.wind;
     return true;
   }
@@ -1933,6 +1955,15 @@ export class Sim {
           v.dogs.push(d.id);
           this.hurt(d, KING.wave.damage * this.bite * 0.5);
         }
+      }
+      if (v.house && v.x <= HOUSE_X + 20) {
+        // 家に届いた波（体力が3割を切った狼王）
+        this.houseHp -= KING.wave.house;
+        this.stats.houseShock += KING.wave.house;
+        this.fx.push(this.mk({ kind: 'land', x: HOUSE_X + 30, lane: v.lane, r: 90, big: true }));
+        this.sounds.push('slam');
+        this.kick(6, -1);
+        return false;
       }
       return v.x > HOUSE_X && v.x < WOLF_SPAWN_X;
     });
@@ -2001,13 +2032,14 @@ export class Sim {
       if ((w.modeT -= dt) > 0) return true;
       w.mode = 'rest';
       w.modeT = WMAN.rest;
-      const at = w.x - WMAN.reach * 0.55;
+      const face = w.kdir ?? -1;
+      const at = w.x + face * WMAN.reach * 0.55;
       this.fx.push(this.mk({ kind: 'land', x: at, lane: w.lane, r: WMAN.reach, big: true }));
       this.sounds.push('slam');
       this.kick(7, -1);
       if (h.down <= 0 && Math.abs(h.x - at) <= WMAN.reach * 0.75 && Math.abs(h.lane - w.lane) <= LANE_TOL + 0.1 && h.iframes <= 0 && h.ouran <= 0) {
         this.hurtHero(WMAN.swing * this.bite * this.biteMul(w));
-        h.x = clamp(h.x - WMAN.push, HERO.minX, HERO.maxX); // 大きく吹き飛ぶ
+        h.x = clamp(h.x + face * WMAN.push, HERO.minX, HERO.maxX); // 大きく吹き飛ぶ
         h.vz = Math.max(h.vz, 320);
         h.z = Math.max(h.z, 0.01);
       }
@@ -2018,10 +2050,30 @@ export class Sim {
       if ((w.modeT -= dt) <= 0) w.mode = '';
       return true;
     }
-    const ahead = w.x - h.x;
-    if (h.down <= 0 && h.ouran <= 0 && ahead > -20 && ahead <= WMAN.reach && Math.abs(w.lane - h.lane) <= LANE_TOL + 0.1) {
+    // 振り向く：後ろ（裂け目の側）に回られたら、少し間をおいて向きを変えてから振りかぶる
+    // （2026-10-05 レビュー6。前は家の側しか振りかぶらず、後ろに回ると殴り放題だった）
+    if (w.mode === 'turn') {
+      if ((w.modeT -= dt) > 0) return true;
+      w.kdir = -(w.kdir ?? -1);
+      w.mode = '';
+    }
+    const face = w.kdir ?? -1;
+    const ahead = (h.x - w.x) * face; // 向いている側にどれだけ前か
+    const near = h.down <= 0 && h.ouran <= 0 && Math.abs(w.lane - h.lane) <= LANE_TOL + 0.1;
+    if (near && ahead > -20 && ahead <= WMAN.reach) {
       w.mode = 'wind';
       w.modeT = WMAN.wind;
+      return true;
+    }
+    if (near && ahead < -20 && -ahead <= WMAN.reach * 1.6) {
+      w.mode = 'turn';
+      w.modeT = WMAN.turn;
+      return true;
+    }
+    if (face > 0) {
+      // 主人公が離れたら、また家のほうを向いて歩く
+      w.mode = 'turn';
+      w.modeT = WMAN.turn;
       return true;
     }
     return false; // ふつうに歩く・番犬と家を噛む
@@ -2032,6 +2084,7 @@ export class Sim {
     const h = this.hero;
     switch (w.mode) {
       case 'leap': // 宙にいるあいだは体の動きの所で止まるので、ここに来たら着地した
+        if (w.toLane !== undefined) w.lane = w.toLane; // 寄せきれなかった分（わずか）
         w.mode = 'land';
         w.modeT = WWOMAN.land;
         return true;
@@ -2066,7 +2119,7 @@ export class Sim {
       w.vz = WWOMAN.lift;
       w.z = 0.01;
       w.vx = (to - w.x) / T;
-      w.lane = h.lane;
+      w.toLane = h.lane;
       w.pouncing = true;
       w.mode = 'leap';
       this.sounds.push('jump');

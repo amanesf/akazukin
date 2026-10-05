@@ -262,7 +262,7 @@ export const WOLVES: Record<WolfKind, WolfSpec> = {
   wolf: { name: '狼', hp: 90, damage: 11, interval: 0.8, speed: 48, size: 56, bounty: 4, arrowResist: 0 },
   armored: { name: '鎧狼', hp: 300, damage: 20, interval: 1.0, speed: 28, size: 70, bounty: 12, arrowResist: 0.6, heavy: 0.4 },
   // 遠吠え：近くの狼を速くする（後ろに居座る。主砲で落とす相手）
-  howler: { name: '遠吠え', hp: 120, damage: 6, interval: 1.0, speed: 30, size: 56, bounty: 10, arrowResist: 0.3 },
+  howler: { name: '遠吠え', hp: 260, damage: 6, interval: 1.0, speed: 30, size: 56, bounty: 10, arrowResist: 0.3 },
   alpha: { name: '大狼', hp: 1800, damage: 45, interval: 1.2, speed: 18, size: 120, bounty: 120, arrowResist: 0.4, heavy: 0.8 },
   // 人狼（2026-10-05 アマネさん「人狼男、人狼女。ちょっと強めの敵」）。男＝重い一撃、女＝素早い。カラス＝主人公にとまって邪魔をする
   wman: { name: '人狼男', hp: 650, damage: 14, interval: 1.0, speed: 30, size: 72, bounty: 40, arrowResist: 0.2, heavy: 0.6 },
@@ -279,11 +279,13 @@ export const KING = {
   holdX: 640, mark: 5, points: { senbon: 1, nagare: 1, midare: 3, sp: 5 }, wrong: 0.25, dog: 0.05, down: 7, downMul: 3, marks: [3, 4, 5], gap: [2.4, 1.9, 1.4],
   lunge: { wind: 1.0, speed: 760, time: 0.55, damage: 40, push: 160, clear: 70 },
   slam: { wind: 1.0, reach: 300, near: 40, damage: 46, push: 200 },
-  wave: { wind: 1.0, speed: 520, damage: 28, clear: 50, minions: 3 },
+  wave: { wind: 1.0, speed: 520, damage: 28, clear: 50, minions: 3, house: 25 }, // house：家に届いたとき（晩で強くしない）
+  rage: 0.3, // 体力がこの割合を切ると、遠吠えの波が家まで届く
+  burst: { n: 3, gap: 0.55 }, // 弓の印のあいだ、波を続けて n 個（gap 秒おき）
 };
 // 人狼男：主人公に寄ると腕を振りかぶり（wind 秒・予兆がはっきり見える）、大振り（swing）。当たると大きく吹き飛ぶ。
 // 振りかぶりの間に重い一撃（締め・叩き落とし・主砲・突進・必殺技）を当てると、ひるんで止まる。ふつうの斬りではひるまない
-export const WMAN = { reach: 100, wind: 0.85, swing: 42, push: 140, stun: 0.6, rest: 0.8, broken: 0.9 };
+export const WMAN = { reach: 100, wind: 0.85, swing: 42, push: 140, stun: 0.6, rest: 0.8, broken: 0.9, turn: 0.4 }; // turn：振り向くのにかかる秒
 // 人狼女：近くへ跳んで下り（着地の隙 land 秒）、ひっかき3連、下がってまた跳ぶ
 export const WWOMAN = { range: 340, cd: 3.2, lift: 520, land: 0.6, claws: 3, gap: 0.22, claw: 9, reach: 80, back: 300 };
 // カラス：飛んで主人公にとまる（足が遅くなり、連撃が切れる）。左右にはじくと振りほどける。とまっている間は少しずつ突く
@@ -322,6 +324,7 @@ export const WEAK_MUL = 2; // 弱い武器で当てたとき
 // 遠吠え：後ろに居座り、6秒ごとに1.5秒溜めて吠え、裂け目から子狼を2匹呼ぶ。何回でも呼ぶ（倒さないと増え続ける）。
 // 場の狼が cap 匹を超えているあいだは呼ばない（重くならないように）。呼ばれた子狼は賞金なし（稼ぎ場にしない）。
 // 2026-10-05 アマネさん「倒さないとどんどん敵を呼ぶ」「1匹は無限に呼べていい」。近くの狼を速くする・音波はやめた（見えにくい）
+// 2026-10-05 体力 120→260（アマネさん「体力増やすか」。呼ぶ前に倒されて、99晩で呼ばれた子狼が10匹くらいしかいなかった）
 export const HOWL = { holdX: 620, interval: 6, wind: 1.5, count: 2, cap: 40, first: 3 };
 // 狼の攻め方（特性ごと）：遠吠えは遠くから衝撃波、子狼は飛びかかる
 export const SHOCKWAVE = { range: 460, interval: 3.2, speed: 260, damage: 12 };

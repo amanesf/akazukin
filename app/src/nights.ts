@@ -88,13 +88,21 @@ export function night(n: number): SpawnLine[] {
     left -= THREAT.alpha * bosses * 0.3; // 大狼の晩は取り巻きを少し減らす
   }
 
-  // 色の狼：予算の一部を色の狼に回す（晩が進むほど多く）。出てくる晩に入った色を、だいたい同じくらいずつ
-  // 初めて出る晩（新顔）は、ほかに紛れないよう晩の始めのほうに3匹だけ
-  const colors = COLOR_ORDER.filter((c) => COLORS[c].from <= n && c !== 'gold' && c !== 'green');
+  // 色の狼：予算の一部を色の狼に回す（晩が進むほど多く）。初めて出る晩（新顔）は、ほかに紛れないよう晩の始めのほうに3匹だけ
+  // 1晩に出す色は1〜2色だけ（2026-10-05 アマネさん「カラフルすぎるのもどうか」。前は出られる色が毎晩ぜんぶ出た）。
+  // 色が少ないと「今夜は赤が多いから千本桜」と必殺技を選びやすい（レビュー5）
+  const theme = themeColors(n, md);
+  let back = 0; // 色の狼に回さなかった分。ふつうの流れに足す（山場には入れない。子狼の山場が膨らんで家を押し切った）
+  const colors = COLOR_ORDER.filter((c) => theme.includes(c) || COLORS[c].from === n);
   if (colors.length) {
     const share = Math.min(0.6, 0.15 + n / 150); // 終盤は6割が色の狼（弱い武器を使い分けるほど楽になる）
-    const pot = left * share;
-    left -= pot;
+    // 1色あたりは、出られる色ぜんぶで分けたときの2倍まで。残りはふつうの狼に戻す
+    // （1色に全部回すと、赤（速い）ばかり145匹の晩ができて、そこで必ず家が落ちた）
+    const can = COLOR_ORDER.filter((c) => COLORS[c].from < n && c !== 'gold' && c !== 'green').length;
+    const full = left * share;
+    const pot = full * Math.min(1, (2 * colors.length) / Math.max(colors.length, can));
+    left -= full;
+    back = full - pot;
     const cw: Partial<Record<WolfColor, number>> = {};
     for (const c of colors) cw[c] = (md === 'beni' && c === 'red' ? 2.5 : 1) * (COLORS[c].from === n ? 0 : 1);
     const cwSum = colors.reduce((a, c) => a + cw[c]!, 0);
@@ -104,15 +112,19 @@ export function night(n: number): SpawnLine[] {
         continue;
       }
       if (!cwSum) continue;
-      // 色の子狼は序盤だけ多め（終盤に数百匹の色の子狼が一度に来て、跳び越えて家を押し切る晩があった）
-      const kind: WolfKind = rand() < Math.max(0.15, 0.7 - n / 60) ? 'pup' : 'wolf';
-      const count = Math.max(1, Math.round((pot * cw[c]!) / cwSum / (THREAT[kind] * COLORS[c].threat)));
-      const span = length * (0.6 + rand() * 0.3);
-      lines.push({ kind, count, interval: span / count, delay: 2 + rand() * length * 0.3, color: c });
+      // 色の子狼は序盤だけ多め（終盤に数百匹の色の子狼が一度に来て、跳び越えて家を押し切る晩があった）。
+      // 1色に予算がまとまるので、子狼と狼に割合で分ける（くじで片方にすると、子狼ばかり数百匹の晩ができた）
+      const pupShare = Math.max(0.1, 0.7 - n / 50);
+      for (const [kind, k] of [['pup', pupShare], ['wolf', 1 - pupShare]] as [WolfKind, number][]) {
+        const count = Math.round((pot * cw[c]! * k) / cwSum / (THREAT[kind] * COLORS[c].threat));
+        if (count < 1) continue;
+        const span = length * (0.6 + rand() * 0.3);
+        lines.push({ kind, count, interval: span / count, delay: 2 + rand() * length * 0.3, color: c });
+      }
     }
   }
-  // 緑（起き上がる）は1晩に2〜3匹まで。金（全部強い）はめったに出ない（4晩に1晩くらい・1匹だけ）
-  if (COLORS.green.from <= n && n % 10 !== 0 && (n === COLORS.green.from || rand() < 0.5)) {
+  // 緑（起き上がる）は1晩に2〜3匹まで（色が2色の晩は出さない）。金（全部強い）はめったに出ない（4晩に1晩くらい・1匹だけ）
+  if (COLORS.green.from <= n && n % 10 !== 0 && (n === COLORS.green.from || (theme.length < 2 && rand() < 0.5))) {
     const count = n === COLORS.green.from ? 2 : 2 + (rand() < 0.4 ? 1 : 0);
     lines.push({ kind: 'wolf', count, interval: 6, delay: length * (0.15 + rand() * 0.3), color: 'green' });
     left -= THREAT.wolf * COLORS.green.threat * count;
@@ -148,6 +160,7 @@ export function night(n: number): SpawnLine[] {
   // 3割は山場に取っておく（2晩目から）
   const surgeBudget = n >= 2 ? left * 0.3 : 0;
   left -= surgeBudget;
+  left += back;
 
   // ふつうの流れ：晩が進むほど、子狼より重い狼の割合が増える
   const kinds = (Object.keys(THREAT) as WolfKind[]).filter((k) => k !== 'alpha' && !FOES.includes(k) && FROM[k] <= n);
@@ -173,17 +186,43 @@ export function night(n: number): SpawnLine[] {
     lines.push({ kind: k, count, interval: span / count, delay: rand() * length * 0.25 });
   }
 
-  // 山場：晩の半ばすぎに、一番多い種類と重い種類をまとめて
+  // 山場：晩の半ばすぎに、一番多い種類と重い種類をまとめて。
+  // 10晩目からは半分くらいの晩で、今夜の色の狼ばかりの群れ（同じ弱い武器がまとめて効く見せ場。レビュー5）
   if (surgeBudget > 0) {
     const at = length * (0.5 + rand() * 0.15);
     const heavy = kinds.filter((k) => k !== 'pup');
-    const main: WolfKind = heavy.length && rand() < 0.5 ? heavy[Math.floor(rand() * heavy.length)] : 'pup';
-    const count = Math.max(3, Math.floor((surgeBudget * 0.7) / THREAT[main]));
-    lines.push({ kind: main, count, interval: 0.25, delay: at, surge: true });
+    const pack = surgePack(n, theme);
+    const main: WolfKind = pack ? (n < 25 ? 'pup' : 'wolf') : heavy.length && rand() < 0.5 ? heavy[Math.floor(rand() * heavy.length)] : 'pup';
+    const count = Math.max(3, Math.floor((surgeBudget * 0.7) / (THREAT[main] * (pack ? COLORS[pack].threat : 1))));
+    lines.push({ kind: main, count, interval: 0.25, delay: at, surge: true, color: pack });
     const pups = Math.floor((surgeBudget * 0.3) / THREAT.pup);
     if (pups > 0) lines.push({ kind: 'pup', count: pups, interval: 0.2, delay: at + 0.3, surge: true });
   }
   return lines;
+}
+
+// その晩の色（1〜2色）。新顔の晩は新顔だけ。紅月の夜は赤を必ず入れる。同じ晩はいつも同じ
+export function themeColors(n: number, md = mood(n)): WolfColor[] {
+  const can = COLOR_ORDER.filter((c) => COLORS[c].from < n && c !== 'gold' && c !== 'green');
+  if (!can.length || newColors(n).some((c) => c !== 'gold' && c !== 'green')) return [];
+  const quiet = newColors(n).length > 0; // 緑・金の新顔の晩は1色だけ
+  let seed = n * 4931 + 11;
+  const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  r();
+  const pick: WolfColor[] = md === 'beni' && can.includes('red') ? ['red'] : [];
+  const want = can.length >= 2 && n >= 20 && !quiet && r() < 0.45 ? 2 : 1;
+  while (pick.length < want) {
+    const c = can[Math.floor(r() * can.length)];
+    if (!pick.includes(c)) pick.push(c);
+  }
+  return pick;
+}
+
+// 山場を色の狼の群れにする晩なら、その色（10晩目から半分くらい）
+export function surgePack(n: number, theme = themeColors(n)): WolfColor | undefined {
+  if (n < 10 || !theme.length) return undefined;
+  const seed = (n * 2654435761) >>> 0;
+  return (seed >>> 8) % 100 < 50 ? theme[(seed >>> 4) % theme.length] : undefined;
 }
 
 // 10晩ごとの大狼の色：10晩は灰、そのあと 赤・紫・橙・黒・緑・金 と回す

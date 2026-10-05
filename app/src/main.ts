@@ -2,7 +2,7 @@ import './style.css';
 import { Sfx } from './audio';
 import { COLORS, COMBO, FINISHERS, HOUSE_HP, SPECIALS, WOLVES, type Beat, type Track, type Finisher, type Special, type WolfColor, type WolfKind } from './config';
 import { Input } from './input';
-import { MOODS, mood as moodOf, newColors, night as nightOf } from './nights';
+import { MOODS, mood as moodOf, newColors, night as nightOf, surgePack } from './nights';
 import { TALKS } from './talks';
 import { Sim, type Event, type Save } from './sim';
 import { ICON, Panel } from './ui';
@@ -90,7 +90,25 @@ async function main() {
   // 狼の名前と絵（色の狼は色の名前と、頭の上と同じ弱い武器の印）
   const wolfTag = (kind: WolfKind, color: WolfColor | undefined, n: number) => {
     const c = color ? COLORS[color] : null;
-    return `<span${c ? ` class="col" style="color:${c.ui}"` : ''}><img src="${BASE}wolves/${kind}.webp" alt="">${c ? c.name : ''}${WOLVES[kind].name}${c?.weak ? ICON(c.icon) : ''}<i>${n}</i></span>`;
+    const img = color && (kind === 'wolf' || kind === 'pup') ? `col/${color}` : kind; // 色の狼はゲームと同じ色付けの絵（scripts/export-colors.mjs）
+    return `<span${c ? ` class="col" style="color:${c.ui}"` : ''}><img src="${BASE}wolves/${img}.webp" alt="">${c ? c.name : ''}${WOLVES[kind].name}${c?.weak ? ICON(c.icon) : ''}<i>${n}</i></span>`;
+  };
+  // 一覧を短く（2026-10-05 レビュー11・12。70晩目で右上が12行になり月と裂け目を隠した）：
+  // 色の狼は子狼と狼をまとめて「赤い狼」1つに。max を超えたら、大物と数の多い順に残して、残りは「ほか○匹」
+  type Row = { kind: WolfKind; color?: WolfColor; n: number };
+  const BIG: WolfKind[] = ['king', 'alpha', 'wman', 'wwoman'];
+  const tidyList = (list: Row[], max: number) => {
+    const rows: Row[] = [];
+    for (const e of list) {
+      const kind: WolfKind = e.color && e.kind === 'pup' ? 'wolf' : e.kind;
+      const o = rows.find((r) => r.kind === kind && r.color === e.color);
+      if (o) o.n += e.n;
+      else rows.push({ kind, color: e.color, n: e.n });
+    }
+    if (rows.length <= max) return { rows, rest: 0 };
+    const rank = (r: Row) => (BIG.includes(r.kind) ? 1e6 : 0) + (r.color ? 1e5 : 0) + r.n;
+    const keep = new Set([...rows].sort((a, b) => rank(b) - rank(a)).slice(0, max - 1));
+    return { rows: rows.filter((r) => keep.has(r)), rest: rows.filter((r) => !keep.has(r)).reduce((a, r) => a + r.n, 0) };
   };
   const SP_LINES: Record<Special, string> = {
     senbon: 'ぜーんぶ、まとめて――おやすみ',
@@ -198,6 +216,9 @@ async function main() {
         restart(cutin);
       }
       if (ev === 'surge') {
+        // 色の狼ばかりの群れは、その色の名前で（どの必殺技が効くか分かるように）
+        const pack = surgePack(sim.wave + 1);
+        surge.innerHTML = pack ? `<span style="color:${COLORS[pack].ui}">${COLORS[pack].name}狼</span>の群れが来る！${COLORS[pack].weak ? ICON(COLORS[pack].icon) : ''}` : '群れが来る！';
         restart(surge);
         surgeUntil = sim.clock + 2;
       }
@@ -315,7 +336,8 @@ async function main() {
           else count.push({ kind: l.kind, color: l.color, n: l.count });
         }
         const face = newColors(tn).map((c) => `<small style="color:${COLORS[c].ui}">新顔：${COLORS[c].name}狼（${COLORS[c].word}）</small>`).join('');
-        tonight.innerHTML = `<b>今夜 ${tn}日目${m ? `・<em>${MOODS[m].name}</em>` : ''}</b>${m ? `<small>${MOODS[m].note}</small>` : ''}${face}<div>${count.map((e) => wolfTag(e.kind, e.color, e.n)).join('')}</div>`;
+        const t = tidyList(count, 6);
+        tonight.innerHTML = `<b>今夜 ${tn}日目${m ? `・<em>${MOODS[m].name}</em>` : ''}</b>${m ? `<small>${MOODS[m].note}</small>` : ''}${face}<div>${t.rows.map((e) => wolfTag(e.kind, e.color, e.n)).join('')}${t.rest ? `<span class="rest">ほか<i>${t.rest}</i></span>` : ''}</div>`;
       }
     }
     // 予告：この晩にまだ来ていない狼
@@ -324,7 +346,8 @@ async function main() {
     if (key !== lastPending) {
       lastPending = key;
       next.hidden = pend.length === 0;
-      next.innerHTML = '<b>これから</b>' + pend.map((e) => wolfTag(e.kind, e.color, e.n)).join('');
+      const t = tidyList(pend, 5);
+      next.innerHTML = '<b>これから</b>' + t.rows.map((e) => wolfTag(e.kind, e.color, e.n)).join('') + (t.rest ? `<span class="rest">ほか<i>${t.rest}</i></span>` : '');
     }
   };
 

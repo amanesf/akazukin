@@ -1038,7 +1038,8 @@ export class View {
     let cyy = cy;
     if (w.kind === 'king' && art !== 'king') cyy = o.ground - o.lift - this.wolves.center(hh);
     // 狼王は主人公の側を向く（絵は左向き）
-    const flip = w.kind === 'king' && ((w.mode === '' || w.mode === 'kr' || w.mode === 'rest' || w.mode === 'down') ? sim.hero.x > w.x : (w.kdir ?? -1) > 0);
+    let flip = w.kind === 'king' && ((w.mode === '' || w.mode === 'kr' || w.mode === 'rest' || w.mode === 'down') ? sim.hero.x > w.x : (w.kdir ?? -1) > 0);
+    if (w.kind === 'wman') flip = (w.kdir ?? -1) > 0; // 人狼男は振り向く（絵は左向き）
     this.wolves.put(layer, art, o.x, cyy, hh, rot, 0.85 + 0.15 * born, tint, born, flip, this.furOf(w.kind, w.color), w.color ? COLOR_GLOW(w.color) : w.kind === 'king' ? 0xff2030 : undefined);
     const top = o.ground - o.lift - hh;
     this.wolfBoxes.push({ id: w.id, lane: w.lane, x0: o.x - hh * 0.7, x1: o.x + hh * 0.7, y0: top, y1: o.ground - o.lift + hh * 0.05 });
@@ -1048,7 +1049,12 @@ export class View {
       this.wolfHud.rect(o.x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
       this.wolfHud.rect(o.x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
     }
-    if (w.color && born > 0.5) this.mark(w.color, o.x, o.ground - o.lift - hh * 1.05 - 6, hh);
+    if (w.color && born > 0.5) {
+      // 主人公から遠い狼の印は小さく薄く（色の狼が多い晩に、頭の上の印が十数個並んでにぎやかすぎた。レビュー13）
+      const sx = o.x * this.world.scale.x + this.world.x;
+      const far = Math.min(1, Math.max(0, (Math.abs(sx - this.heroAt.x) / this.geo.W - 0.18) / 0.35));
+      this.mark(w.color, o.x, o.ground - o.lift - hh * 1.05 - 6, hh, far);
+    }
     if (w.kind === 'king') this.kingHud(w, o.x, o.ground - o.lift, hh);
     // 人狼男の振りかぶり：頭の上に赤い「！」（大振りが来る。今なら大技で止められる）
     if (w.kind === 'wman' && w.mode === 'wind') {
@@ -1110,12 +1116,14 @@ export class View {
   }
 
   // 頭の上の印：その色の丸に、弱い武器の絵（ナイフ・弓・主砲・桜。金は銭）
-  private mark(color: WolfColor, x: number, y: number, hh: number) {
+  // far：主人公からの遠さ（0〜1）。遠いほど小さく薄く
+  private mark(color: WolfColor, x: number, y: number, hh: number, far = 0) {
     const tex = this.markTex[COLORS[color].icon];
-    const r = Math.max(9, Math.min(17, hh * 0.13));
+    const r = Math.max(9, Math.min(17, hh * 0.13)) * (1 - 0.4 * far);
+    const al = 1 - 0.6 * far;
     const cy = y - r;
-    this.wolfHud.circle(x, cy, r + 2).fill({ color: 0x000000, alpha: 0.55 });
-    this.wolfHud.circle(x, cy, r).fill({ color: COLOR_GLOW(color), alpha: 0.9 });
+    this.wolfHud.circle(x, cy, r + 2).fill({ color: 0x000000, alpha: 0.55 * al });
+    this.wolfHud.circle(x, cy, r).fill({ color: COLOR_GLOW(color), alpha: 0.9 * al });
     if (!tex) return;
     let sp = this.headMarks.children[this.markUsed] as Sprite | undefined;
     if (!sp) {
@@ -1128,7 +1136,7 @@ export class View {
     const k = (r * 1.7) / Math.max(tex.width, tex.height);
     sp.scale.set(k);
     sp.position.set(x, cy);
-    sp.alpha = 1;
+    sp.alpha = al;
     sp.visible = true;
   }
 
@@ -1852,6 +1860,7 @@ export class View {
     for (let i = 0; i < this.nums.length; i++) {
       if (this.numOwner[i] >= 0 && !live.has(this.numOwner[i])) this.numOwner[i] = -1;
     }
+    const stack = { l: 0, r: 0 }; // 端に寄せた数字を、同じ向きどうし少しずつずらして積む（重ならないように）
     for (const f of live.values()) {
       let i = this.numOwner.indexOf(f.id);
       if (i < 0) {
@@ -1884,14 +1893,22 @@ export class View {
       const lo = -this.world.x / zs + m;
       const hi = (this.geo.W - this.world.x) / zs - m;
       const out = nx < lo || nx > hi;
-      const label = !out ? String(f.n) : nx > hi ? `${f.n}▶` : `◀${f.n}`; // 向きの矢印を添える
+      const label = String(f.n);
       if (t.text !== label) t.text = label;
+      let ny = y - ((f.id * 53) % 17) - easeOut(Math.min(1, q * 3)) * 34;
       if (out) {
-        nx = Math.max(lo, Math.min(hi, nx));
+        // 向きは数字の外側の小さい三角で（前は「◀」の字で、大きくて数字が重なった。レビュー14）
+        const right = nx > hi;
+        nx = right ? hi : lo;
         t.scale.set(pop * 0.8 / zs); // 端の数字は引いた画面でも同じ大きさで読めるように
         t.alpha *= 0.9;
+        ny = y - this.geo.Hm * 0.04 - (right ? stack.r++ : stack.l++) * 24 / zs - easeOut(Math.min(1, q * 3)) * 20 / zs;
+        const d = right ? 1 : -1;
+        const tx = nx + d * (m - 8 / zs);
+        const a = 7 / zs;
+        this.wolfHud.poly([tx + d * a, ny, tx - d * a * 0.6, ny - a, tx - d * a * 0.6, ny + a]).fill({ color: t.style.fill as number, alpha: t.alpha });
       }
-      t.position.set(nx, y - ((f.id * 53) % 17) - easeOut(Math.min(1, q * 3)) * 34);
+      t.position.set(nx, ny);
     }
     for (let i = 0; i < this.nums.length; i++) if (this.numOwner[i] < 0) this.nums[i].visible = false;
     void K;

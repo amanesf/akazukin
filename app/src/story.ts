@@ -82,7 +82,7 @@ const WOLF_TEXT: Record<WolfKind, string> = {
   armored: '鎧をまとった硬い狼。弓と主砲が効きにくい。近づいて斬れ。',
   howler: '後ろに居座って吠え、裂け目から子狼を呼び続ける。倒さないと増える一方。',
   alpha: '十夜ごとに現れる、紅いたてがみの大物。ほとんど弾き飛ばせない。夜ごとに色が変わる。九十九夜目には三頭が来る。',
-  wman: '立って歩く狼の男。腕を振りかぶったら大振りが来る。その隙に大技を当てれば止まる。',
+  wman: '立って歩く狼の男。腕を振りかぶったら大振りが来る。その隙に大技を当てれば止まる。後ろに回っても振り向く。',
   wwoman: '立って歩く狼の女。跳んで近くへ下り、ひっかきを三度。着地の隙を斬れ。',
   crow: '空から赤ずきんにとまり、足を鈍らせる。左右にはじいて振りほどけ。',
   king: '九十九夜目、裂け目の奥から現れる封じられた大神。頭に浮かぶ印の武器を順に当てて、封を砕け。',
@@ -143,7 +143,7 @@ function charaPage() {
     </article>`).join('');
   const colors = COLOR_ORDER.map((c) => `
     <article class="st-mini wolf col" style="--c:${COLORS[c].ui}">
-      <img src="${B}wolves/wolf.webp" alt="">
+      <img src="${B}wolves/col/${c}.webp" alt="">
       <h5>${COLORS[c].name}狼<small>${COLORS[c].word}</small></h5>
       <p>${COLOR_TEXT[c]}${COLORS[c].weak ? `<span class="weak"><img src="${B}ui/icons/${COLORS[c].icon}.webp" alt="">${COLORS[c].weak === 'sp' ? '必殺技' : SPECIALS[COLORS[c].weak].icon === 'knife' ? 'ナイフ' : SPECIALS[COLORS[c].weak].icon === 'bow' ? '弓' : '主砲'}に弱い</span>` : '<span class="weak">弱い武器なし</span>'}</p>
     </article>`).join('');
@@ -161,7 +161,7 @@ function charaPage() {
     <h3 class="st-sub"><small>異界の狼</small>裂け目から来るもの</h3>
     <div class="st-grid">${wolves}</div>
     <h3 class="st-sub"><small>色の狼</small>ひとことで分かる</h3>
-    <p class="st-lead">子狼と狼には色が付くことがある。頭の上の絵は弱い武器。初めて出る夜は「新顔」と教えてくれる。</p>
+    <p class="st-lead">子狼と狼には色が付くことがある。頭の上の絵は弱い武器。1晩に出る色は1〜2色。同じ色ばかりの群れが来たら、その色に効く必殺技の出番。初めて出る夜は「新顔」と教えてくれる。</p>
     <div class="st-grid">${colors}</div>
     <h3 class="st-sub"><small>九十九夜目</small>裂け目の主</h3>
     <article class="st-card boss">
@@ -170,7 +170,7 @@ function charaPage() {
         <span class="tag">最後の敵</span>
         <h4>狼王<small>ろうおう</small></h4>
         <p>${esc(WOLF_TEXT.king)}</p>
-        <p>${esc('身を低くしたら跳べ。立ち上がったら引け。印を全部砕けば、王は倒れ込む。')}</p>
+        <p>${esc('身を低くしたら跳べ。立ち上がったら引け。弓の印のあいだは、続けて来る遠吠えの波を跳びながら射て。印を全部砕けば、王は倒れ込む。追い詰められた王の遠吠えは、家まで届く。')}</p>
       </div>
     </article>`;
 }

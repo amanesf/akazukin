@@ -2,7 +2,8 @@
  * 難しさの計測。描画なしで sim だけを高速に回し、素朴な自動操作が何日目まで行けるかを数える。
  * 99晩を画面つきで撮るのは遅すぎる（ソフトウェア描画）ので、こちらで測る。
  *
- * 使い方: node scripts/balance.mjs [--seeds 1,2,3] [--max 99] [--dogs 0] [--smart 1]
+ * 使い方: node scripts/balance.mjs [--seeds 1,2,3,4,5,6] [--max 99] [--dogs 0] [--smart 1] [--tries 5]
+ * 最後に、何晩まで行けたかの平均・最小・最大と、遠吠えに呼ばれた子狼の合計を出す（種ごとのばらつきが大きいので、平均と最小で見る）
  * app/node_modules の esbuild で app/src/sim.ts をその場で束ねる（先に app で npm ci）。
  */
 import { build } from '../app/node_modules/esbuild/lib/main.js';
@@ -15,7 +16,10 @@ const args = Object.fromEntries(
   process.argv.slice(2).join(' ').split('--').filter(Boolean)
     .map((s) => s.trim().split(/\s+/)).map(([k, v]) => [k, v ?? '1']),
 );
-const SEEDS = (args.seeds ?? '1,2,3').split(',').map(Number);
+const SEEDS = (args.seeds ?? '1,2,3,4,5,6').split(',').map(Number);
+const TRIES = Number(args.tries ?? 5);
+const reached = [];
+let summonedAll = 0;
 const MAX = Number(args.max ?? 99);
 const DOGS = args.dogs !== '0'; // --dogs 0 で番犬を出さない
 
@@ -54,7 +58,7 @@ for (const seed of SEEDS) {
   for (;;) {
     if (s.result === 'lost') {
       losses++;
-      if (++tries >= 5) break;
+      if (++tries >= TRIES) break;
       const back = Sim.load(saved, seed + losses);
       back.coins += Math.floor(s.nightEarned); // 負けてもその夜に拾った銭は残る（試作と同じ）
       Object.assign(s, back);
@@ -73,6 +77,7 @@ for (const seed of SEEDS) {
       if (s.wave % 10 === 0) {
         const st = s.stats;
         console.log(`  ${s.wave}晩：倒れた ${st.downs}回・主人公が受けた ${Math.round(st.heroDmg)}・家が噛まれた ${Math.round(st.houseBite)}・呼ばれた子狼 ${st.summoned}・銭 ${Math.floor(s.coins)}・段 ${Object.values(s.levels).join('')}`);
+        summonedAll += st.summoned;
         s.stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0, summoned: 0 };
       }
       minHouse.push(Math.round(low));
@@ -80,8 +85,12 @@ for (const seed of SEEDS) {
       lastWave = s.wave;
     }
   }
+  summonedAll += s.stats.summoned;
+  reached.push(s.result === 'won' ? 99 : s.wave);
   const lv = Object.entries(s.levels).map(([k, v]) => `${k}${v}`).join(' ');
   console.log(`seed ${seed}: ${s.result === 'lost' ? `${s.wave + 1}日目の夜で5回続けて負け` : s.result === 'won' ? '狼絶滅' : `${s.wave}晩まで`} 家が落ちた ${losses}回 kills ${s.kills} best ${s.bestCombo} ${lv}`);
   console.log(`  晩ごとの家の最低耐久: ${minHouse.join(' ')}`);
   console.log(`  番犬 ${s.dogs.length}匹（最後の晩）／削った量 主人公 ${Math.round(dealt.hero)}・番犬 ${Math.round(dealt.dogs)}`);
 }
+const avg = reached.reduce((a, b) => a + b, 0) / reached.length;
+console.log(`まとめ：越えた晩 平均 ${avg.toFixed(1)}・最小 ${Math.min(...reached)}・最大 ${Math.max(...reached)}（${reached.join(' ')}）／呼ばれた子狼 合計 ${summonedAll}`);
