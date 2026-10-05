@@ -56,6 +56,7 @@ for (const seed of SEEDS) {
       losses++;
       if (++tries >= 5) break;
       const back = Sim.load(saved, seed + losses);
+      back.coins += Math.floor(s.nightEarned); // 負けてもその夜に拾った銭は残る（試作と同じ）
       Object.assign(s, back);
       continue;
     }

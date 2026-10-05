@@ -3,7 +3,7 @@
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
-  BLAST, COLORS, CROW, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
+  BLAST, COLORS, CROW, KING, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
 } from './config';
@@ -44,10 +44,17 @@ export interface Wolf extends Unit {
   zgain: number; // 緑：この1匹から溜まった必殺技（上限あり）
   summoned?: boolean; // 遠吠えに呼ばれた子狼（賞金なし）
   naps: number; // 緑が寝た回数（緑の大狼は2回まで。3回目で倒れる）
-  mode: '' | 'wind' | 'rest' | 'leap' | 'land' | 'claw' | 'back' | 'cling' | 'fall'; // 人狼・カラスの動きの段
+  mode: '' | 'wind' | 'rest' | 'leap' | 'land' | 'claw' | 'back' | 'cling' | 'fall' | 'kl' | 'lunge' | 'kr' | 'ks' | 'kw' | 'down'; // 人狼・カラス・狼王の動きの段
   modeT: number; // その段の残り秒
   clawN: number; // 人狼女：残りのひっかき
+  seq?: Special[]; // 狼王：頭の上の印（当てる武器の順）
+  markIdx?: number; // 狼王：いま光っている印
+  markHp?: number; // 狼王：いまの印に当てた量
+  kdir?: number; // 狼王：攻める向き
+  kHit?: boolean; // 狼王：この突進で当てた
 }
+// 狼王の遠吠えの波（地面を走る。跳んでよける）
+export interface Wave { x: number; dir: number; lane: number; hit: boolean; dogs: number[] }
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
@@ -73,7 +80,7 @@ export type Result = 'playing' | 'won' | 'lost';
 export type Phase = 'lead' | 'wave' | 'shop';
 // 画面の演出と主人公の吹き出しのための出来事（main が受け取って消す）
 export type Sound = 'swing' | 'hit' | 'heavy' | 'slam' | 'boom' | 'bow' | 'hurt' | 'ouran' | 'horn' | 'buy' | 'dash' | 'charge' | 'full' | 'jump';
-export type Event = 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge' | 'combo10' | 'combo30' | 'newface' | 'weak';
+export type Event = 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge' | 'combo10' | 'combo30' | 'newface' | 'weak' | 'kingdown' | 'kingdie';
 
 export interface Save {
   v: 3; wave: number; coins: number; houseHp: number; levels: Record<Track, number>; kills: number; bestCombo: number;
@@ -186,6 +193,7 @@ export class Sim {
   arrows: Arrow[] = [];
   shells: Shell[] = [];
   shots: Shot[] = [];
+  waves: Wave[] = [];
   fx: Fx[] = [];
 
   cds: Record<'kaiten' | 'tosshin' | 'ame' | 'hougeki', number> = { kaiten: 0, tosshin: 0, ame: 0, hougeki: 0 };
@@ -690,6 +698,7 @@ export class Sim {
     this.flyArrows(dt);
     this.flyShells(dt);
     this.flyShots(dt);
+    this.flyWaves(dt);
     this.reap();
     this.endWave();
 
@@ -802,6 +811,7 @@ export class Sim {
     this.arrows = [];
     this.shells = [];
     this.shots = [];
+    this.waves = [];
     this.sleepers = [];
     this.combo = 0;
     this.hero.move = null;
@@ -850,6 +860,7 @@ export class Sim {
       w.skillCd -= dt;
       w.stun = Math.max(0, w.stun - dt);
 
+      if (w.kind === 'king' && this.runKing(w, dt)) continue;
       if (w.kind === 'crow' && this.runCrow(w, dt)) continue;
       // 体の動き：弾かれた勢い・打ち上げ・叩きつけ
       if (w.vx !== 0) {
@@ -991,7 +1002,7 @@ export class Sim {
   //   相手がいないときは、守りは家の前、ほかは赤ずきんの後ろについて行く。倒れたら家で休んで戻る
   private moveDogs(dt: number) {
     const h = this.hero;
-    const live = this.wolves.filter((w) => w.age > 0.4 && w.x <= DOG_MAX_X + 60);
+    const live = this.wolves.filter((w) => w.age > 0.4 && w.x <= DOG_MAX_X + 60 && w.kind !== 'king'); // 狼王は狙わない（手下の相手をする）
     for (const d of this.dogs) {
       const s = DOGS[d.kind];
       d.hitFlash = Math.max(0, d.hitFlash - dt);
@@ -1681,6 +1692,10 @@ export class Sim {
   // src：どの必殺技のゲージが溜まるか（sp は必殺技そのもの＝溜まらない）
   private hit(w: Wolf, dmg: number, o: { kb?: number; lift?: number; slam?: boolean; stop?: number; quiet?: boolean; stun?: number; src?: Special | 'sp' }) {
     if (w.age < 0.4) return; // 裂け目から出てくる途中は当たらない
+    if (w.kind === 'king') {
+      dmg = this.kingHit(w, dmg, o);
+      o = { ...o, kb: 0, lift: 0, slam: false, stun: 0 };
+    }
     if (o.kb) o = { ...o, kb: Math.abs(o.kb) };
     // 弱い武器で当てると2倍（色の狼の頭の上の印）
     // 必殺技も武器の種類で数える（千本桜＝ナイフ・流れ矢＝弓・乱れ撃ち＝主砲）。緑はどの必殺技でも
@@ -1728,7 +1743,7 @@ export class Sim {
       w.mode = 'fall'; // 叩かれたカラスは落ちる
       w.z = Math.max(w.z, 0.01);
     }
-    w.stun = Math.max(w.stun, stun);
+    if (w.kind !== 'king') w.stun = Math.max(w.stun, stun);
     const big = dmg >= 30;
     this.fx.push(this.mk({ kind: 'num', x: w.x, lane: w.lane, n: Math.round(dmg), z: w.z, big: big || weak, color: weak ? w.color : undefined }));
     if (o.quiet) return; // 番犬の噛みつきはコンボに数えない
@@ -1749,6 +1764,178 @@ export class Sim {
       this.gain(o.src, n);
     }
     if (o.stop) this.hitStop = Math.max(this.hitStop, o.stop);
+  }
+
+  // ── 狼王 ──
+  private kingPhase(w: Wolf) {
+    const k = w.hp / w.maxHp;
+    return k > 0.66 ? 0 : k > 0.33 ? 1 : 2;
+  }
+
+  // 新しい印の並び（同じ武器は続けない）
+  private newSeq(w: Wolf) {
+    const n = KING.marks[this.kingPhase(w)];
+    const seq: Special[] = [];
+    for (let i = 0; i < n; i++) {
+      const opts = SPECIAL_ORDER.filter((k) => k !== seq[i - 1]);
+      seq.push(opts[Math.floor(this.rand() * opts.length)]);
+    }
+    w.seq = seq;
+    w.markIdx = 0;
+    w.markHp = 0;
+  }
+
+  // 狼王に当てた：光っている印の武器なら印が削れ（割れたら次へ）、違う武器はほとんど効かない。倒れ込んでいるあいだは大きく効く
+  private kingHit(w: Wolf, dmg: number, o: { src?: Special | 'sp'; quiet?: boolean }) {
+    if (!w.seq) this.newSeq(w);
+    if (o.quiet) return dmg * KING.dog; // 番犬はほとんど効かない（手下の相手をする）
+    if (w.mode === 'down') return dmg * KING.downMul;
+    const weapon = o.src === 'sp' ? this.hero.special : o.src;
+    if (!weapon || weapon !== w.seq![w.markIdx!]) return dmg * KING.wrong;
+    // 光っている印の武器：当てた回数で印が削れる（必殺技は1回で割れる）
+    w.markHp! += o.src === 'sp' ? KING.points.sp : KING.points[weapon];
+    if (w.markHp! >= KING.mark) {
+      w.markHp = 0;
+      w.markIdx!++;
+      this.fx.push(this.mk({ kind: 'full', x: w.x, lane: w.lane }));
+      this.sounds.push('full');
+      if (w.markIdx! >= w.seq!.length) {
+        // 全部割った：倒れ込む（大チャンス）
+        w.mode = 'down';
+        w.modeT = KING.down;
+        this.events.push('kingdown');
+        this.sounds.push('boom');
+        this.kick(10, 0);
+        this.fx.push(this.mk({ kind: 'land', x: w.x, lane: w.lane, r: w.size * 1.5, big: true }));
+      }
+    }
+    return dmg;
+  }
+
+  // 主人公を吹き飛ばす（dir の向きへ）
+  private pushHero(dir: number, d: number) {
+    const h = this.hero;
+    h.x = clamp(h.x + dir * d, HERO.minX, HERO.maxX);
+    h.vz = Math.max(h.vz, 320);
+    h.z = Math.max(h.z, 0.01);
+  }
+
+  // 狼王：居座る所まで来たら、間を置いて3つの攻めのどれかを出す。予兆（溜め）は wind 秒。true を返す（体の動きは自分でする）
+  private runKing(w: Wolf, dt: number): boolean {
+    const h = this.hero;
+    const ph = this.kingPhase(w);
+    if (!w.seq) this.newSeq(w);
+    const heroOk = h.down <= 0 && h.ouran <= 0 && h.iframes <= 0;
+    const lane = (o: { lane: number }) => Math.abs(o.lane - w.lane) < 0.55;
+    switch (w.mode) {
+      case 'down':
+        if ((w.modeT -= dt) > 0) return true;
+        w.mode = '';
+        w.modeT = KING.gap[ph];
+        this.newSeq(w);
+        this.fx.push(this.mk({ kind: 'wake', x: w.x, lane: w.lane, r: w.size }));
+        return true;
+      case 'kl': // 突進の溜め
+        if ((w.modeT -= dt) > 0) return true;
+        w.mode = 'lunge';
+        w.modeT = KING.lunge.time;
+        w.kHit = false;
+        this.sounds.push('dash');
+        return true;
+      case 'lunge': {
+        w.x = clamp(w.x + w.kdir! * KING.lunge.speed * dt, HOUSE_X + 80, WOLF_SPAWN_X - 40);
+        const touch = (x: number) => Math.abs(x - w.x) < w.size / 2 + 20;
+        if (!w.kHit && heroOk && touch(h.x) && lane(h) && h.z < KING.lunge.clear) {
+          w.kHit = true;
+          this.hurtHero(KING.lunge.damage * this.bite);
+          this.pushHero(w.kdir!, KING.lunge.push);
+        }
+        for (const d of this.dogs) if (d.down <= 0 && touch(d.x) && lane(d)) this.hurt(d, KING.lunge.damage * this.bite * dt * 3);
+        if ((w.modeT -= dt) <= 0) w.mode = 'kr';
+        return true;
+      }
+      case 'kr': { // 居座る所へ戻る
+        const dx = KING.holdX - w.x;
+        w.x += Math.sign(dx) * Math.min(Math.abs(dx), 280 * dt);
+        if (Math.abs(dx) < 2) { w.mode = ''; w.modeT = KING.gap[ph]; }
+        return true;
+      }
+      case 'ks': { // 立ち上がって叩きつけ
+        if ((w.modeT -= dt) > 0) return true;
+        const c = w.x + w.kdir! * (KING.slam.near + KING.slam.reach / 2);
+        const inside = (x: number) => Math.abs(x - c) <= KING.slam.reach / 2;
+        this.fx.push(this.mk({ kind: 'land', x: c, lane: w.lane, r: KING.slam.reach / 2, big: true }));
+        this.fx.push(this.mk({ kind: 'pound', x: c, lane: w.lane, r: KING.slam.reach / 2 }));
+        this.sounds.push('slam');
+        this.kick(9, w.kdir!);
+        if (heroOk && inside(h.x) && lane(h)) {
+          this.hurtHero(KING.slam.damage * this.bite);
+          this.pushHero(w.kdir!, KING.slam.push);
+        }
+        for (const d of this.dogs) if (d.down <= 0 && inside(d.x) && lane(d)) this.hurt(d, KING.slam.damage * this.bite);
+        w.mode = 'rest';
+        w.modeT = 0.6;
+        return true;
+      }
+      case 'kw': // 吠えて波・手下を呼ぶ
+        if ((w.modeT -= dt) > 0) return true;
+        this.waves.push({ x: w.x + w.kdir! * w.size * 0.4, dir: w.kdir!, lane: w.lane, hit: false, dogs: [] });
+        this.fx.push(this.mk({ kind: 'howl', x: w.x, lane: w.lane, r: w.size }));
+        this.sounds.push('horn');
+        if (this.wolves.length < 30) {
+          const cols: WolfColor[] = ['red', 'black', 'purple', 'orange'];
+          for (let i = 0; i < KING.wave.minions; i++) {
+            const m = this.makeWolf('wolf', WOLF_SPAWN_X, cols[Math.floor(this.rand() * cols.length)]);
+            m.summoned = true;
+            m.age = -0.2 * i;
+            m.skillCd = 1 + this.rand() * 2;
+            this.wolves.push(m);
+            this.fx.push(this.mk({ kind: 'emerge', x: m.x, lane: m.lane }));
+          }
+        }
+        w.mode = 'rest';
+        w.modeT = 0.6;
+        return true;
+      case 'rest':
+        if ((w.modeT -= dt) <= 0) { w.mode = ''; w.modeT = KING.gap[ph]; }
+        return true;
+    }
+    // 居座る所まで歩いてくる
+    if (w.x > KING.holdX + 1) {
+      w.x = Math.max(KING.holdX, w.x - WOLVES.king.speed * 3 * dt);
+      w.modeT = 1.5;
+      return true;
+    }
+    w.lane += clamp(h.lane - w.lane, -0.3 * dt, 0.3 * dt); // 主人公の奥行きへゆっくり寄る
+    if ((w.modeT -= dt) > 0 || h.down > 0) return true;
+    // 攻めを選ぶ：近ければ叩きつけか突進、遠ければ突進か遠吠え
+    w.kdir = h.x >= w.x ? 1 : -1;
+    const near = Math.abs(h.x - w.x) < KING.slam.near + KING.slam.reach;
+    const r = this.rand();
+    if (near) { w.mode = r < 0.55 ? 'ks' : 'kl'; }
+    else { w.mode = r < 0.5 ? 'kl' : 'kw'; }
+    w.modeT = w.mode === 'kl' ? KING.lunge.wind : w.mode === 'ks' ? KING.slam.wind : KING.wave.wind;
+    return true;
+  }
+
+  // 遠吠えの波：地面を走る。跳んでいれば当たらない。家には当たらない
+  private flyWaves(dt: number) {
+    const h = this.hero;
+    this.waves = this.waves.filter((v) => {
+      v.x += v.dir * KING.wave.speed * dt;
+      if (!v.hit && h.down <= 0 && h.ouran <= 0 && h.iframes <= 0 && Math.abs(h.x - v.x) < 26 && h.z < KING.wave.clear) {
+        v.hit = true;
+        this.hurtHero(KING.wave.damage * this.bite);
+        this.pushHero(v.dir, 90);
+      }
+      for (const d of this.dogs) {
+        if (d.down <= 0 && !v.dogs.includes(d.id) && Math.abs(d.x - v.x) < 26) {
+          v.dogs.push(d.id);
+          this.hurt(d, KING.wave.damage * this.bite * 0.5);
+        }
+      }
+      return v.x > HOUSE_X && v.x < WOLF_SPAWN_X;
+    });
   }
 
   // カラスがとまっている
@@ -1947,6 +2134,16 @@ export class Sim {
         this.sleepers.push(w);
         this.fx.push(this.mk({ kind: 'land', x: w.x, lane: w.lane, r: w.size }));
         return false;
+      }
+      if (w.kind === 'king') {
+        // 狼王が倒れると封が砕け、残った狼も消える
+        for (const o of this.wolves) if (o !== w && o.hp > 0) { o.hp = 0; o.summoned = true; this.fx.push(this.mk({ kind: 'sunfade', x: o.x, lane: o.lane, r: o.size, wolf: o.kind, color: o.color })); }
+        this.spawners = [];
+        this.sleepers = [];
+        this.waves = [];
+        this.events.push('kingdie');
+        this.kick(14, 0);
+        this.punch = 1;
       }
       const b = w.summoned ? 0 : WOLVES[w.kind].bounty * (w.color ? COLORS[w.color].bounty : 1);
       this.coins += b;

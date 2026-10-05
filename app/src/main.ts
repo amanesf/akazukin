@@ -69,6 +69,8 @@ async function main() {
     combo10: ['ふふっ、まだまだ♪'],
     combo30: ['止まらないよ〜♪'],
     dawn: ['朝だ〜。おばあちゃん、無事？'],
+    kingdown: ['今だっ！ 封が割れた！'],
+    kingdie: ['……おやすみ、王さま'],
   };
   // 色の狼が初めて出てきたとき（新顔）の台詞。弱い武器の使い方を1回だけ（**仮**）
   const FACE_LINES: Record<WolfColor, string> = {
@@ -90,6 +92,16 @@ async function main() {
     midare: '撃って撃って――撃ちまくる！',
   };
   // 操作の早見（夜だけ・画面の上）。2026-10-04 アマネさん「タップ＝斬る、長押し＝主砲、みたいなのがわかるように」
+  // 狼王の体力（99夜目・画面の上）
+  const bossbar = document.createElement('div');
+  bossbar.id = 'bossbar';
+  bossbar.hidden = true;
+  bossbar.innerHTML = '<b>狼王</b><div><i></i></div><p class="marks"></p><em class="warn" hidden></em>';
+  field.appendChild(bossbar);
+  const bossFill = bossbar.querySelector('i') as HTMLElement;
+  const bossMarks = bossbar.querySelector('.marks') as HTMLElement;
+  const bossWarn = bossbar.querySelector('.warn') as HTMLElement;
+  let lastMarks = '';
   const legend = document.getElementById('legend')!;
   // 2026-10-05 コンボを4拍子に。1段目は基本の操作（はじくは上下左右をまとめる）、2段目は4発目の締め（3拍打つと光る）
   const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki'];
@@ -163,7 +175,7 @@ async function main() {
   const say = (ev: Event) => {
     const lines = LINES[ev];
     if (!lines) return;
-    const urgent = ev === 'ouran' || ev === 'down' || ev === 'hurt' || ev === 'surge' || ev === 'dawn';
+    const urgent = ev === 'ouran' || ev === 'down' || ev === 'hurt' || ev === 'surge' || ev === 'dawn' || ev === 'kingdown' || ev === 'kingdie';
     if (!urgent && sim.clock - said < 6) return; // しゃべりすぎない
     bubble.textContent = ev === 'ouran' ? SP_LINES[sim.hero.special] : lines[(sim.kills + Math.floor(sim.clock)) % lines.length];
     bubble.hidden = false;
@@ -195,7 +207,8 @@ async function main() {
         // 新顔の晩は、題の下に「新顔：赤い狼（速い）」
         const face = newColors(sim.wave + 1).map((c) => `<br><span style="color:${COLORS[c].ui}">新顔：${COLORS[c].name}狼（${COLORS[c].word}）</span>`).join('');
         const boss = sim.pending().filter((e) => e.kind === 'alpha' && e.color).map((e) => `<br><span style="color:${COLORS[e.color!].ui}">${COLORS[e.color!].name}大狼（${COLORS[e.color!].word}）</span>`).join('');
-        showCard(m ? m.name : `${sim.wave + 1}日目の夜`, (m ? `${sim.wave + 1}日目・狼 ${n}匹<br>${m.note}` : `狼 ${n}匹`) + face + boss);
+        if (sim.pending().some((e) => e.kind === 'king')) showCard('狼王', '九十九夜目・封じられた大神が目を覚ます<br>頭の印の武器を順に当てて、封を砕け');
+        else showCard(m ? m.name : `${sim.wave + 1}日目の夜`, (m ? `${sim.wave + 1}日目・狼 ${n}匹<br>${m.note}` : `狼 ${n}匹`) + face + boss);
         document.body.dataset.mood = sim.mood ?? '';
       }
       if (ev === 'newface' && sim.newface) {
@@ -207,6 +220,23 @@ async function main() {
       say(ev);
     }
     if (sim.clock > surgeUntil) surge.hidden = true;
+    const king = sim.wolves.find((w) => w.kind === 'king');
+    bossbar.hidden = !king;
+    if (king) {
+      bossFill.style.width = `${Math.max(0, (100 * king.hp) / king.maxHp)}%`;
+      bossbar.classList.toggle('down', king.mode === 'down');
+      // 印の並び：光っている印＝いま当てる武器。割れた印は薄く。倒れ込みのあいだは「今だ！」
+      const mk = `${(king.seq ?? []).join(',')}|${king.markIdx}|${king.mode === 'down'}`;
+      if (mk !== lastMarks) {
+        lastMarks = mk;
+        bossMarks.innerHTML = king.mode === 'down' ? '<span class="now">倒れた！ 今だ！</span>'
+          : (king.seq ?? []).map((sp, i) => `<span class="${i < (king.markIdx ?? 0) ? 'done' : i === king.markIdx ? 'cur' : ''}">${ICON(SPECIALS[sp].icon)}</span>`).join('<i>›</i>');
+      }
+      // 予兆：↑ 跳べ（突進・遠吠え）／ ← → 引け（叩きつけ。狼王から離れる向き）
+      const wind = king.mode === 'kl' || king.mode === 'kw' ? '↑ 跳べ' : king.mode === 'ks' ? `${(king.kdir ?? -1) > 0 ? '→' : '←'} 引け` : '';
+      bossWarn.hidden = !wind;
+      if (wind && bossWarn.textContent !== wind) bossWarn.textContent = wind;
+    }
     if (sim.clock - said > saidLen) bubble.hidden = true;
     const { x, y } = view.heroAt;
     // 右端からはみ出さない
@@ -334,11 +364,14 @@ async function main() {
     sim = new Sim(seed());
   };
   // 家が落ちた：その晩の前の昼に戻る。負けた晩に拾った銭は残さない（2026-10-04・アマネさん）
+  // 負けたら前の昼に戻る。その夜に拾った銭は残す（2026-10-05 アマネさん「負けてもお金は残るように」。強化して挑み直せる）
   const retry = () => {
     const losses = sim.losses;
+    const earned = Math.floor(sim.nightEarned);
     const d = store.read();
     sim = d ? Sim.load(d, seed()) : new Sim(seed());
     sim.losses = losses;
+    sim.coins += earned;
     if (d) store.write(sim.save());
   };
 
@@ -387,7 +420,7 @@ async function main() {
       }
       if (sim.result === 'lost') {
         const back = store.read();
-        show(`<h1>家が落ちた</h1><p>${sim.wave + 1}日目の夜に力尽きた。<br>${back ? `${back.wave + 1}日目の昼に戻る（この夜に拾った銭は残らない）` : '1日目の夜からやり直す'}</p>`, [['もう一度', retry]]);
+        show(`<h1>家が落ちた</h1><p>${sim.wave + 1}日目の夜に力尽きた。<br>${back ? `${back.wave + 1}日目の昼に戻る` : '1日目の夜からやり直す'}<br>この夜に拾った銭 ${Math.floor(sim.nightEarned)} は残る</p>`, [['もう一度', retry]]);
       }
     }
   });

@@ -245,7 +245,7 @@ export const DOGS: Record<DogKind, DogSpec> = {
   tosa: { name: '鉄丸', breed: '土佐', hp: 360, damage: 34, interval: 1.0, speed: 150, size: 70 },
 };
 
-export type WolfKind = 'pup' | 'wolf' | 'armored' | 'howler' | 'alpha' | 'wman' | 'wwoman' | 'crow';
+export type WolfKind = 'pup' | 'wolf' | 'armored' | 'howler' | 'alpha' | 'wman' | 'wwoman' | 'crow' | 'king';
 export interface WolfSpec {
   name: string;
   hp: number;
@@ -268,6 +268,18 @@ export const WOLVES: Record<WolfKind, WolfSpec> = {
   wman: { name: '人狼男', hp: 650, damage: 14, interval: 1.0, speed: 30, size: 72, bounty: 40, arrowResist: 0.2, heavy: 0.6 },
   wwoman: { name: '人狼女', hp: 280, damage: 8, interval: 0.8, speed: 62, size: 58, bounty: 30, arrowResist: 0 },
   crow: { name: 'カラス', hp: 40, damage: 3, interval: 1.0, speed: 110, size: 36, bounty: 3, arrowResist: 0 },
+  // 狼王：99夜目の最終ボス（2026-10-05 アマネさん「ジャンプや引きで攻撃避けながら、マークのでた武器を順番に使っていく」「巨大な狼ボス」「狼王らしい禍々しさ」）
+  king: { name: '狼王', hp: 3000, damage: 30, interval: 1.2, speed: 22, size: 170, bounty: 999, arrowResist: 0, heavy: 1 },
+};
+// 狼王：居座る所（holdX）から主人公を攻める。頭の上（画面の上）に武器の印が並び、光っている印の武器で mark 回当てると割れて次へ
+// （当てた回数で数える。points：1回あたり。主砲は重いので3、必殺技は1回で割れる）。印と違う武器は wrong 倍、番犬は dog 倍しか効かない。
+// 全部割ると倒れ込み（down 秒・どの武器も downMul 倍。ここが削りどころ）。体力が減るほど印が増え、攻めの間が短くなる。
+// 攻め：突進の噛みつき（身を低く溜める → 跳んでよける）・叩きつけ（立ち上がる → 引いてよける）・遠吠えの波（頭を上げる → 跳んでよける。手下も呼ぶ）
+export const KING = {
+  holdX: 640, mark: 5, points: { senbon: 1, nagare: 1, midare: 3, sp: 5 }, wrong: 0.25, dog: 0.05, down: 7, downMul: 3, marks: [3, 4, 5], gap: [2.4, 1.9, 1.4],
+  lunge: { wind: 1.0, speed: 760, time: 0.55, damage: 40, push: 160, clear: 70 },
+  slam: { wind: 1.0, reach: 300, near: 40, damage: 46, push: 200 },
+  wave: { wind: 1.0, speed: 520, damage: 28, clear: 50, minions: 3 },
 };
 // 人狼男：主人公に寄ると腕を振りかぶり（wind 秒・予兆がはっきり見える）、大振り（swing）。当たると大きく吹き飛ぶ。
 // 振りかぶりの間に重い一撃（締め・叩き落とし・主砲・突進・必殺技）を当てると、ひるんで止まる。ふつうの斬りではひるまない

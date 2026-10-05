@@ -85,8 +85,9 @@ const WOLF_TEXT: Record<WolfKind, string> = {
   wman: '立って歩く狼の男。腕を振りかぶったら大振りが来る。その隙に大技を当てれば止まる。',
   wwoman: '立って歩く狼の女。跳んで近くへ下り、ひっかきを三度。着地の隙を斬れ。',
   crow: '空から赤ずきんにとまり、足を鈍らせる。左右にはじいて振りほどけ。',
+  king: '九十九夜目、裂け目の奥から現れる封じられた大神。頭に浮かぶ印の武器を順に当てて、封を砕け。',
 };
-const WOLF_RANK: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 3, howler: 3, alpha: 5, wman: 4, wwoman: 4, crow: 2 };
+const WOLF_RANK: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 3, howler: 3, alpha: 5, wman: 4, wwoman: 4, crow: 2, king: 6 };
 
 const CONTROLS: [string, string][] = [
   ['タップ', '斬る（続けて連撃）'],

@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { COLORS, GRAY_FUR, HOWL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { COLORS, GRAY_FUR, HOWL, KING, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -80,7 +80,7 @@ export class View {
   private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
   // ほかの4種類は噛みつき、遠吠えと大狼はのけぞりも（pack-motion-v1）
-  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit', 'wman', 'wman_wind', 'wman_swing', 'wman_hit', 'wwoman', 'wwoman_crouch', 'wwoman_leap', 'wwoman_claw', 'wwoman_hit', 'crow', 'crow_down', 'crow_cling', 'crow_hit'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
+  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit', 'wman', 'wman_wind', 'wman_swing', 'wman_hit', 'wwoman', 'wwoman_crouch', 'wwoman_leap', 'wwoman_claw', 'wwoman_hit', 'crow', 'crow_down', 'crow_cling', 'crow_hit', 'king', 'king_crouch', 'king_rear', 'king_howl', 'king_down'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
   private dogBack = new Container();
   private dogFront = new Container();
   private dogArt = new UnitArt<DogArt>('dogs', ['shiba', 'akita', 'tosa', 'shiba_run', 'akita_run', 'tosa_run', 'shiba_bite', 'akita_bite', 'tosa_bite'], this.dogBack, this.dogFront, [this.rimBack, this.rimFront]); // 走り・噛みつきの絵は dogs-motion-v1 // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
@@ -371,8 +371,14 @@ export class View {
         const k = Math.min(1, sim.cheer / 0.4);
         if (near.length) tx += ((this.wx(h.x) + this.wx(near.reduce((a, d) => a + d.x, 0) / near.length)) / 2 - tx) * k;
       }
+      // 狼王：引いて、主人公と狼王の間を映す（大きくて寄った画面に入らない）
+      const king = sim.wolves.find((w) => w.kind === 'king' && w.age > 0.3);
+      if (king) {
+        tz *= 0.6;
+        tx = (this.wx(h.x) + this.wx(king.x)) / 2;
+      }
       tx = Math.max(houseL + g.W / 2 / tz, Math.min(riftR - g.W / 2 / tz, tx));
-      ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08);
+      ty = g.Hm / 2 - Math.min(h.z * this.zk() * 0.15, g.Hm * 0.08) - (king ? g.Hm * 0.12 : 0);
     }
     const kc = 1 - Math.exp(-dt * (day ? 3 : 7));
     if (!this.cam.x) this.cam = { x: tx, y: ty, z: tz };
@@ -1010,6 +1016,11 @@ export class View {
       else if (w.mode === 'claw') art = 'wwoman_claw';
       else if (w.mode === 'land' || (w.mode === '' && w.skillCd < 0.35)) art = 'wwoman_crouch';
       rot *= 0.3;
+    } else if (w.kind === 'king') {
+      // 狼王：突進の溜めと突進＝身を低く／叩きつけ＝立ち上がる／遠吠え＝頭を上げる／倒れ込み
+      const m = w.mode;
+      art = m === 'kl' || m === 'lunge' ? 'king_crouch' : m === 'ks' ? 'king_rear' : m === 'kw' ? 'king_howl' : m === 'down' ? 'king_down' : 'king';
+      rot = 0;
     } else if (w.kind === 'crow') {
       // カラス：羽ばたき（上げ・下げ）・とまって突く・叩かれて落ちる
       if (w.mode === 'cling') art = 'crow_cling';
@@ -1020,17 +1031,23 @@ export class View {
     // 姿勢の絵は、立ち姿との背の高さの違いのまま描く（低い噛みつきまで同じ背に伸ばすと大きく見えた）
     const mk = this.wolves.meta[art];
     const base = this.wolves.meta[w.kind];
-    if (mk && base && art !== w.kind) hh *= Math.min(1, (mk as { h?: number }).h! / (base as { h?: number }).h!);
-    this.wolves.put(layer, art, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born, false, this.furOf(w.kind, w.color), w.color ? COLOR_GLOW(w.color) : undefined);
+    // 狼王は立ち上がる・吠える姿のほうが背が高い（そのまま高く描く）
+    if (mk && base && art !== w.kind) hh *= w.kind === 'king' ? (mk as { h?: number }).h! / (base as { h?: number }).h! : Math.min(1, (mk as { h?: number }).h! / (base as { h?: number }).h!);
+    let cyy = cy;
+    if (w.kind === 'king' && art !== 'king') cyy = o.ground - o.lift - this.wolves.center(hh);
+    // 狼王は主人公の側を向く（絵は左向き）
+    const flip = w.kind === 'king' && ((w.mode === '' || w.mode === 'kr' || w.mode === 'rest' || w.mode === 'down') ? sim.hero.x > w.x : (w.kdir ?? -1) > 0);
+    this.wolves.put(layer, art, o.x, cyy, hh, rot, 0.85 + 0.15 * born, tint, born, flip, this.furOf(w.kind, w.color), w.color ? COLOR_GLOW(w.color) : w.kind === 'king' ? 0xff2030 : undefined);
     const top = o.ground - o.lift - hh;
     this.wolfBoxes.push({ id: w.id, lane: w.lane, x0: o.x - hh * 0.7, x1: o.x + hh * 0.7, y0: top, y1: o.ground - o.lift + hh * 0.05 });
-    if (w.hp < w.maxHp && w.age > 0.4) {
+    if (w.hp < w.maxHp && w.age > 0.4 && w.kind !== 'king') {
       const hb = Math.max(o.bw * 0.8, hh * 0.5);
       const hy = o.ground - o.lift - hh * 1.05;
       this.wolfHud.rect(o.x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
       this.wolfHud.rect(o.x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
     }
     if (w.color && born > 0.5) this.mark(w.color, o.x, o.ground - o.lift - hh * 1.05 - 6, hh);
+    if (w.kind === 'king') this.kingHud(w, o.x, o.ground - o.lift, hh);
     // 人狼男の振りかぶり：頭の上に赤い「！」（大振りが来る。今なら大技で止められる）
     if (w.kind === 'wman' && w.mode === 'wind') {
       const r = Math.max(11, hh * 0.09);
@@ -1041,6 +1058,23 @@ export class View {
       this.wolfHud.circle(ex, ey, r * pulse).fill({ color: 0xff3040, alpha: 0.95 });
       this.wolfHud.roundRect(ex - r * 0.16, ey - r * 0.62, r * 0.32, r * 0.78, r * 0.1).fill(0xffffff);
       this.wolfHud.circle(ex, ey + r * 0.45, r * 0.17).fill(0xffffff);
+    }
+  }
+
+  // 狼王のまわり：倒れ込みの残り（体の上の輪）。印の並びと予兆の文字は画面の上（体力の棒の下・main.ts）
+  private kingHud(w: Wolf, x: number, ground: number, hh: number) {
+    const H = this.wolfHud;
+    if (w.mode === 'down') {
+      const k = Math.max(0, w.modeT) / KING.down;
+      const r = Math.max(16, hh * 0.08);
+      const cy = ground - hh * 0.75;
+      H.moveTo(x, cy - r).arc(x, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k).stroke({ width: 5, color: 0xffd060, alpha: 0.9 });
+    }
+    if (w.mode === 'ks') {
+      // 叩きつける所（地面に赤く）
+      const c = w.x + (w.kdir ?? -1) * (KING.slam.near + KING.slam.reach / 2);
+      const half = (KING.slam.reach / 2) * this.geo.K;
+      H.ellipse(this.wx(c), this.wy(w.lane), half, half * 0.2).fill({ color: 0xff2030, alpha: 0.22 + 0.14 * Math.sin(this.vt * 20) });
     }
   }
 
@@ -1069,6 +1103,7 @@ export class View {
     const k = (r * 1.7) / Math.max(tex.width, tex.height);
     sp.scale.set(k);
     sp.position.set(x, cy);
+    sp.alpha = 1;
     sp.visible = true;
   }
 
@@ -1770,6 +1805,15 @@ export class View {
       o.circle(x, y, 14).fill({ color: 0xffa040, alpha: 0.35 });
       if (Math.random() < 0.6) this.parts.dust(x, y, 0.6, 1, 10, 0);
     }
+    // 狼王の遠吠えの波：地面を走る紅い三日月（跳べばよけられる）
+    for (const v of sim.waves) {
+      const x = this.wx(v.x);
+      const H = this.geo.Hm;
+      for (let ln = 0; ln <= 1.001; ln += 0.25) {
+        const y = this.wy(ln) - H * 0.03;
+        for (let i = 0; i < 3; i++) crescent(o, x - v.dir * i * 12, y, H * (0.07 - i * 0.015), v.dir > 0 ? -Math.PI * 0.35 : Math.PI * 0.65, v.dir > 0 ? Math.PI * 0.35 : Math.PI * 1.35, 9 - i * 2.5, 0xff3040, 0.9 - i * 0.25);
+      }
+    }
     // 狼の衝撃波
     for (const sh of sim.shots) {
       const x = this.wx(sh.x);
@@ -2060,7 +2104,8 @@ export class View {
 
 type DogArt = DogKind | `${DogKind}_run` | `${DogKind}_bite`;
 type WolfArt = WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air' | 'pup_bite' | 'armored_bite' | 'howler_bite' | 'alpha_bite' | 'howler_hit' | 'alpha_hit'
-  | 'wman_wind' | 'wman_swing' | 'wman_hit' | 'wwoman_crouch' | 'wwoman_leap' | 'wwoman_claw' | 'wwoman_hit' | 'crow_down' | 'crow_cling' | 'crow_hit';
+  | 'wman_wind' | 'wman_swing' | 'wman_hit' | 'wwoman_crouch' | 'wwoman_leap' | 'wwoman_claw' | 'wwoman_hit' | 'crow_down' | 'crow_cling' | 'crow_hit'
+  | 'king_crouch' | 'king_rear' | 'king_howl' | 'king_down';
 const ROLE_COLOR = { guard: 0x70b8ff, attack: 0xff6070, support: 0x80e090 };
 
 // 少し行きすぎて戻る（出てくる・置く）

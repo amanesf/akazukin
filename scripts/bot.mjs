@@ -30,6 +30,32 @@ export function bot(s, mem, dogs = true) {
   }
   const ws = s.wolves;
   if (!ws.length) return;
+  // 狼王：予兆を見てよけ（突進・遠吠えの波は跳ぶ、叩きつけは引く）、光っている印の武器で当てる
+  const king = ws.find((w) => w.kind === 'king' && w.age > 0.5);
+  if (king) {
+    const toward = king.kdir ?? -1;
+    const lungeNear = (king.mode === 'kl' && king.modeT < 0.3) || (king.mode === 'lunge' && Math.abs(king.x - h.x) < 220);
+    const waveNear = s.waves.some((v) => Math.abs(v.x - h.x) < 110 && Math.sign(h.x - v.x) === v.dir);
+    if ((lungeNear || waveNear) && h.z <= 0) { s.flick('up'); return; }
+    if (king.mode === 'ks') {
+      const c = king.x + toward * 190;
+      if (Math.abs(h.x - c) < 190) { s.flick(toward > 0 ? 'right' : 'left'); return; }
+    }
+    const want = king.mode === 'down' ? 'senbon' : king.seq?.[king.markIdx ?? 0];
+    if (want === 'nagare') { // 弓：離れて待つ（自動の弓が射る）
+      const away = h.x <= king.x ? Math.max(90, king.x - 430) : Math.min(800, king.x + 430);
+      if (Math.abs(h.x - away) > 40) s.runTo(away, king.lane);
+      return;
+    }
+    if (want === 'midare') { // 主砲：長押しで溜めて離す
+      if (Math.abs(h.x - king.x) > 400) { s.runTo(king.x - 300, king.lane); return; }
+      s.holdStart();
+      mem.charging = 1.1;
+      return;
+    }
+    s.tap(king.x, king.lane, king.id);
+    return;
+  }
   // カラスにとまられたら左右にはじいて振りほどく
   if (s.clung) {
     s.flick(Math.random() < 0.5 ? 'left' : 'right');

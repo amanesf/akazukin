@@ -611,3 +611,23 @@ body.tutorial #next { display: none; }
 #next .col, #tonight .col { font-weight: bold; }
 #next .col .ic, #tonight .col .ic { height: 14px; width: 14px; margin: 0 1px; }
 #next .col img:not(.ic), #tonight .col img:not(.ic) { filter: drop-shadow(0 0 3px currentColor); }
+
+/* 狼王の体力（99夜目） */
+#bossbar { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); width: min(78%, 420px); pointer-events: none; text-align: center; z-index: 6; }
+#bossbar[hidden] { display: none; }
+#bossbar b { display: block; font-family: var(--mincho); font-size: 15px; letter-spacing: 0.4em; color: #ffb0b8; text-shadow: 0 0 6px #ff2040, 0 1px 2px #000; }
+#bossbar div { height: 9px; border-radius: 5px; background: rgba(0, 0, 0, 0.65); border: 1px solid #7a2030; overflow: hidden; margin-top: 2px; }
+#bossbar i { display: block; height: 100%; background: linear-gradient(90deg, #8a0818, #ff3048); transition: width 0.15s; }
+#bossbar.down i { background: linear-gradient(90deg, #c08010, #ffe060); }
+#bossbar .marks { display: flex; justify-content: center; align-items: center; gap: 4px; margin: 5px 0 0; }
+#bossbar .marks span { display: inline-flex; width: 34px; height: 34px; border-radius: 50%; align-items: center; justify-content: center; background: rgba(40, 20, 30, 0.85); border: 2px solid #6a4050; }
+#bossbar .marks span .ic { margin: 0; width: 24px; height: 24px; }
+#bossbar .marks span.cur { width: 44px; height: 44px; background: #ffe8a0; border-color: #fff; box-shadow: 0 0 12px #ffd060; animation: markpulse 0.6s ease-in-out infinite alternate; }
+#bossbar .marks span.cur .ic { width: 32px; height: 32px; }
+#bossbar .marks span.done { opacity: 0.3; }
+#bossbar .marks span.now { width: auto; height: auto; padding: 4px 12px; border-radius: 10px; background: #ffd060; color: #401010; font-weight: bold; font-size: 16px; }
+#bossbar .marks i { font-style: normal; color: #ffb0b8; font-size: 18px; }
+#bossbar .warn { display: inline-block; margin-top: 6px; padding: 3px 14px; border-radius: 12px; background: #ff2840; color: #fff; font-style: normal; font-weight: bold; font-size: 22px; letter-spacing: 0.1em; box-shadow: 0 0 14px #ff2840; animation: markpulse 0.15s ease-in-out infinite alternate; }
+#bossbar .warn[hidden] { display: none; }
+@keyframes markpulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+#bossbar .marks i { display: inline; height: auto; background: none; }

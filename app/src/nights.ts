@@ -12,9 +12,9 @@ export interface SpawnLine {
 }
 
 // 狼1匹の重さ（予算を食う量）と、出てくる晩
-const THREAT: Record<WolfKind, number> = { pup: 1, wolf: 3, armored: 9, howler: 7, alpha: 50, wman: 30, wwoman: 20, crow: 3 };
-const FROM: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 4, howler: 5, alpha: 10, wman: 22, wwoman: 20, crow: 18 };
-const FOES: WolfKind[] = ['wman', 'wwoman', 'crow']; // 人狼・カラス（ふつうの流れとは別に組む）
+const THREAT: Record<WolfKind, number> = { pup: 1, wolf: 3, armored: 9, howler: 7, alpha: 50, wman: 30, wwoman: 20, crow: 3, king: 0 };
+const FROM: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 4, howler: 5, alpha: 10, wman: 22, wwoman: 20, crow: 18, king: 999 };
+const FOES: WolfKind[] = ['wman', 'wwoman', 'crow', 'king']; // 人狼・カラス（ふつうの流れとは別に組む）
 
 // 晩 n（1始まり）の予算。序盤はゆっくり、後半は急に重くなる
 // 2026-10-04 指一本アクションにして主人公が強くなったので、1.5倍に（自動操作が70晩まで家を守りきった）
@@ -65,6 +65,14 @@ export function night(n: number): SpawnLine[] {
   let left = budget(n) * (md === 'mure' ? 1.15 : 1);
   const length = 30 + Math.min(40, n * 0.5); // 晩の長さ（秒）の目安
 
+  // 99夜目：狼王。手下は狼王が遠吠えで呼ぶので、ふつうの流れは少しだけ（裂け目の前を賑やかに）
+  if (n === DAYS_TO_CLEAR) {
+    return [
+      { kind: 'king', count: 1, interval: 1, delay: 4 },
+      { kind: 'wolf', count: 6, interval: 1.5, delay: 1, color: 'red' },
+      { kind: 'wolf', count: 6, interval: 1.5, delay: 2, color: 'black' },
+    ];
+  }
   // 節目：10晩ごとと最後の晩に大狼。99日目は頭目（大狼を3匹）
   if (n % 10 === 0 || n === DAYS_TO_CLEAR) {
     const bosses = n === DAYS_TO_CLEAR ? 3 : 1 + Math.floor(n / 40);
@@ -146,6 +154,7 @@ export function night(n: number): SpawnLine[] {
     wman: 0,
     wwoman: 0,
     crow: 0,
+    king: 0,
   };
   if (md === 'mure') weight.pup *= 4;
   if (md === 'yoroi') weight.armored *= 3;
