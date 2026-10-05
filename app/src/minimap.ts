@@ -242,7 +242,7 @@ export class Minimap {
     }
     // 矢と砲弾
     for (const a of sim.arrows) if (a.t >= 0) top.circle(this.mx(a.fromX + (a.toX - a.fromX) * a.t), this.my(a.lane) - 6 - Math.sin(Math.PI * a.t) * 8, 1.2).fill(0xd8f0ff);
-    for (const s of sim.shells) if (s.t >= 0) top.circle(this.mx(s.fromX + (s.toX - s.fromX) * s.t), this.my(s.lane) - 6 - Math.sin(Math.PI * s.t) * 18, 2).fill(0xe8c070);
+    for (const s of sim.shells) if (s.t >= 0) top.moveTo(this.mx(s.x) - s.dir * 6, this.my(s.lane) - 8).lineTo(this.mx(s.x), this.my(s.lane) - 8).stroke({ width: 2, color: 0xffc070 });
 
     // いま映している枠
     if (!day) {

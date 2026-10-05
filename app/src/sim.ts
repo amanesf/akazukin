@@ -3,7 +3,7 @@
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
-  BLAST, COLORS, CROW, KING, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
+  BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
 } from './config';
@@ -62,7 +62,8 @@ export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; 
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
 // sp：必殺技が出したもの（当てても必殺技は溜まらない）。fromZ：跳んだ高さから放つ。big：大きい矢・giant：奥行き全部を貫く大きな一本
 export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean }
-export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number; sp?: boolean }
+// 主砲の撃ち込み：4連装の砲身から真っすぐ飛ぶ砲弾。通り道の狼を貫き、届く所まで行くと爆ぜる（t が負のあいだはまだ撃っていない）
+export interface Shell { x: number; dir: number; t: number; lane: number; left: number; damage: number; area: number; hit: number[] }
 export type FxKind = 'howl' | 'wake' | 'sunfade' | 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge' | 'beam';
 export interface Fx {
   id: number;
@@ -1325,12 +1326,10 @@ export class Sim {
         area = m.area! * 1.5;
         kb *= 1.3;
         if (this.knows('hougeki')) {
-          const crowd = this.densest(this.wolves.filter((w) => (w.x - h.x) * h.facing > 60));
-          if (crowd) {
-            for (let i = 0; i < 4; i++) {
-              const off = (i - 1.5) * 26 + (this.rand() - 0.5) * 30;
-              this.shells.push({ fromX: h.x, toX: crowd.x + off, t: -i * 0.08, lane: crowd.lane + (this.rand() - 0.5) * 0.3, damage: MOVES.hougeki.damage * this.farPower, area: MOVES.hougeki.area! });
-            }
+          // 4連装：4本の砲身から、少しずつ間をあけて真っすぐ4発（2026-10-05 アマネさん「溜めてドンで真っ直ぐ」「4連装だから4発」。
+          // 前は群れへ山なりに4発落ちて、小銭が飛んでいくように見えた）
+          for (let i = 0; i < 4; i++) {
+            this.shells.push({ x: h.x + h.facing * 40, dir: h.facing, t: -i * SHELL.gap, lane: clamp(h.lane + (i - 1.5) * 0.05, 0, 1), left: SHELL.range, damage: MOVES.hougeki.damage * this.farPower, area: MOVES.hougeki.area!, hit: [] });
           }
         }
       }
@@ -1651,14 +1650,25 @@ export class Sim {
 
   private flyShells(dt: number) {
     this.shells = this.shells.filter((s) => {
-      s.t += dt / 0.9;
-      if (s.t < 1) return true;
+      const was = s.t;
+      s.t += dt;
+      if (s.t < 0) return true;
+      if (was < 0) this.sounds.push('boom'); // 撃った
+      const step = SHELL.speed * dt;
+      s.x += s.dir * step;
+      s.left -= step;
+      // 通り道の狼を貫く（1発で同じ狼には1回）
       for (const w of this.wolves) {
-        if (Math.abs(w.x - s.toX) <= s.area + w.size / 2 && Math.abs(w.lane - s.lane) <= 0.5) {
-          this.hit(w, s.damage * (1 - WOLVES[w.kind].arrowResist), { kb: 160, lift: 180, stop: 0, src: s.sp ? 'sp' : 'midare' });
-        }
+        if (s.hit.includes(w.id) || w.hp <= 0 || Math.abs(w.x - s.x) > w.size / 2 + 16 || Math.abs(w.lane - s.lane) > 0.32 || w.z > 120) continue;
+        s.hit.push(w.id);
+        this.hit(w, s.damage * SHELL.pierce * (1 - WOLVES[w.kind].arrowResist), { kb: 140, lift: 60, stop: 0.02, src: 'midare' });
       }
-      this.fx.push(this.mk({ kind: 'blast', x: s.toX, lane: s.lane, r: s.area }));
+      if (s.left > 0 && s.x > HOUSE_X && s.x < WOLF_SPAWN_X) return true;
+      // 届く所まで行ったら爆ぜる
+      for (const w of this.wolves) {
+        if (w.hp > 0 && Math.abs(w.x - s.x) <= s.area + w.size / 2 && Math.abs(w.lane - s.lane) <= 0.5) this.hit(w, s.damage * (1 - WOLVES[w.kind].arrowResist), { kb: 160, lift: 180, stop: 0, src: 'midare' });
+      }
+      this.fx.push(this.mk({ kind: 'blast', x: s.x, lane: s.lane, r: s.area }));
       this.sounds.push('boom');
       this.kick(3, 0);
       return false;

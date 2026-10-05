@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { COLORS, GRAY_FUR, HOWL, KING, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { COLORS, GRAY_FUR, HOWL, KING, SHELL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -17,7 +17,6 @@ const COLOR = {
   heroHp: 0xf06070,
   hpBack: 0x000000,
   arrow: 0xd8f0ff,
-  shell: 0xe8c070,
 };
 
 // 画面の中の文字も明朝に（ダメージの数字・番犬の役目・画面の外の狼の数）
@@ -1836,15 +1835,18 @@ export class View {
       o.circle(bx, by, hh * (0.05 + 0.08 * k)).fill({ color: 0xffb0d0, alpha: 0.25 * k });
       o.circle(bx, by, hh * (0.02 + 0.03 * k)).fill({ color: 0xffffff, alpha: 0.5 * k });
     }
-    // 砲弾（放物線と火の尾）
+    // 砲弾（4連装・真っすぐ）：主砲の高さを真横へ。白く光る弾と、後ろへ伸びる火の尾
     for (const sh of sim.shells) {
       if (sh.t < 0) continue;
-      const x = this.wx(sh.fromX + (sh.toX - sh.fromX) * sh.t);
-      const arc = Math.sin(Math.PI * sh.t) * this.geo.Hm * 0.45;
-      const y = this.wy(sh.lane) - 60 - arc + 60 * sh.t;
-      o.circle(x, y, 7).fill(COLOR.shell);
-      o.circle(x, y, 14).fill({ color: 0xffa040, alpha: 0.35 });
-      if (Math.random() < 0.6) this.parts.dust(x, y, 0.6, 1, 10, 0);
+      const x = this.wx(sh.x);
+      const hh = this.heroH(sh.lane);
+      const y = this.wy(sh.lane) - hh * 0.62;
+      const tail = Math.min(hh * 1.4, sh.t * SHELL.speed * this.U(sh.lane) * 0.02);
+      o.moveTo(x - sh.dir * tail, y).lineTo(x, y).stroke({ width: hh * 0.07, color: 0xff7a30, alpha: 0.55, cap: 'round' });
+      o.moveTo(x - sh.dir * tail * 0.55, y).lineTo(x, y).stroke({ width: hh * 0.035, color: 0xfff0c0, alpha: 0.9, cap: 'round' });
+      o.circle(x, y, hh * 0.06).fill({ color: 0xffa040, alpha: 0.45 });
+      o.circle(x, y, hh * 0.032).fill(0xfffaf0);
+      if (Math.random() < 0.5) this.parts.dust(x - sh.dir * hh * 0.1, y, 0.5, 1, 10, 0);
     }
     // 狼王の遠吠えの波：地面を走る紅い三日月（跳べばよけられる）
     for (const v of sim.waves) {

@@ -108,6 +108,8 @@ export const FINISHERS: Record<Finisher, { name: string; key: string; short?: st
 export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
 export const MOVE_CD = { kaiten: 2.5, tosshin: DASH.cd, ame: 5, hougeki: 0 };
+// 主砲の撃ち込みの砲弾：速さ・届く距離・4発の間（秒）・貫いたときの威力の割合（届いた先の爆発は hougeki の威力そのまま）
+export const SHELL = { speed: 1500, range: 620, gap: 0.07, pierce: 0.6 };
 // 桜嵐：3つの必殺技（2026-10-04 アマネさん「連撃して主砲みたいな感じ」「その夜の武器の使い方に応じて3種類がそれぞれ溜まる。ボタン3つ」）。
 // どれも最初に桜の竜巻でまわりの狼を吸い寄せる（竜巻そのものは斬らない・アマネさん「竜巻は全部残す。ダメージはない。吸い寄せのみ」）。
 // そのあと主人公が体ごと暴れて（連撃）、最後に大きく決める（締め）。2026-10-04 アマネさん「千本桜はナイフ持ちながら画面左右に駆け抜けて、
@@ -189,7 +191,7 @@ export const TRACKS: Record<Track, { name: string; perks: Perk[] }> = {
       { note: '溜めが3割速く', charge: 0.3 },
       { note: '弓が群れに矢の雨', learn: 'ame' },
       { note: '弓が3割速く', rate: 0.3 },
-      { note: '満タンの主砲で撃ち込み', learn: 'hougeki' },
+      { note: '満タンの主砲で4連装の砲弾も撃つ', learn: 'hougeki' },
       { note: '主砲と弓の威力 +3割', power: 0.3 },
     ],
   },
