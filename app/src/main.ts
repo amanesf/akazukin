@@ -415,13 +415,11 @@ async function main() {
   document.addEventListener('visibilitychange', () => document.hidden && !manual && pause());
 
   const saved = store.read();
-  // 題字の画面（2026-10-05 アマネさん「もっとかっこよく」「タイトルと顔が被る」）：絵は画面の上に横幅いっぱいで置き、
-  // 顔の下から夜の色に溶かして、題字とボタンはその暗い所に。絵はゆっくり寄り、月が脈打ち、花びらが舞い、題字はあとから浮かぶ
-  const petals = Array.from({ length: 12 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i * 1.7) % 9}s;--t:${7 + (i % 5) * 1.3}s;--s:${0.6 + (i % 4) * 0.25}"></i>`).join('');
-  const title = `<div class="tv"><div class="tv-img"></div><div class="tv-moon"></div><div class="tv-petals">${petals}</div></div>
-     <h1 class="logo"><small><span>桜狼異聞</span></small><b>大正赤ずきん</b></h1>
-     <p class="lead">紅い月の裂け目から狼が来る。<br>99夜、おばあさんの家を守り抜け。</p>
-     <p class="how">操作は1晩目に「やってみよう」で</p>`; // 操作の一覧は、絵が見えるように外した（2026-10-04 アマネさん「画像しっかり見えるように」）
+  // 題字の画面（2026-10-05 アマネさん「タイトルと顔が被る」「明朝で」→ 見本の案2）：絵は上に寄せて顔の下から夜の色に溶かし、
+  // 題字は細い明朝で「赤」だけ赤、上に「桜狼異聞」と細い線、下に細い線と桜の紋
+  const title = `<div class="tv"></div>
+     <h1 class="logo"><span class="s">桜狼異聞</span><span class="t">大正<em>赤</em>ずきん</span><span class="k">❀</span></h1>
+     <p class="lead">紅い月の裂け目から狼が来る。<br>99夜、おばあさんの家を守り抜け。</p>`; // 操作の一覧は、絵が見えるように外した（2026-10-04 アマネさん「画像しっかり見えるように」）
   const showTitle = () => {
     show(title, saved
       ? [[`続きから（${saved.wave + 1}日目の昼）`, () => (sim = Sim.load(saved, seed()))], ['はじめから', fresh]]
