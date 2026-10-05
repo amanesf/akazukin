@@ -19,12 +19,18 @@ const FOES: WolfKind[] = ['wman', 'wwoman', 'crow', 'king']; // 人狼・カラ�
 // 晩 n（1始まり）の予算。序盤はゆっくり、後半は急に重くなる
 // 2026-10-04 指一本アクションにして主人公が強くなったので、1.5倍に（自動操作が70晩まで家を守りきった）
 export function budget(n: number) {
-  return Math.round(1.5 * (10 + 4 * n + 0.06 * n * n));
+  return Math.round(1.5 * (24 + 5 * n + 0.06 * n * n)); // 2026-10-05 序盤も触らないと負けるように（前は 10 + 4n）
 }
 
 // 狼の体力の倍率。数だけでなく1匹も少しずつ硬くなる
 export function hpScale(n: number) {
-  return 1 + 0.06 * (n - 1);
+  // 序盤の10晩で強化が要るくらい硬くなる（2026-10-05 アマネさん「武器強化していかないと負けるように」）、そのあとは1晩 3.8%
+  return 1 + 0.038 * (n - 1) + 0.8 * Math.min(1, (n - 1) / 9);
+}
+
+// 番犬の伸び（狼の序盤の伸びには付き合わない。番犬を強くするのは昼の強化）
+export function dogScale(n: number) {
+  return 1 + 0.03 * (n - 1);
 }
 
 export const SURGE_WARN = 2;
@@ -78,7 +84,7 @@ export function night(n: number): SpawnLine[] {
     const bosses = n === DAYS_TO_CLEAR ? 3 : 1 + Math.floor(n / 40);
     // 大狼にも色を回す（2026-10-05 plan.md §0.10②）。99日目の頭目は3匹それぞれ別の色
     if (n === DAYS_TO_CLEAR) for (const c of ['red', 'purple', 'black'] as WolfColor[]) lines.push({ kind: 'alpha', count: 1, interval: 1, delay: length * 0.35 + lines.length * 6, color: c });
-    else lines.push({ kind: 'alpha', count: bosses, interval: 6, delay: length * 0.35, color: bossColor(n) });
+    else lines.push({ kind: 'alpha', count: bossColor(n) === 'gold' ? 1 : bosses, interval: 6, delay: length * 0.35, color: bossColor(n) }); // 金（全部2倍）は1匹だけ
     left -= THREAT.alpha * bosses * 0.3; // 大狼の晩は取り巻きを少し減らす
   }
 

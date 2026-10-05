@@ -7,7 +7,7 @@ import {
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
 } from './config';
-import { hpScale, mood, newColors, night, SURGE_WARN, type Mood } from './nights';
+import { dogScale, hpScale, mood, newColors, night, SURGE_WARN, type Mood } from './nights';
 
 const PET_GAP = 45; // なでる犬の体の端から主人公の足もとまで（世界の単位。絵の手の届く所は view が合わせる）
 const PET_STEP = 60; // 2匹目・3匹目はその後ろに並ぶ
@@ -627,8 +627,8 @@ export class Sim {
     for (const kind of DOG_ORDER) {
       const s = DOGS[kind];
       const home = Sim.dogHome(kind);
-      // 番犬も晩ごとに鍛えられる（狼の硬さと同じ割合で、体力と噛む力が伸びる）
-      this.dogs.push({ ...this.unit(home.x, s.hp * hpScale(this.wave + 1) * this.dogHpMul, s.size), lane: home.lane, kind, role: this.roles[kind], bite: 0, target: 0, down: 0, facing: 1, run: 0 });
+      // 番犬も晩ごとに少し鍛えられる（dogScale。狼より緩い。あとは昼の強化）
+      this.dogs.push({ ...this.unit(home.x, s.hp * dogScale(this.wave + 1) * this.dogHpMul, s.size), lane: home.lane, kind, role: this.roles[kind], bite: 0, target: 0, down: 0, facing: 1, run: 0 });
     }
     this.events.push('night');
   }
@@ -1042,7 +1042,7 @@ export class Sim {
         if (d.cooldown <= 0) {
           d.cooldown = s.interval;
           d.bite = 0.2;
-          this.hit(bitee, s.damage * hpScale(this.wave + 1) * this.dogPowerMul, { stop: 0, quiet: true });
+          this.hit(bitee, s.damage * dogScale(this.wave + 1) * this.dogPowerMul, { stop: 0, quiet: true });
         }
         if (bitee === t || !t) continue;
       }
