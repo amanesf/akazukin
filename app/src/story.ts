@@ -1,6 +1,6 @@
 // 題字の画面の「ストーリー」から開く読みもの：ストーリー・キャラクター・ゲーム概要（2026-10-04 アマネさん）。
 // 文はアマネさんの note「ゲームを作り始める」をもとに詳しくした（**仮・アマネさん未確認**）。絵はゲームの中で使っている絵をそのまま使う
-import { DOG_ORDER, DOGS, WOLVES, type DogKind, type WolfKind } from './config';
+import { COLOR_ORDER, COLORS, DOG_ORDER, DOGS, SPECIALS, WOLVES, type DogKind, type WolfKind } from './config';
 
 const B = import.meta.env.BASE_URL;
 
@@ -29,7 +29,7 @@ const CHAPTERS: { no: string; title: string; body: string[]; line?: string }[] =
     body: [
       '大正のある春、桜が満開を迎えた晩。空に、血のように紅い満月が昇りました。',
       '月に一筋の裂け目が走り、そこから異界の狼たちがあふれ出します。かつておじいさんに滅ぼされた群れの、さらに奥に潜んでいた眷属たち。狙いは、おじいさんが遺した家と、その一族です。',
-      '裂け目は九十九夜のあいだ開き続け、夜ごとに狼の数は増えていきます。',
+      '裂け目は九十九夜のあいだ開き続け、夜ごとに狼の数は増えていきます。そして裂け目の最も奥には、かつて封じられた大神――狼王が眠っているといいます。',
     ],
   },
   {
@@ -87,18 +87,27 @@ const WOLF_TEXT: Record<WolfKind, string> = {
   crow: '空から赤ずきんにとまり、足を鈍らせる。左右にはじいて振りほどけ。',
   king: '九十九夜目、裂け目の奥から現れる封じられた大神。頭に浮かぶ印の武器を順に当てて、封を砕け。',
 };
-const WOLF_RANK: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 3, howler: 3, alpha: 5, wman: 4, wwoman: 4, crow: 2, king: 6 };
+const COLOR_TEXT: Record<(typeof COLOR_ORDER)[number], string> = {
+  red: '足が二倍で突っ込んでくる。',
+  purple: '体力が二倍で、少し大きい。',
+  black: '噛む力が二倍。家もすぐ齧る。',
+  orange: '倒すと爆ぜて、まわりの狼を巻き込む。近くで倒すと少し痛い。',
+  green: '倒しても起き上がる。必殺技でしか消えない。ほかを全部倒せば朝日で消える。',
+  gold: '足・体力・噛む力がすべて二倍。めったに出ないが、賞金は五倍。',
+};
+const WOLF_RANK: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 3, howler: 3, alpha: 5, wman: 4, wwoman: 4, crow: 2, king: 5 };
 
 const CONTROLS: [string, string][] = [
   ['タップ', '斬る（続けて連撃）'],
-  ['左右にはじく', '突進斬り'],
+  ['左右にはじく', '突進斬り（とまったカラスも振りほどく）'],
   ['上にはじく', '斬り上げ（追い打ちはタップ）'],
   ['下にはじく', '叩き落とし'],
   ['長押し→離す', '主砲（長く溜めるほど強い）'],
   ['コンボ', '3発（タップ・はじく、何でも）のあと、4発目で締めを選ぶ。混ぜるほど締めが強い（並・上・極）。0.8秒あく・空振り・噛まれると切れる'],
   ['小さい地図をタップ', 'そこへ駆けつける'],
   ['桜嵐（下の3つ）', '斬り→千本桜・弓→桜流れ矢・主砲→乱れ撃ち。当てた武器のゲージが溜まり、満タンで押す必殺技'],
-  ['触らない', '近くは自動で斬り、離れた狼は弓で射る'],
+  ['触らない', '近くは自動で斬り、離れた狼は弓で射る（ゆっくり。触らないと序盤でも負ける）'],
+  ['頭の上の印', '色の狼の頭の武器の絵は、弱い武器。その武器で当てると2倍（必殺技も同じ分け方）'],
 ];
 
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
@@ -112,7 +121,7 @@ function storyPage() {
         ${c.body.map((p) => `<p>${esc(p)}</p>`).join('')}
         ${c.line ? `<blockquote>「${esc(c.line)}」</blockquote>` : ''}
       </article>`).join('<div class="st-orn" aria-hidden="true"><i></i>❀<i></i></div>')}
-    <p class="st-end">九十九の夜を守り抜けば、<br>月の裂け目は閉じ、異界の狼は絶える――。</p>`;
+    <p class="st-end">九十九の夜を守り抜き、狼王の封を砕けば、<br>月の裂け目は閉じ、異界の狼は絶える――。</p>`;
 }
 
 function charaPage() {
@@ -132,7 +141,13 @@ function charaPage() {
       <h5>${DOGS[k].name}<small>${DOGS[k].breed}</small></h5>
       <p>${DOG_TEXT[k]}</p>
     </article>`).join('');
-  const wolves = (Object.keys(WOLVES) as WolfKind[]).map((k) => `
+  const colors = COLOR_ORDER.map((c) => `
+    <article class="st-mini wolf col" style="--c:${COLORS[c].ui}">
+      <img src="${B}wolves/wolf.webp" alt="">
+      <h5>${COLORS[c].name}狼<small>${COLORS[c].word}</small></h5>
+      <p>${COLOR_TEXT[c]}${COLORS[c].weak ? `<span class="weak"><img src="${B}ui/icons/${COLORS[c].icon}.webp" alt="">${COLORS[c].weak === 'sp' ? '必殺技' : SPECIALS[COLORS[c].weak].icon === 'knife' ? 'ナイフ' : SPECIALS[COLORS[c].weak].icon === 'bow' ? '弓' : '主砲'}に弱い</span>` : '<span class="weak">弱い武器なし</span>'}</p>
+    </article>`).join('');
+  const wolves = (Object.keys(WOLVES) as WolfKind[]).filter((k) => k !== 'king').map((k) => `
     <article class="st-mini wolf">
       <img src="${B}wolves/${k}.webp" alt="">
       <h5>${WOLVES[k].name}<small class="rank">${'★'.repeat(WOLF_RANK[k])}<span>${'★'.repeat(5 - WOLF_RANK[k])}</span></small></h5>
@@ -144,20 +159,33 @@ function charaPage() {
     <p class="st-lead">昼に「守り・攻撃・支援」の役目を決めると、夜は自分で考えて駆け回る。</p>
     <div class="st-grid">${dogs}</div>
     <h3 class="st-sub"><small>異界の狼</small>裂け目から来るもの</h3>
-    <div class="st-grid">${wolves}</div>`;
+    <div class="st-grid">${wolves}</div>
+    <h3 class="st-sub"><small>色の狼</small>ひとことで分かる</h3>
+    <p class="st-lead">子狼と狼には色が付くことがある。頭の上の絵は弱い武器。初めて出る夜は「新顔」と教えてくれる。</p>
+    <div class="st-grid">${colors}</div>
+    <h3 class="st-sub"><small>九十九夜目</small>裂け目の主</h3>
+    <article class="st-card boss">
+      <div class="pic"><img src="${B}wolves/king.webp" alt=""></div>
+      <div class="txt">
+        <span class="tag">最後の敵</span>
+        <h4>狼王<small>ろうおう</small></h4>
+        <p>${esc(WOLF_TEXT.king)}</p>
+        <p>${esc('身を低くしたら跳べ。立ち上がったら引け。印を全部砕けば、王は倒れ込む。')}</p>
+      </div>
+    </article>`;
 }
 
 function gamePage() {
   return `
     <p class="st-catch">夜は戦い、昼は備える。<br><span>99夜、おばあさんの家を守り抜け。</span></p>
     <div class="st-flow">
-      <div class="night"><b>夜</b><p>右の月の裂け目から来る狼を、赤ずきんで迎え撃つ。家が落ちたら、その日の昼からやり直し。</p></div>
+      <div class="night"><b>夜</b><p>右の月の裂け目から来る狼を、赤ずきんで迎え撃つ。家が落ちたら、その日の昼からやり直し（その夜に拾った銭は残る）。</p></div>
       <div class="day"><b>昼</b><p>倒した狼の銭で「体力・近接・主砲と弓・番犬」を鍛え、家を直し、番犬3匹の役目を決める。</p></div>
-      <div class="goal"><b>99夜</b><p>守り抜けば狼は絶滅。完全クリア。</p></div>
+      <div class="goal"><b>99夜</b><p>最後の夜、裂け目の主・狼王を倒せば狼は絶滅。完全クリア。</p></div>
     </div>
     <h3 class="st-sub"><small>操作</small>指一本で</h3>
     <dl class="st-ctl">${CONTROLS.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    <p class="st-note">5夜目からは、霧の夜・紅月の夜など、夜の様子が変わることがある。節目の夜を越えると、昼におばあさんと話せる。</p>
+    <p class="st-note">5夜目からは、霧の夜・紅月の夜など、夜の様子が変わることがある。夜が進むと色の狼・人狼・カラスも現れ、十夜ごとに大狼が来る。ゴリ押しより、弱い武器の使い分けと強化が大事。節目の夜を越えると、昼におばあさんと話せる。</p>
     <p class="st-note">スマホの縦画面で遊ぶ。1晩目は「やってみよう」で順に教えてくれる。</p>`;
 }
 

@@ -631,3 +631,14 @@ body.tutorial #next { display: none; }
 #bossbar .warn[hidden] { display: none; }
 @keyframes markpulse { from { transform: scale(1); } to { transform: scale(1.08); } }
 #bossbar .marks i { display: inline; height: auto; background: none; }
+
+/* ストーリー画面：色の狼と狼王（2026-10-05） */
+.st-mini.col { border-color: color-mix(in srgb, var(--c) 55%, transparent); }
+.st-mini.col img { filter: drop-shadow(0 0 2px var(--c)) drop-shadow(0 0 7px var(--c)) sepia(0.6) saturate(2.2); }
+.st-mini.col h5 { color: var(--c); }
+.st-mini .weak { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; color: #f0e0c8; }
+.st-mini .weak img { display: inline; height: 18px; width: 18px; margin: 0; filter: none; transform: none; }
+.st-card.boss { grid-template-columns: 120px 1fr; border-color: rgba(255, 60, 80, 0.55); background: linear-gradient(135deg, rgba(120, 10, 20, 0.35), rgba(20, 0, 0, 0.2)); }
+.st-card.boss .pic { height: 140px; background: radial-gradient(circle at 50% 60%, rgba(255, 40, 60, 0.3), transparent 70%); }
+.st-card.boss .pic img { transform: scaleX(-1); }
+.st-card.boss .tag { background: #8a1020; }
