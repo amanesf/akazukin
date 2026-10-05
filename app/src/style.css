@@ -137,11 +137,33 @@ button::after {
 }
 #overlay[hidden] { display: none; }
 /* 題字の画面：メインビジュアルをしっかり見せる（暗くするのは下の文字の所だけ）。大正赤ずきんを大きく（2026-10-04 アマネさん） */
-#overlay.title { background: linear-gradient(transparent 52%, rgba(10, 6, 12, 0.85) 80%), var(--title) center top / cover no-repeat; justify-content: flex-end; padding-bottom: 5vh; gap: 10px; }
-#overlay.title h1 { font-size: 46px; letter-spacing: 0.12em; text-shadow: 0 3px 0 #000, 0 0 20px rgba(255, 60, 90, 0.8); }
-#overlay.title h1 small { order: -1; font-size: 16px; letter-spacing: 0.5em; color: var(--brass); }
-#overlay.title p { color: #f0e0e6; text-shadow: 0 1px 2px #000; }
-#overlay.title .how { font-size: 12px; color: var(--dim); }
+/* 2026-10-05 作り直し：絵は上に横幅いっぱい（顔が上から3割ほどに来る）、下は夜の色に溶かす。題字はロゴらしく。動きをつける */
+#overlay.title { background: #0c070c; justify-content: flex-end; padding-bottom: max(4vh, 18px); gap: 10px; isolation: isolate; overflow: hidden; }
+#overlay.title .tv { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(100vw, 56vh); aspect-ratio: 900 / 1117; z-index: -1; overflow: hidden; }
+#overlay.title .tv-img { position: absolute; inset: 0; background: var(--title) center top / 100% auto no-repeat; transform-origin: 46% 42%; animation: tv-zoom 16s ease-out both; }
+#overlay.title .tv::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 52%, rgba(12, 7, 12, 0.7) 74%, #0c070c 94%), linear-gradient(90deg, #0c070c, transparent 6%, transparent 94%, #0c070c); }
+#overlay.title .tv-moon { position: absolute; left: 74.5%; top: 12.5%; width: 34%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, rgba(255, 70, 70, 0.45), rgba(255, 40, 60, 0.15) 45%, transparent 70%); mix-blend-mode: screen; animation: tv-moon 4.5s ease-in-out infinite; }
+#overlay.title .tv-petals i { position: absolute; top: -6%; left: var(--x); width: 12px; height: 9px; border-radius: 12px 0 12px 0; background: linear-gradient(135deg, #ffd6e2, #f58fb0); opacity: 0.85; transform: scale(var(--s)); animation: tv-petal var(--t) linear var(--d) infinite; }
+@keyframes tv-zoom { from { transform: scale(1); } to { transform: scale(1.07); } }
+@keyframes tv-moon { 0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.95); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } }
+@keyframes tv-petal { 0% { transform: translate(0, 0) rotate(0) scale(var(--s)); opacity: 0; } 10% { opacity: 0.9; } 100% { transform: translate(-90px, 110vh) rotate(540deg) scale(var(--s)); opacity: 0.3; } }
+/* 題字：朱の判子風の「桜狼異聞」と金の縁取りの「大正赤ずきん」、左右に金の細い線 */
+#overlay.title h1.logo { align-items: center; gap: 4px; margin-bottom: 2px; animation: tv-rise 1.4s ease-out 0.4s both; }
+#overlay.title h1.logo small { display: flex; align-items: center; gap: 10px; letter-spacing: 0.35em; font-size: 14px; color: #ffe8c8; }
+#overlay.title h1.logo small::before, #overlay.title h1.logo small::after { content: ""; width: 54px; height: 1px; background: linear-gradient(90deg, transparent, var(--brass)); }
+#overlay.title h1.logo small::after { transform: scaleX(-1); }
+#overlay.title h1.logo small span { padding: 3px 4px 3px 9px; border: 1.5px solid #e0303e; border-radius: 3px; background: rgba(160, 16, 30, 0.85); box-shadow: 0 0 10px rgba(255, 40, 60, 0.5); font-weight: 700; }
+#overlay.title h1.logo b { font-family: var(--mincho); font-weight: 800; font-size: clamp(40px, 12vw, 58px); letter-spacing: 0.1em; line-height: 1.15;
+  background: linear-gradient(180deg, #ffffff 0%, #fff3d2 38%, #ffd27a 62%, #ffe9b0 82%, #fffaf0 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  -webkit-text-stroke: 0.6px rgba(120, 40, 20, 0.6); filter: drop-shadow(0 2px 0 #3a0a0e) drop-shadow(0 0 14px rgba(255, 60, 90, 0.85)); }
+#overlay.title .lead { color: #f0e0e6; text-shadow: 0 1px 2px #000; line-height: 1.7; animation: tv-rise 1.2s ease-out 1s both; }
+#overlay.title .how { font-size: 12px; color: var(--dim); animation: tv-rise 1.2s ease-out 1.2s both; }
+#overlay.title .choices { animation: tv-rise 1.2s ease-out 1.4s both; }
+/* ボタン：金の細い枠の和風 */
+#overlay.title .choices button { min-width: 250px; padding: 11px 36px; border: 1px solid var(--brass); background: linear-gradient(180deg, rgba(170, 26, 38, 0.95), rgba(110, 12, 24, 0.95)); box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.25), inset 0 0 0 4px rgba(216, 184, 112, 0.35), 0 4px 14px rgba(0, 0, 0, 0.5); font-family: var(--mincho); letter-spacing: 0.15em; }
+#overlay.title .choices button + button { background: linear-gradient(180deg, rgba(40, 28, 36, 0.92), rgba(22, 14, 20, 0.92)); }
+@keyframes tv-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #overlay.title *, #overlay.title *::before { animation: none !important; } }
 #overlay h1 { margin: 0; font-size: 34px; letter-spacing: 0.15em; display: flex; flex-direction: column; gap: 6px; }
 #overlay h1 small { font-size: 18px; color: var(--brass); letter-spacing: 0.3em; }
 #overlay p { margin: 0; color: var(--dim); }
@@ -469,7 +491,7 @@ body.tutorial #next { display: none; }
 #overlay .dbg .quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 #overlay .dbg .quick button { padding: 6px 10px; min-width: 40px; background: #2a2026; border-color: var(--line); }
 #overlay .dbg .lv { font-size: 12px; }
-#overlay button.storybtn { background: rgba(20, 12, 18, 0.7); border-color: var(--brass); color: var(--brass); font-family: var(--mincho); letter-spacing: 0.2em; }
+#overlay button.storybtn, #overlay.title .choices button.storybtn { background: rgba(20, 12, 18, 0.7); box-shadow: none; border-color: var(--brass); color: var(--brass); font-family: var(--mincho); letter-spacing: 0.2em; }
 
 /* 今夜の様子（昼の板） */
 .dawn .mood { color: #ffb0c0; font-weight: normal; }

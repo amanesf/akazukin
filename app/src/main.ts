@@ -415,8 +415,12 @@ async function main() {
   document.addEventListener('visibilitychange', () => document.hidden && !manual && pause());
 
   const saved = store.read();
-  const title = `<h1><small>桜狼異聞</small>大正赤ずきん</h1>
-     <p>紅い月の裂け目から狼が来る。99夜、おばあさんの家を守り抜け。</p>
+  // 題字の画面（2026-10-05 アマネさん「もっとかっこよく」「タイトルと顔が被る」）：絵は画面の上に横幅いっぱいで置き、
+  // 顔の下から夜の色に溶かして、題字とボタンはその暗い所に。絵はゆっくり寄り、月が脈打ち、花びらが舞い、題字はあとから浮かぶ
+  const petals = Array.from({ length: 12 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i * 1.7) % 9}s;--t:${7 + (i % 5) * 1.3}s;--s:${0.6 + (i % 4) * 0.25}"></i>`).join('');
+  const title = `<div class="tv"><div class="tv-img"></div><div class="tv-moon"></div><div class="tv-petals">${petals}</div></div>
+     <h1 class="logo"><small><span>桜狼異聞</span></small><b>大正赤ずきん</b></h1>
+     <p class="lead">紅い月の裂け目から狼が来る。<br>99夜、おばあさんの家を守り抜け。</p>
      <p class="how">操作は1晩目に「やってみよう」で</p>`; // 操作の一覧は、絵が見えるように外した（2026-10-04 アマネさん「画像しっかり見えるように」）
   const showTitle = () => {
     show(title, saved
