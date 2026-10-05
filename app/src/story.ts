@@ -80,10 +80,13 @@ const WOLF_TEXT: Record<WolfKind, string> = {
   pup: '弱いが速く、群れで来る。赤ずきんに飛びかかり、跳び越えて家へ向かう。',
   wolf: '群れの主力。赤ずきんを取り囲むように寄ってくる。',
   armored: '鎧をまとった硬い狼。弓と主砲が効きにくい。近づいて斬れ。',
-  howler: '後ろに居座って吠え、まわりの狼を速くする。遠くから衝撃波も撃つ。',
-  alpha: '十夜ごとに現れる、紅いたてがみの大物。ほとんど弾き飛ばせない。九十九夜目には三頭が来る。',
+  howler: '後ろに居座って吠え、裂け目から子狼を呼び続ける。倒さないと増える一方。',
+  alpha: '十夜ごとに現れる、紅いたてがみの大物。ほとんど弾き飛ばせない。夜ごとに色が変わる。九十九夜目には三頭が来る。',
+  wman: '立って歩く狼の男。腕を振りかぶったら大振りが来る。その隙に大技を当てれば止まる。',
+  wwoman: '立って歩く狼の女。跳んで近くへ下り、ひっかきを三度。着地の隙を斬れ。',
+  crow: '空から赤ずきんにとまり、足を鈍らせる。左右にはじいて振りほどけ。',
 };
-const WOLF_RANK: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 3, howler: 3, alpha: 5 };
+const WOLF_RANK: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 3, howler: 3, alpha: 5, wman: 4, wwoman: 4, crow: 2 };
 
 const CONTROLS: [string, string][] = [
   ['タップ', '斬る（続けて連撃）'],

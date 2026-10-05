@@ -2,7 +2,7 @@
  * 難しさの計測。描画なしで sim だけを高速に回し、素朴な自動操作が何日目まで行けるかを数える。
  * 99晩を画面つきで撮るのは遅すぎる（ソフトウェア描画）ので、こちらで測る。
  *
- * 使い方: node scripts/balance.mjs [--seeds 1,2,3] [--max 99] [--dogs 0]
+ * 使い方: node scripts/balance.mjs [--seeds 1,2,3] [--max 99] [--dogs 0] [--smart 1]
  * app/node_modules の esbuild で app/src/sim.ts をその場で束ねる（先に app で npm ci）。
  */
 import { build } from '../app/node_modules/esbuild/lib/main.js';
@@ -32,7 +32,17 @@ for (const seed of SEEDS) {
   // 誰がどれだけ削ったか（番犬＝quiet、それ以外は主人公）
   const dealt = { hero: 0, dogs: 0 };
   const hit = s.hit.bind(s);
-  s.hit = (w, dmg, o) => { dealt[o.quiet ? 'dogs' : 'hero'] += dmg; hit(w, dmg, o); };
+  // --smart 1：色の狼にはいつも弱い武器で当てたことにする（弱い武器を使い分ける人の上限の目安）
+  const WEAK = { red: 'senbon', purple: 'midare', black: 'nagare', orange: 'midare', green: 'sp' };
+  s.hit = (w, dmg, o) => {
+    if (args.smart && !o.quiet && w.color && WEAK[w.color] && o.src && o.src !== 'sp') o = { ...o, src: WEAK[w.color] };
+    dealt[o.quiet ? 'dogs' : 'hero'] += dmg;
+    // 必殺技も合う物を選んだことにする（当てる一瞬だけ）
+    const prev = s.hero.special;
+    if (args.smart && o.src === 'sp' && w.color && WEAK[w.color] && WEAK[w.color] !== 'sp') s.hero.special = WEAK[w.color];
+    hit(w, dmg, o);
+    s.hero.special = prev;
+  };
   let t = 0;
   const minHouse = [];
   let low = 600;

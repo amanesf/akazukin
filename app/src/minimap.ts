@@ -108,7 +108,7 @@ export class Minimap {
       if (rot) g.ellipse(x, this.my(wf.lane), w * 0.5, 1.5).fill({ color: 0x000000, alpha: 0.4 });
       if (art) {
         const hh = unitH * WOLF_REL[wf.kind];
-        this.wolfArt.put(0, wf.kind, x, y - this.wolfArt.center(hh), hh, rot, 1, wf.hitFlash > 0 ? 0xffb0b0 : 0xffffff, wf.age < 0.45 ? wf.age / 0.45 : 1, false, wf.color ? COLORS[wf.color].fur : wf.kind === 'armored' ? undefined : GRAY_FUR); // 色の狼は小さい地図でも同じ色
+        this.wolfArt.put(0, wf.kind, x, y - this.wolfArt.center(hh), hh, rot, 1, wf.hitFlash > 0 ? 0xffb0b0 : 0xffffff, wf.age < 0.45 ? wf.age / 0.45 : 1, false, wf.color ? COLORS[wf.color].fur : ['pup', 'wolf', 'howler', 'alpha'].includes(wf.kind) ? GRAY_FUR : undefined); // 色の狼は小さい地図でも同じ色
         continue;
       }
       if (!rot) {

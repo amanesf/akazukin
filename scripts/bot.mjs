@@ -30,6 +30,11 @@ export function bot(s, mem, dogs = true) {
   }
   const ws = s.wolves;
   if (!ws.length) return;
+  // カラスにとまられたら左右にはじいて振りほどく
+  if (s.clung) {
+    s.flick(Math.random() < 0.5 ? 'left' : 'right');
+    return;
+  }
   const near = ws.filter((w) => Math.abs(w.lane - h.lane) < 0.4 && Math.abs(w.x - h.x) < 120);
   const threat = ws.filter((w) => w.x < 220 && w.x < h.x - 60);
   if (threat.length) {

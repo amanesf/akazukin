@@ -1,6 +1,6 @@
 // 99晩の組み方（plan.md §5）。手で並べず、晩ごとの「狼の予算」から組む。
 // 同じ晩はいつ遊んでも同じ並びになる（晩の番号から乱数を起こす）。
-import { COLOR_ORDER, COLORS, DAYS_TO_CLEAR, type WolfColor, type WolfKind } from './config';
+import { COLOR_ORDER, COLORS, DAYS_TO_CLEAR, FOES_READY, type WolfColor, type WolfKind } from './config';
 
 export interface SpawnLine {
   kind: WolfKind;
@@ -12,8 +12,9 @@ export interface SpawnLine {
 }
 
 // 狼1匹の重さ（予算を食う量）と、出てくる晩
-const THREAT: Record<WolfKind, number> = { pup: 1, wolf: 3, armored: 9, howler: 7, alpha: 50 };
-const FROM: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 4, howler: 5, alpha: 10 };
+const THREAT: Record<WolfKind, number> = { pup: 1, wolf: 3, armored: 9, howler: 7, alpha: 50, wman: 30, wwoman: 20, crow: 3 };
+const FROM: Record<WolfKind, number> = { pup: 1, wolf: 2, armored: 4, howler: 5, alpha: 10, wman: 22, wwoman: 20, crow: 18 };
+const FOES: WolfKind[] = ['wman', 'wwoman', 'crow']; // 人狼・カラス（ふつうの流れとは別に組む）
 
 // 晩 n（1始まり）の予算。序盤はゆっくり、後半は急に重くなる
 // 2026-10-04 指一本アクションにして主人公が強くなったので、1.5倍に（自動操作が70晩まで家を守りきった）
@@ -23,7 +24,7 @@ export function budget(n: number) {
 
 // 狼の体力の倍率。数だけでなく1匹も少しずつ硬くなる
 export function hpScale(n: number) {
-  return 1 + 0.03 * (n - 1);
+  return 1 + 0.06 * (n - 1);
 }
 
 export const SURGE_WARN = 2;
@@ -77,11 +78,11 @@ export function night(n: number): SpawnLine[] {
   // 初めて出る晩（新顔）は、ほかに紛れないよう晩の始めのほうに3匹だけ
   const colors = COLOR_ORDER.filter((c) => COLORS[c].from <= n && c !== 'gold' && c !== 'green');
   if (colors.length) {
-    const share = Math.min(0.4, 0.12 + n / 220);
+    const share = Math.min(0.6, 0.15 + n / 150); // 終盤は6割が色の狼（弱い武器を使い分けるほど楽になる）
     const pot = left * share;
     left -= pot;
     const cw: Partial<Record<WolfColor, number>> = {};
-    for (const c of colors) cw[c] = (md === 'beni' && c === 'red' ? 4 : 1) * (COLORS[c].from === n ? 0 : 1);
+    for (const c of colors) cw[c] = (md === 'beni' && c === 'red' ? 2.5 : 1) * (COLORS[c].from === n ? 0 : 1);
     const cwSum = colors.reduce((a, c) => a + cw[c]!, 0);
     for (const c of colors) {
       if (COLORS[c].from === n) {
@@ -89,7 +90,8 @@ export function night(n: number): SpawnLine[] {
         continue;
       }
       if (!cwSum) continue;
-      const kind: WolfKind = rand() < Math.max(0.3, 0.7 - n / 100) ? 'pup' : 'wolf';
+      // 色の子狼は序盤だけ多め（終盤に数百匹の色の子狼が一度に来て、跳び越えて家を押し切る晩があった）
+      const kind: WolfKind = rand() < Math.max(0.15, 0.7 - n / 60) ? 'pup' : 'wolf';
       const count = Math.max(1, Math.round((pot * cw[c]!) / cwSum / (THREAT[kind] * COLORS[c].threat)));
       const span = length * (0.6 + rand() * 0.3);
       lines.push({ kind, count, interval: span / count, delay: 2 + rand() * length * 0.3, color: c });
@@ -105,6 +107,28 @@ export function night(n: number): SpawnLine[] {
     lines.push({ kind: 'wolf', count: 1, interval: 1, delay: length * (0.3 + rand() * 0.3), color: 'gold' });
     left -= THREAT.wolf * COLORS.gold.threat;
   }
+  // 人狼：1晩に1〜2匹（男女のつがいで来る晩も）。カラス：小さな群れで
+  if (FOES_READY && n % 10 !== 0) {
+    const at = () => length * (0.2 + rand() * 0.5);
+    if (n >= FROM.wwoman && (n === FROM.wwoman || rand() < 0.45)) {
+      const pair = n >= FROM.wman && rand() < 0.35;
+      const d = at();
+      lines.push({ kind: 'wwoman', count: 1, interval: 1, delay: d });
+      left -= THREAT.wwoman;
+      if (pair) {
+        lines.push({ kind: 'wman', count: 1, interval: 1, delay: d - 1.5 });
+        left -= THREAT.wman;
+      }
+    } else if (n >= FROM.wman && (n === FROM.wman || rand() < 0.4)) {
+      lines.push({ kind: 'wman', count: 1, interval: 1, delay: at() });
+      left -= THREAT.wman;
+    }
+    if (n >= FROM.crow && (n === FROM.crow || rand() < 0.4)) {
+      const count = 2 + Math.floor(rand() * Math.min(4, 1 + n / 25));
+      lines.push({ kind: 'crow', count, interval: 0.6, delay: at() });
+      left -= THREAT.crow * count;
+    }
+  }
   left = Math.max(0, left);
 
   // 3割は山場に取っておく（2晩目から）
@@ -112,13 +136,16 @@ export function night(n: number): SpawnLine[] {
   left -= surgeBudget;
 
   // ふつうの流れ：晩が進むほど、子狼より重い狼の割合が増える
-  const kinds = (Object.keys(THREAT) as WolfKind[]).filter((k) => k !== 'alpha' && FROM[k] <= n);
+  const kinds = (Object.keys(THREAT) as WolfKind[]).filter((k) => k !== 'alpha' && !FOES.includes(k) && FROM[k] <= n);
   const weight: Record<WolfKind, number> = {
     pup: Math.max(0.15, 1.2 - n / 40),
     wolf: 0.6 + n / 100,
     armored: 0.3 + n / 80,
     howler: 0.2 + n / 150,
     alpha: 0,
+    wman: 0,
+    wwoman: 0,
+    crow: 0,
   };
   if (md === 'mure') weight.pup *= 4;
   if (md === 'yoroi') weight.armored *= 3;

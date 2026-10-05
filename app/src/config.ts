@@ -28,7 +28,10 @@ export const HERO = {
   laneSpeed: 2.2, // 奥行きの動き（1秒あたり）
   minX: GIRL_X,
   maxX: FIELD_LENGTH - 200, // 裂け目のすぐ前には入らない（出てきた端から狩れてしまう。撮影の自動操作が裂け目に張り付いた）
-  reviveTime: 4, // 倒れたら家の前で立ち上がるまで
+  // 倒れたら家の前で立ち上がるまで。同じ晩に続けて倒れるほど長く（2026-10-05 アマネさん「やられたときのペナルティが少なすぎる」。前は4秒）
+  reviveTime: 7,
+  reviveMore: 3, // 同じ晩の2回目から、1回ごとに足す秒
+  reviveMax: 16,
   hitStunTime: 0.22,
   lunge: 130, // タップした狼がこれより近ければ、踏み込んで斬る（遠ければ走って行って斬る）
   buffer: 0.4, // 技の途中の入力を覚えておく秒数（先行入力）
@@ -242,7 +245,7 @@ export const DOGS: Record<DogKind, DogSpec> = {
   tosa: { name: '鉄丸', breed: '土佐', hp: 360, damage: 34, interval: 1.0, speed: 150, size: 70 },
 };
 
-export type WolfKind = 'pup' | 'wolf' | 'armored' | 'howler' | 'alpha';
+export type WolfKind = 'pup' | 'wolf' | 'armored' | 'howler' | 'alpha' | 'wman' | 'wwoman' | 'crow';
 export interface WolfSpec {
   name: string;
   hp: number;
@@ -261,7 +264,20 @@ export const WOLVES: Record<WolfKind, WolfSpec> = {
   // 遠吠え：近くの狼を速くする（後ろに居座る。主砲で落とす相手）
   howler: { name: '遠吠え', hp: 120, damage: 6, interval: 1.0, speed: 30, size: 56, bounty: 10, arrowResist: 0.3 },
   alpha: { name: '大狼', hp: 1800, damage: 45, interval: 1.2, speed: 18, size: 120, bounty: 120, arrowResist: 0.4, heavy: 0.8 },
+  // 人狼（2026-10-05 アマネさん「人狼男、人狼女。ちょっと強めの敵」）。男＝重い一撃、女＝素早い。カラス＝主人公にとまって邪魔をする
+  wman: { name: '人狼男', hp: 650, damage: 14, interval: 1.0, speed: 30, size: 72, bounty: 40, arrowResist: 0.2, heavy: 0.6 },
+  wwoman: { name: '人狼女', hp: 280, damage: 8, interval: 0.8, speed: 62, size: 58, bounty: 30, arrowResist: 0 },
+  crow: { name: 'カラス', hp: 40, damage: 3, interval: 1.0, speed: 110, size: 36, bounty: 3, arrowResist: 0 },
 };
+// 人狼男：主人公に寄ると腕を振りかぶり（wind 秒・予兆がはっきり見える）、大振り（swing）。当たると大きく吹き飛ぶ。
+// 振りかぶりの間に重い一撃（締め・叩き落とし・主砲・突進・必殺技）を当てると、ひるんで止まる。ふつうの斬りではひるまない
+export const WMAN = { reach: 100, wind: 0.85, swing: 42, push: 140, stun: 0.6, rest: 0.8, broken: 0.9 };
+// 人狼女：近くへ跳んで下り（着地の隙 land 秒）、ひっかき3連、下がってまた跳ぶ
+export const WWOMAN = { range: 340, cd: 3.2, lift: 520, land: 0.6, claws: 3, gap: 0.22, claw: 9, reach: 80, back: 300 };
+// カラス：飛んで主人公にとまる（足が遅くなり、連撃が切れる）。左右にはじくと振りほどける。とまっている間は少しずつ突く
+export const CROW = { fly: 60, peck: 4, every: 0.9, slow: 0.6, shake: 35 };
+// 人狼・カラスを晩に出す（絵は werewolves-v1・crow-v1。false にすると出ない）
+export const FOES_READY = true;
 // 色の狼（2026-10-05 plan.md §0.10② 5〜6回目・アマネさん「ひとことで分かる」「弱い武器くらいでいい」「弱い武器は2倍・敵の強化も2倍」）。
 // 色は1匹に1つまで、子狼と狼だけ（遠吠え・鎧狼は形で役目が分かる。大狼は10晩ごとに色を回す）。
 // weak：この武器で当てると2倍（senbon＝ナイフ・斬り全部／nagare＝弓／midare＝主砲／sp＝必殺技）。ほかの武器もふつうに効く
@@ -280,10 +296,10 @@ export interface ColorSpec {
   ui: string; // 文字の色
 }
 export const COLORS: Record<WolfColor, ColorSpec> = {
-  red: { name: '赤い', word: '速い', weak: 'senbon', icon: 'knife', speed: 2, hp: 1, damage: 1, size: 1, bounty: 1.5, threat: 1.8, from: 3, fur: [0x400404, 0xd42a20, 0xff9a78], ui: '#ff6a55' },
+  red: { name: '赤い', word: '速い', weak: 'senbon', icon: 'knife', speed: 2, hp: 1, damage: 1, size: 1, bounty: 1.5, threat: 1.3, from: 3, fur: [0x400404, 0xd42a20, 0xff9a78], ui: '#ff6a55' },
   purple: { name: '紫の', word: '体力が多い', weak: 'midare', icon: 'cannon', speed: 1, hp: 2, damage: 1, size: 1.15, bounty: 2, threat: 2, from: 7, fur: [0x280a4a, 0x9a50e0, 0xe0c4ff], ui: '#c08aff' },
-  black: { name: '黒い', word: '攻撃力が高い', weak: 'nagare', icon: 'bow', speed: 1, hp: 1, damage: 2, size: 1, bounty: 1.5, threat: 1.8, from: 16, fur: [0x020204, 0x18161e, 0x5a5468], ui: '#b0a8c8' },
-  orange: { name: '橙の', word: '倒すと爆ぜる', weak: 'midare', icon: 'cannon', speed: 1, hp: 1, damage: 1, size: 1, bounty: 1.5, threat: 1.5, from: 12, fur: [0x4a1002, 0xe85a0c, 0xffb870], ui: '#ff7a2a' },
+  black: { name: '黒い', word: '攻撃力が高い', weak: 'nagare', icon: 'bow', speed: 1, hp: 1, damage: 2, size: 1, bounty: 1.5, threat: 1.5, from: 16, fur: [0x020204, 0x18161e, 0x5a5468], ui: '#b0a8c8' },
+  orange: { name: '橙の', word: '倒すと爆ぜる', weak: 'midare', icon: 'cannon', speed: 1, hp: 1, damage: 1, size: 1, bounty: 1.5, threat: 1.2, from: 12, fur: [0x4a1002, 0xe85a0c, 0xffb870], ui: '#ff7a2a' },
   green: { name: '緑の', word: '起き上がる', weak: 'sp', icon: 'sakura', speed: 1, hp: 1, damage: 1, size: 1, bounty: 2, threat: 2.5, from: 24, fur: [0x0a2a14, 0x5aa860, 0xc8f0b8], ui: '#7ad87a' },
   gold: { name: '金の', word: '全部強い', weak: null, icon: 'coin', speed: 2, hp: 2, damage: 2, size: 1.1, bounty: 5, threat: 5, from: 35, fur: [0x5a3c06, 0xf2cc3a, 0xfffbe0], ui: '#ffe050' },
 };

@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { COLORS, GRAY_FUR, HOWL, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { COLORS, GRAY_FUR, HOWL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -80,7 +80,7 @@ export class View {
   private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
   // ほかの4種類は噛みつき、遠吠えと大狼はのけぞりも（pack-motion-v1）
-  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
+  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit', 'wman', 'wman_wind', 'wman_swing', 'wman_hit', 'wwoman', 'wwoman_crouch', 'wwoman_leap', 'wwoman_claw', 'wwoman_hit', 'crow', 'crow_down', 'crow_cling', 'crow_hit'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
   private dogBack = new Container();
   private dogFront = new Container();
   private dogArt = new UnitArt<DogArt>('dogs', ['shiba', 'akita', 'tosa', 'shiba_run', 'akita_run', 'tosa_run', 'shiba_bite', 'akita_bite', 'tosa_bite'], this.dogBack, this.dogFront, [this.rimBack, this.rimFront]); // 走り・噛みつきの絵は dogs-motion-v1 // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
@@ -894,7 +894,9 @@ export class View {
     // 当たった：つぶれる・のけぞる
     const hit = w.hitFlash / 0.12;
     if (hit > 0) { sx *= 1 - 0.22 * hit; sy *= 1 + 0.18 * hit; rot += (w.hitDir || 1) * 0.25 * hit; }
-    if (w.z > 0) {
+    if (w.kind === 'crow' && w.mode !== 'fall') {
+      rot = w.mode === 'cling' ? Math.sin(t * 20) * 0.08 : Math.sin(t * 3) * 0.06; // 飛んでいる・とまっている：回らない
+    } else if (w.z > 0) {
       if (w.pouncing) {
         rot = Math.atan2(-w.vz, -330) + Math.PI; // 跳びかかり：鼻先を進む向きへ
         rot = Math.max(-0.6, Math.min(0.6, -w.vz / 900));
@@ -995,6 +997,24 @@ export class View {
       else if (o.hit > 0 || (w.stun > 0.05 && w.z <= 0)) { art = 'wolf_hit'; rot *= 0.3; }
       else if (o.biteK > 0.15) { art = 'wolf_bite'; rot *= 0.3; }
       else if (w.vx === 0 && Math.sin((sim.clock + w.id * 0.37) * 7) < 0) art = 'wolf_walk2';
+    } else if (w.kind === 'wman') {
+      // 人狼男：振りかぶり → 大振り（休みの始め）→ のけぞり
+      if (w.mode === 'wind') art = 'wman_wind';
+      else if (w.mode === 'rest' && w.stun <= 0.05 && w.modeT > WMAN.rest - 0.35) art = 'wman_swing';
+      else if (o.hit > 0 || w.stun > 0.05) art = 'wman_hit';
+      rot *= 0.3;
+    } else if (w.kind === 'wwoman') {
+      // 人狼女：跳ぶ → 着地の構え → ひっかき → のけぞり。跳ぶ直前も構える
+      if (w.z > 0 && w.mode === 'leap') art = 'wwoman_leap';
+      else if (o.hit > 0 || w.stun > 0.05) art = 'wwoman_hit';
+      else if (w.mode === 'claw') art = 'wwoman_claw';
+      else if (w.mode === 'land' || (w.mode === '' && w.skillCd < 0.35)) art = 'wwoman_crouch';
+      rot *= 0.3;
+    } else if (w.kind === 'crow') {
+      // カラス：羽ばたき（上げ・下げ）・とまって突く・叩かれて落ちる
+      if (w.mode === 'cling') art = 'crow_cling';
+      else if (w.mode === 'fall' || w.stun > 0.05 || o.hit > 0) art = 'crow_hit';
+      else if (Math.sin((sim.clock + w.id * 0.37) * 16) < 0) art = 'crow_down';
     } else if ((o.hit > 0 || (w.stun > 0.05 && w.z <= 0)) && has(`${w.kind}_hit`)) { art = `${w.kind}_hit` as WolfArt; rot *= 0.3; }
     else if ((o.biteK > 0.15 || w.pouncing) && has(`${w.kind}_bite`)) { art = `${w.kind}_bite` as WolfArt; rot *= 0.3; }
     // 姿勢の絵は、立ち姿との背の高さの違いのまま描く（低い噛みつきまで同じ背に伸ばすと大きく見えた）
@@ -1011,12 +1031,23 @@ export class View {
       this.wolfHud.rect(o.x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
     }
     if (w.color && born > 0.5) this.mark(w.color, o.x, o.ground - o.lift - hh * 1.05 - 6, hh);
+    // 人狼男の振りかぶり：頭の上に赤い「！」（大振りが来る。今なら大技で止められる）
+    if (w.kind === 'wman' && w.mode === 'wind') {
+      const r = Math.max(11, hh * 0.09);
+      const ex = o.x;
+      const ey = o.ground - o.lift - hh * 0.98 - r;
+      const pulse = 1 + 0.15 * Math.sin(this.vt * 30);
+      this.wolfHud.circle(ex, ey, r * pulse + 2).fill({ color: 0x000000, alpha: 0.5 });
+      this.wolfHud.circle(ex, ey, r * pulse).fill({ color: 0xff3040, alpha: 0.95 });
+      this.wolfHud.roundRect(ex - r * 0.16, ey - r * 0.62, r * 0.32, r * 0.78, r * 0.1).fill(0xffffff);
+      this.wolfHud.circle(ex, ey + r * 0.45, r * 0.17).fill(0xffffff);
+    }
   }
 
   // 毛の色：色の狼はその色、色の付かない狼は明るい銀灰（黒と見分けるため）。鎧狼は鎧の色を残す
   private furOf(kind: WolfKind, color?: WolfColor): [number, number, number] | undefined {
     if (color) return COLORS[color].fur;
-    return kind === 'armored' ? undefined : GRAY_FUR;
+    return kind === 'pup' || kind === 'wolf' || kind === 'howler' || kind === 'alpha' ? GRAY_FUR : undefined; // 鎧狼は鎧の色を、人狼は服の色を残す
   }
 
   // 頭の上の印：その色の丸に、弱い武器の絵（ナイフ・弓・主砲・桜。金は銭）
@@ -2028,7 +2059,8 @@ export class View {
 }
 
 type DogArt = DogKind | `${DogKind}_run` | `${DogKind}_bite`;
-type WolfArt = WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air' | 'pup_bite' | 'armored_bite' | 'howler_bite' | 'alpha_bite' | 'howler_hit' | 'alpha_hit';
+type WolfArt = WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air' | 'pup_bite' | 'armored_bite' | 'howler_bite' | 'alpha_bite' | 'howler_hit' | 'alpha_hit'
+  | 'wman_wind' | 'wman_swing' | 'wman_hit' | 'wwoman_crouch' | 'wwoman_leap' | 'wwoman_claw' | 'wwoman_hit' | 'crow_down' | 'crow_cling' | 'crow_hit';
 const ROLE_COLOR = { guard: 0x70b8ff, attack: 0xff6070, support: 0x80e090 };
 
 // 少し行きすぎて戻る（出てくる・置く）

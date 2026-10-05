@@ -3,7 +3,7 @@
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
-  BLAST, COLORS, WEAK_MUL, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
+  BLAST, COLORS, CROW, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
 } from './config';
@@ -44,6 +44,9 @@ export interface Wolf extends Unit {
   zgain: number; // 緑：この1匹から溜まった必殺技（上限あり）
   summoned?: boolean; // 遠吠えに呼ばれた子狼（賞金なし）
   naps: number; // 緑が寝た回数（緑の大狼は2回まで。3回目で倒れる）
+  mode: '' | 'wind' | 'rest' | 'leap' | 'land' | 'claw' | 'back' | 'cling' | 'fall'; // 人狼・カラスの動きの段
+  modeT: number; // その段の残り秒
+  clawN: number; // 人狼女：残りのひっかき
 }
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
@@ -141,6 +144,8 @@ export class Sim {
   mood: Mood | null = null; // 今夜の様子（霧・紅月など）
   stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0, summoned: 0 }; // 計測用（scripts/balance.mjs）
   nightEarned = 0;
+  nightDowns = 0; // 今夜倒れた回数（続けて倒れるほど起き上がるのが遅い）
+  downFor = HERO.reviveTime; // 今の倒れの長さ
 
   hero: Hero = {
     x: GIRL_X + 60, lane: 0.5, z: 0, vz: 0, hp: HERO.hp, move: null, moveT: 0, moveTarget: 0, dashTo: 0, lungeTo: null, lungeLane: 0.5,
@@ -442,6 +447,8 @@ export class Sim {
     h.order = null;
     this.startMove('tosshin', 0, clamp(h.x + dir * DASH.dist * (fin ? COMBO.tsuki : 1), HERO.minX, HERO.maxX));
     h.dashHit = [];
+    // とまっているカラスを振りほどく
+    for (const c of this.wolves) if (c.kind === 'crow' && c.mode === 'cling') this.hit(c, CROW.shake * this.nearPower, { kb: 450, lift: 260, stop: 0.04, stun: 0.6, src: 'senbon' });
     h.iframes = fin ? MOVES.tosshin.dur : DASH.iframes;
     if (fin) this.startFinish('tsuki');
     else h.beat = 'side';
@@ -607,6 +614,7 @@ export class Sim {
     h.charge = -1;
     this.nightKills = 0;
     this.nightEarned = 0;
+    this.nightDowns = 0;
     this.dogs = [];
     for (const kind of DOG_ORDER) {
       const s = DOGS[kind];
@@ -739,7 +747,7 @@ export class Sim {
     const c = color ? COLORS[color] : undefined;
     return {
       ...this.unit(x, w.hp * hpScale(this.wave + 1) * (c?.hp ?? 1), w.size * (c?.size ?? 1)), kind, color, hasted: false,
-      z: 0, vz: 0, vx: 0, stun: 0, slammed: false, pouncing: false, skillCd: 0, age: 0, hitDir: 0, sleep: 0, zgain: 0, naps: 0,
+      z: 0, vz: 0, vx: 0, stun: 0, slammed: false, pouncing: false, skillCd: 0, age: 0, hitDir: 0, sleep: 0, zgain: 0, naps: 0, mode: '', modeT: 0, clawN: 0,
     };
   }
 
@@ -842,6 +850,7 @@ export class Sim {
       w.skillCd -= dt;
       w.stun = Math.max(0, w.stun - dt);
 
+      if (w.kind === 'crow' && this.runCrow(w, dt)) continue;
       // 体の動き：弾かれた勢い・打ち上げ・叩きつけ
       if (w.vx !== 0) {
         w.x = clamp(w.x + w.vx * dt, HOUSE_X + 10, WOLF_SPAWN_X);
@@ -884,11 +893,13 @@ export class Sim {
       const ahead = w.x - h.x; // 主人公より右（家と反対側）にいる距離
 
       // 奥行き：狼・鎧狼・大狼は主人公が近いと寄せてくる（子狼と遠吠えは寄せない＝すり抜けて家へ）。1匹ずつ少しずらして、取り囲むように
-      if (heroUp && (w.kind === 'wolf' || w.kind === 'armored' || w.kind === 'alpha') && ahead > 0 && ahead < STEER.range) {
+      if (heroUp && (w.kind === 'wolf' || w.kind === 'armored' || w.kind === 'alpha' || w.kind === 'wman' || w.kind === 'wwoman') && ahead > 0 && ahead < STEER.range) {
         const want = clamp(h.lane + ((w.id % 3) - 1) * 0.17, 0, 1);
         w.lane += clamp(want - w.lane, -STEER.speed * dt, STEER.speed * dt);
       }
 
+      if (w.kind === 'wman' && this.runWman(w, dt)) continue;
+      if (w.kind === 'wwoman' && this.runWwoman(w, dt)) continue;
       // 特性ごとの攻め方
       // 遠吠え：居座る所に着いたら、溜めて（skillCd が wind を切ってから0まで。そのあいだは動かない）吠え、裂け目から子狼を呼ぶ
       if (w.kind === 'howler' && w.x <= HOWL.holdX + 1) {
@@ -1084,7 +1095,8 @@ export class Sim {
     this.kick(3, 0);
     if (h.hp <= 0) {
       h.hp = 0;
-      h.down = HERO.reviveTime;
+      h.down = this.downFor = Math.min(HERO.reviveMax, HERO.reviveTime + HERO.reviveMore * this.nightDowns);
+      this.nightDowns++;
       this.stats.downs++;
       this.breakCombo();
       h.step = 0;
@@ -1115,7 +1127,7 @@ export class Sim {
     if (h.down > 0) {
       // 倒れたら家の前で立ち上がる。負けは家が落ちたときだけ
       h.down -= dt;
-      if (h.down < HERO.reviveTime - 0.6) h.x = Math.max(GIRL_X, h.x - 900 * dt); // 少し寝てから家の前へ下がる
+      if (h.down < this.downFor - 0.6) h.x = Math.max(GIRL_X, h.x - 900 * dt); // 少し寝てから家の前へ下がる
       if (h.down <= 0) {
         h.hp = this.maxHp;
         h.x = GIRL_X + 20;
@@ -1168,7 +1180,7 @@ export class Sim {
       }
     }
     // 走る途中で目の前に来た狼は斬る（足は止めない相手は追わない）
-    const speed = o.sprint ? HERO.sprint : HERO.speed;
+    const speed = (o.sprint ? HERO.sprint : HERO.speed) * (this.clung ? CROW.slow : 1); // カラスにとまられると足が遅い
     const dx = o.x - h.x;
     const dl = o.lane - h.lane;
     if (Math.abs(dx) < 3 && Math.abs(dl) < 0.02) {
@@ -1671,7 +1683,10 @@ export class Sim {
     if (w.age < 0.4) return; // 裂け目から出てくる途中は当たらない
     if (o.kb) o = { ...o, kb: Math.abs(o.kb) };
     // 弱い武器で当てると2倍（色の狼の頭の上の印）
-    const weak = !!w.color && !o.quiet && COLORS[w.color].weak !== null && COLORS[w.color].weak === o.src;
+    // 必殺技も武器の種類で数える（千本桜＝ナイフ・流れ矢＝弓・乱れ撃ち＝主砲）。緑はどの必殺技でも
+    const wk = w.color ? COLORS[w.color].weak : null;
+    const weapon = o.src === 'sp' && wk !== 'sp' ? this.hero.special : o.src;
+    const weak = !!wk && !o.quiet && wk === weapon;
     if (weak) {
       dmg *= WEAK_MUL;
       if (!this.weakSeen.has(w.color!)) {
@@ -1696,7 +1711,24 @@ export class Sim {
       w.vz = -900;
     }
     w.pouncing = false;
-    w.stun = Math.max(w.stun, o.stun ?? 0.25);
+    let stun = o.stun ?? 0.25;
+    if (w.kind === 'wman') {
+      // 人狼男はふつうの斬りではひるまない。振りかぶりの間に重い一撃を当てると、大振りが止まる
+      const heavyHit = (o.stop ?? 0) >= 0.06 || !!o.slam || (o.kb ?? 0) >= 300 || (o.lift ?? 0) >= 250 || o.src === 'midare' || o.src === 'sp';
+      stun = heavyHit ? 0.3 : 0;
+      if (heavyHit && w.mode === 'wind') {
+        w.mode = 'rest';
+        w.modeT = WMAN.broken;
+        stun = WMAN.stun;
+        this.fx.push(this.mk({ kind: 'full', x: w.x, lane: w.lane }));
+        this.sounds.push('heavy');
+      }
+    }
+    if (w.kind === 'crow' && (o.kb || o.lift || w.mode === 'cling')) {
+      w.mode = 'fall'; // 叩かれたカラスは落ちる
+      w.z = Math.max(w.z, 0.01);
+    }
+    w.stun = Math.max(w.stun, stun);
     const big = dmg >= 30;
     this.fx.push(this.mk({ kind: 'num', x: w.x, lane: w.lane, n: Math.round(dmg), z: w.z, big: big || weak, color: weak ? w.color : undefined }));
     if (o.quiet) return; // 番犬の噛みつきはコンボに数えない
@@ -1717,6 +1749,143 @@ export class Sim {
       this.gain(o.src, n);
     }
     if (o.stop) this.hitStop = Math.max(this.hitStop, o.stop);
+  }
+
+  // カラスがとまっている
+  get clung() {
+    return this.wolves.some((w) => w.kind === 'crow' && w.mode === 'cling');
+  }
+
+  // カラス：飛んで主人公へ向かい、とまって突く。叩かれると落ち、起きてまた飛ぶ。true を返したら、この1コマはここまで
+  private runCrow(w: Wolf, dt: number): boolean {
+    const h = this.hero;
+    if (w.mode === 'fall') {
+      if (w.z > 0 || w.vz > 0) return false; // 落ちている：ふつうの体の動き（重力）
+      w.mode = '';
+    }
+    if (w.mode === 'cling') {
+      if (h.down > 0 || h.ouran > 0) {
+        w.mode = 'fall';
+        w.vx = 200;
+        return false;
+      }
+      w.x = h.x - h.facing * 6;
+      w.lane = Math.min(1, h.lane + 0.002); // 主人公の手前に描く
+      w.z = 150 + h.z; // 肩の高さ
+      if (w.skillCd <= 0) {
+        w.skillCd = CROW.every;
+        this.hurtHero(CROW.peck * this.bite * this.biteMul(w));
+      }
+      return true;
+    }
+    if (w.stun > 0) return true; // 地面でのびている
+    w.z = Math.min(CROW.fly, w.z + 160 * dt);
+    w.vz = 0;
+    if (w.vx) {
+      w.x = clamp(w.x + w.vx * dt, HOUSE_X + 10, WOLF_SPAWN_X);
+      w.vx *= Math.max(0, 1 - BODY.friction * dt);
+      if (Math.abs(w.vx) < 5) w.vx = 0;
+    }
+    const up = h.down <= 0 && h.ouran <= 0;
+    const tx = up ? h.x : HOUSE_X;
+    const tl = up ? h.lane : w.lane;
+    const dx = tx - w.x;
+    w.x += Math.sign(dx) * Math.min(Math.abs(dx), WOLVES.crow.speed * (w.color ? COLORS[w.color].speed : 1) * dt);
+    w.lane += clamp(tl - w.lane, -1.2 * dt, 1.2 * dt);
+    if (up && w.age > 0.6 && Math.abs(h.x - w.x) < 26 && Math.abs(h.lane - w.lane) < 0.12 && h.iframes <= 0 && !this.clung) {
+      w.mode = 'cling';
+      w.skillCd = CROW.every;
+      this.breakCombo(); // とまられると連撃が切れる
+      this.sounds.push('hurt');
+    }
+    if (!up && w.x <= HOUSE_X + w.size / 2 && w.cooldown <= 0) {
+      w.cooldown = WOLVES.crow.interval;
+      const bite = WOLVES.crow.damage * this.bite * this.biteMul(w);
+      this.houseHp -= bite;
+      this.stats.houseBite += bite;
+    }
+    return true;
+  }
+
+  // 人狼男：寄ると振りかぶり、大振り。そのあと少し休む。true を返したら、この1コマはここまで
+  private runWman(w: Wolf, dt: number): boolean {
+    const h = this.hero;
+    if (w.mode === 'wind') {
+      if ((w.modeT -= dt) > 0) return true;
+      w.mode = 'rest';
+      w.modeT = WMAN.rest;
+      const at = w.x - WMAN.reach * 0.55;
+      this.fx.push(this.mk({ kind: 'land', x: at, lane: w.lane, r: WMAN.reach, big: true }));
+      this.sounds.push('slam');
+      this.kick(7, -1);
+      if (h.down <= 0 && Math.abs(h.x - at) <= WMAN.reach * 0.75 && Math.abs(h.lane - w.lane) <= LANE_TOL + 0.1 && h.iframes <= 0 && h.ouran <= 0) {
+        this.hurtHero(WMAN.swing * this.bite * this.biteMul(w));
+        h.x = clamp(h.x - WMAN.push, HERO.minX, HERO.maxX); // 大きく吹き飛ぶ
+        h.vz = Math.max(h.vz, 320);
+        h.z = Math.max(h.z, 0.01);
+      }
+      for (const d of this.dogs) if (d.down <= 0 && Math.abs(d.x - at) <= WMAN.reach * 0.75 && Math.abs(d.lane - w.lane) <= LANE_TOL + 0.1) this.hurt(d, WMAN.swing * this.bite * this.biteMul(w));
+      return true;
+    }
+    if (w.mode === 'rest') {
+      if ((w.modeT -= dt) <= 0) w.mode = '';
+      return true;
+    }
+    const ahead = w.x - h.x;
+    if (h.down <= 0 && h.ouran <= 0 && ahead > -20 && ahead <= WMAN.reach && Math.abs(w.lane - h.lane) <= LANE_TOL + 0.1) {
+      w.mode = 'wind';
+      w.modeT = WMAN.wind;
+      return true;
+    }
+    return false; // ふつうに歩く・番犬と家を噛む
+  }
+
+  // 人狼女：近くへ跳んで下り、着地の隙のあとひっかき3連、下がってまた跳ぶ
+  private runWwoman(w: Wolf, dt: number): boolean {
+    const h = this.hero;
+    switch (w.mode) {
+      case 'leap': // 宙にいるあいだは体の動きの所で止まるので、ここに来たら着地した
+        w.mode = 'land';
+        w.modeT = WWOMAN.land;
+        return true;
+      case 'land':
+        if ((w.modeT -= dt) > 0) return true;
+        w.mode = 'claw';
+        w.clawN = WWOMAN.claws;
+        w.modeT = 0;
+        return true;
+      case 'claw':
+        if ((w.modeT -= dt) > 0) return true;
+        w.clawN--;
+        w.modeT = WWOMAN.gap;
+        this.fx.push(this.mk({ kind: 'slash', x: w.x - 30, lane: w.lane, dir: -1 }));
+        this.sounds.push('swing');
+        if (h.down <= 0 && Math.abs(h.x - w.x) <= WWOMAN.reach + w.size / 2 && Math.abs(h.lane - w.lane) <= LANE_TOL) this.hurtHero(WWOMAN.claw * this.bite * this.biteMul(w));
+        if (w.clawN <= 0) {
+          w.mode = 'back';
+          w.vx = WWOMAN.back;
+          w.skillCd = WWOMAN.cd;
+        }
+        return true;
+      case 'back':
+        if (w.vx > 5) return true;
+        w.mode = '';
+        return false;
+    }
+    const d = Math.abs(w.x - h.x);
+    if (w.skillCd <= 0 && h.down <= 0 && h.ouran <= 0 && d <= WWOMAN.range && d > 70) {
+      const T = (2 * WWOMAN.lift) / BODY.gravity;
+      const to = h.x + (w.x > h.x ? 45 : -45);
+      w.vz = WWOMAN.lift;
+      w.z = 0.01;
+      w.vx = (to - w.x) / T;
+      w.lane = h.lane;
+      w.pouncing = true;
+      w.mode = 'leap';
+      this.sounds.push('jump');
+      return true;
+    }
+    return false;
   }
 
   // 色の狼の噛む力

@@ -51,6 +51,16 @@ for n, kind in PACK.items():
     kk = sheet.get(kind, sheet['howler'])
     imgs[n] = cv2.resize(pimgs[n], (int(pimgs[n].shape[1] * kk), int(pimgs[n].shape[0] * kk)), interpolation=cv2.INTER_AREA)
 MOTION += list(PACK)
+# 人狼（werewolves-v1：男4・女5）とカラス（crow-v1：4。霧と紛れ込んだ脚は消した）。右向きに描かれたので反転。
+# 人狼は同じ1枚の互いの大きさのまま、男の立ち姿を書き出し 600 画素に。カラスは飛ぶ姿を 240 画素に。動きの絵扱い（絵の真ん中が基準）
+FOES = {'wman': ['wman', 'wman_wind', 'wman_swing', 'wman_hit', 'wwoman', 'wwoman_crouch', 'wwoman_leap', 'wwoman_claw', 'wwoman_hit'],
+        'crow': ['crow', 'crow_down', 'crow_cling', 'crow_hit']}
+for base, names in FOES.items():
+    fimgs = {n: cv2.flip(cv2.imread(f'{SRC}/{n}.png', cv2.IMREAD_UNCHANGED), 1) for n in names}
+    kf = (600 if base == 'wman' else 240) / k / hgt(fimgs[base])
+    for n, img in fimgs.items():
+        imgs[n] = cv2.resize(img, (int(img.shape[1] * kf), int(img.shape[0] * kf)), interpolation=cv2.INTER_AREA)
+    MOTION += [n for n in names if n not in ('wman', 'wwoman', 'crow')]
 meta = {}
 for n, img in imgs.items():
     x0, y0, x1, y1 = bounds(img)
