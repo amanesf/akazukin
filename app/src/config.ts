@@ -262,7 +262,7 @@ export const WOLVES: Record<WolfKind, WolfSpec> = {
   wolf: { name: '狼', hp: 90, damage: 11, interval: 0.8, speed: 48, size: 56, bounty: 4, arrowResist: 0 },
   armored: { name: '鎧狼', hp: 300, damage: 20, interval: 1.0, speed: 28, size: 70, bounty: 12, arrowResist: 0.6, heavy: 0.4 },
   // 遠吠え：近くの狼を速くする（後ろに居座る。主砲で落とす相手）
-  howler: { name: '遠吠え', hp: 260, damage: 6, interval: 1.0, speed: 30, size: 56, bounty: 10, arrowResist: 0.3 },
+  howler: { name: '遠吠え', hp: 260, damage: 6, interval: 1.0, speed: 30, size: 56, bounty: 20, arrowResist: 0.3 },
   alpha: { name: '大狼', hp: 1800, damage: 45, interval: 1.2, speed: 18, size: 120, bounty: 120, arrowResist: 0.4, heavy: 0.8 },
   // 人狼（2026-10-05 アマネさん「人狼男、人狼女。ちょっと強めの敵」）。男＝重い一撃、女＝素早い。カラス＝主人公にとまって邪魔をする
   wman: { name: '人狼男', hp: 650, damage: 14, interval: 1.0, speed: 30, size: 72, bounty: 40, arrowResist: 0.2, heavy: 0.6 },
@@ -289,7 +289,7 @@ export const WMAN = { reach: 100, wind: 0.85, swing: 42, push: 140, stun: 0.6, r
 // 人狼女：近くへ跳んで下り（着地の隙 land 秒）、ひっかき3連、下がってまた跳ぶ
 export const WWOMAN = { range: 340, cd: 3.2, lift: 520, land: 0.6, claws: 3, gap: 0.22, claw: 9, reach: 80, back: 300 };
 // カラス：飛んで主人公にとまる（足が遅くなり、連撃が切れる）。左右にはじくと振りほどける。とまっている間は少しずつ突く
-export const CROW = { fly: 60, peck: 4, every: 0.9, slow: 0.6, shake: 35 };
+export const CROW = { fly: 60, peck: 4, every: 0.9, slow: 0.6, shake: 35, ko: 1.0 }; // ko：叩き落とされて地面でのびる秒
 // 人狼・カラスを晩に出す（絵は werewolves-v1・crow-v1。false にすると出ない）
 export const FOES_READY = true;
 // 色の狼（2026-10-05 plan.md §0.10② 5〜6回目・アマネさん「ひとことで分かる」「弱い武器くらいでいい」「弱い武器は2倍・敵の強化も2倍」）。
@@ -321,13 +321,12 @@ export const COLORS: Record<WolfColor, ColorSpec> = {
 export const GRAY_FUR: [number, number, number] = [0x4a4a58, 0xa8a8b8, 0xf0f0f8];
 export const BLAST = { radius: 130, damage: 70, hero: 10 }; // 橙が倒れたときの爆発（狼へ・主人公と番犬へ）
 export const WEAK_MUL = 2; // 弱い武器で当てたとき
-// 遠吠え：後ろに居座り、6秒ごとに1.5秒溜めて吠え、裂け目から子狼を2匹呼ぶ。何回でも呼ぶ（倒さないと増え続ける）。
-// 場の狼が cap 匹を超えているあいだは呼ばない（重くならないように）。呼ばれた子狼は賞金なし（稼ぎ場にしない）。
+// 遠吠え：後ろに居座り、6秒ごとに1.5秒溜めて吠え、裂け目から仲間を2匹呼ぶ（序盤は子狼2匹・wolfFrom 晩から狼と子狼・colorFrom 晩から今夜の色の狼と子狼）。
+// 出てすぐ（first 秒）1回吠え、歩いているあいだも吠える。何回でも呼ぶ（倒さないと増え続ける）。
+// 場の狼が cap 匹を超えているあいだは呼ばない（重くならないように）。呼ばれた狼は賞金なし（稼ぎ場にしない）。賞金は 10→20（倒しに行く得）
 // 2026-10-05 アマネさん「倒さないとどんどん敵を呼ぶ」「1匹は無限に呼べていい」。近くの狼を速くする・音波はやめた（見えにくい）
 // 2026-10-05 体力 120→260（アマネさん「体力増やすか」。呼ぶ前に倒されて、99晩で呼ばれた子狼が10匹くらいしかいなかった）
-export const HOWL = { holdX: 620, interval: 6, wind: 1.5, count: 2, cap: 40, first: 3 };
-// 狼の攻め方（特性ごと）：遠吠えは遠くから衝撃波、子狼は飛びかかる
-export const SHOCKWAVE = { range: 460, interval: 3.2, speed: 260, damage: 12 };
+export const HOWL = { holdX: 620, interval: 6, wind: 1.5, cap: 60, first: 1.2, wolfFrom: 20, colorFrom: 40 }; // 2026-10-05 呼ぶ仲間を晩で強く・出てすぐ吠える・上限 40→60
 // 子狼は主人公を跳び越えて家へ向かう（立っているだけでは止められない）
 export const POUNCE = { range: 160, interval: 2.5, lift: 420, speed: 400, damage: 8 };
 // 狼は主人公が近いと奥行きを寄せて向かってくる（子狼は寄せない）

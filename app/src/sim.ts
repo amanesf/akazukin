@@ -3,11 +3,11 @@
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
-  BLAST, COLORS, CROW, KING, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
+  BLAST, COLORS, CROW, KING, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
 } from './config';
-import { dogScale, hpScale, mood, newColors, night, SURGE_WARN, type Mood } from './nights';
+import { dogScale, hpScale, mood, newColors, night, SURGE_WARN, themeColors, type Mood } from './nights';
 
 const PET_GAP = 45; // なでる犬の体の端から主人公の足もとまで（世界の単位。絵の手の届く所は view が合わせる）
 const PET_STEP = 60; // 2匹目・3匹目はその後ろに並ぶ
@@ -63,7 +63,6 @@ export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; 
 // sp：必殺技が出したもの（当てても必殺技は溜まらない）。fromZ：跳んだ高さから放つ。big：大きい矢・giant：奥行き全部を貫く大きな一本
 export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean }
 export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number; sp?: boolean }
-export interface Shot { x: number; lane: number } // 狼の衝撃波（左へ飛ぶ）
 export type FxKind = 'howl' | 'wake' | 'sunfade' | 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge' | 'beam';
 export interface Fx {
   id: number;
@@ -194,7 +193,6 @@ export class Sim {
   roles: Record<DogKind, DogRole> = { ...DOG_DEFAULT_ROLES }; // 番犬の役目（昼に決める）
   arrows: Arrow[] = [];
   shells: Shell[] = [];
-  shots: Shot[] = [];
   waves: Wave[] = [];
   fx: Fx[] = [];
 
@@ -699,7 +697,6 @@ export class Sim {
     this.hero.x = clamp(this.hero.x, HERO.minX, HERO.maxX);
     this.flyArrows(dt);
     this.flyShells(dt);
-    this.flyShots(dt);
     this.flyWaves(dt);
     this.reap();
     this.endWave();
@@ -721,7 +718,7 @@ export class Sim {
       }
       while (s.left > 0 && s.next <= 0) {
         const wolf = this.makeWolf(s.kind, WOLF_SPAWN_X, s.color);
-        wolf.skillCd = s.kind === 'howler' ? 99 : 1 + this.rand() * 2; // 遠吠えは居座る所に着いてから数え始める
+        wolf.skillCd = s.kind === 'howler' ? HOWL.first : 1 + this.rand() * 2; // 遠吠えは出てすぐ1回吠える
         this.wolves.push(wolf);
         // 今夜の新顔が初めて出てきた
         if (s.color && !this.faced.has(s.color)) {
@@ -812,7 +809,6 @@ export class Sim {
     this.wave++;
     this.arrows = [];
     this.shells = [];
-    this.shots = [];
     this.waves = [];
     this.sleepers = [];
     this.combo = 0;
@@ -916,15 +912,17 @@ export class Sim {
       if (w.kind === 'wman' && this.runWman(w, dt)) continue;
       if (w.kind === 'wwoman' && this.runWwoman(w, dt)) continue;
       // 特性ごとの攻め方
-      // 遠吠え：居座る所に着いたら、溜めて（skillCd が wind を切ってから0まで。そのあいだは動かない）吠え、裂け目から子狼を呼ぶ
-      if (w.kind === 'howler' && w.x <= HOWL.holdX + 1) {
-        if (w.skillCd > HOWL.interval) w.skillCd = HOWL.first; // 着いてから最初の遠吠えまで
+      // 遠吠え：溜めて（skillCd が wind を切ってから0まで。そのあいだは動かない）吠え、裂け目から仲間を呼ぶ。
+      // 出てすぐ1回、そのあとは歩いているあいだも居座ってからも interval 秒ごと（2026-10-05 アマネさん「すぐ倒されるのがなんだかな」。
+      // 前は居座る所に着いてから3秒待ったので、歩いているうちに倒されて、ほとんど呼べなかった）
+      if (w.kind === 'howler' && w.age > 0) {
         if (w.skillCd <= 0) {
           w.skillCd = HOWL.interval;
           this.fx.push(this.mk({ kind: 'howl', x: w.x, lane: w.lane, r: w.size }));
           if (this.wolves.length < HOWL.cap) {
-            for (let i = 0; i < HOWL.count; i++) {
-              const p = this.makeWolf('pup', WOLF_SPAWN_X);
+            const calls = this.howlCalls();
+            for (let i = 0; i < calls.length; i++) {
+              const p = this.makeWolf(calls[i].kind, WOLF_SPAWN_X, calls[i].color);
               p.summoned = true;
               this.stats.summoned++;
               p.age = -0.15 * i;
@@ -976,29 +974,6 @@ export class Sim {
       }
       w.x -= s.speed * (w.color ? COLORS[w.color].speed : 1) * dt;
     }
-  }
-
-  private flyShots(dt: number) {
-    const h = this.hero;
-    this.shots = this.shots.filter((s) => {
-      s.x -= SHOCKWAVE.speed * dt;
-      if (h.down <= 0 && h.ouran <= 0 && h.iframes <= 0 && Math.abs(s.x - h.x) < HERO.size / 2 && Math.abs(s.lane - h.lane) <= LANE_TOL) {
-        this.hurtHero(SHOCKWAVE.damage * this.bite);
-        return false;
-      }
-      const dog = this.dogs.find((d) => d.down <= 0 && Math.abs(s.x - d.x) < d.size / 2 && Math.abs(s.lane - d.lane) <= LANE_TOL);
-      if (dog) {
-        this.hurt(dog, SHOCKWAVE.damage * this.bite);
-        return false;
-      }
-      if (s.x <= HOUSE_X) {
-        this.houseHp -= SHOCKWAVE.damage * this.bite;
-        this.stats.houseShock += SHOCKWAVE.damage * this.bite;
-        this.fx.push(this.mk({ kind: 'bite', x: HOUSE_X, lane: s.lane }));
-        return false;
-      }
-      return true;
-    });
   }
 
   // 番犬：役目に合わせて自分で狼を選び、走って行って噛む（2026-10-04 アマネさん）。
@@ -1980,6 +1955,7 @@ export class Sim {
     if (w.mode === 'fall') {
       if (w.z > 0 || w.vz > 0) return false; // 落ちている：ふつうの体の動き（重力）
       w.mode = '';
+      w.stun = Math.max(w.stun, CROW.ko); // 落ちたら少しのあいだ地面でのびる（追い打ちの隙。絵は crow_ko）
     }
     if (w.mode === 'cling') {
       if (h.down > 0 || h.ouran > 0) {
@@ -2023,6 +1999,15 @@ export class Sim {
       this.stats.houseBite += bite;
     }
     return true;
+  }
+
+  // 遠吠えが呼ぶ仲間（晩が進むほど強く）：序盤は子狼2匹、20晩目から狼と子狼、40晩目から今夜の色の狼と子狼
+  private howlCalls(): { kind: WolfKind; color?: WolfColor }[] {
+    const n = this.wave + 1;
+    if (n < HOWL.wolfFrom) return [{ kind: 'pup' }, { kind: 'pup' }];
+    const theme = n >= HOWL.colorFrom ? themeColors(n, this.mood) : [];
+    const color = theme.length ? theme[Math.floor(this.rand() * theme.length)] : undefined;
+    return [{ kind: 'wolf', color }, { kind: 'pup' }];
   }
 
   // 人狼男：寄ると振りかぶり、大振り。そのあと少し休む。true を返したら、この1コマはここまで

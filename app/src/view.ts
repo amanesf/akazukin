@@ -18,7 +18,6 @@ const COLOR = {
   hpBack: 0x000000,
   arrow: 0xd8f0ff,
   shell: 0xe8c070,
-  shock: 0x9ab0ff,
 };
 
 // 画面の中の文字も明朝に（ダメージの数字・番犬の役目・画面の外の狼の数）
@@ -81,7 +80,7 @@ export class View {
   private lastPhase = '';
   // 動きの絵：ふつうの狼はもう1歩・噛みつき・のけぞり・宙で転がる（wolf-motion-v1）。
   // ほかの4種類は噛みつき、遠吠えと大狼はのけぞりも（pack-motion-v1）
-  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit', 'wman', 'wman_wind', 'wman_swing', 'wman_hit', 'wwoman', 'wwoman_crouch', 'wwoman_leap', 'wwoman_claw', 'wwoman_hit', 'crow', 'crow_down', 'crow_cling', 'crow_hit', 'king', 'king_crouch', 'king_rear', 'king_howl', 'king_down'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
+  private wolves = new UnitArt<WolfArt>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha', 'wolf_walk2', 'wolf_bite', 'wolf_hit', 'wolf_air', 'pup_bite', 'armored_bite', 'howler_bite', 'alpha_bite', 'howler_hit', 'alpha_hit', 'wman', 'wman_wind', 'wman_swing', 'wman_hit', 'wwoman', 'wwoman_crouch', 'wwoman_leap', 'wwoman_claw', 'wwoman_hit', 'crow', 'crow_down', 'crow_cling', 'crow_hit', 'wman_air', 'wman_down', 'wwoman_air', 'wwoman_down', 'pup_hit', 'armored_hit', 'crow_dive', 'crow_ko', 'king', 'king_crouch', 'king_rear', 'king_howl', 'king_down'], this.wolfBack, this.wolfFront, [this.rimBack, this.rimFront]);
   private dogBack = new Container();
   private dogFront = new Container();
   private dogArt = new UnitArt<DogArt>('dogs', ['shiba', 'akita', 'tosa', 'shiba_run', 'akita_run', 'tosa_run', 'shiba_bite', 'akita_bite', 'tosa_bite'], this.dogBack, this.dogFront, [this.rimBack, this.rimFront]); // 走り・噛みつきの絵は dogs-motion-v1 // 入れ物は狼と分ける（同じだと狼の後片付けで犬が消えた）
@@ -986,7 +985,7 @@ export class View {
     const tint = o.flash ? 0xff9a9a : 0xffffff;
     // 遠吠えで速くなった狼は、足もとの黄色い輪で示す（色を塗ると病気のように濁って見えた）
     // 遠吠えの溜め：頭の上の輪が満ちていき、満ちると吠えて裂け目から子狼が出る
-    if (w.kind === 'howler' && w.x <= HOWL.holdX + 1 && w.skillCd <= HOWL.wind && w.skillCd > 0) {
+    if (w.kind === 'howler' && w.skillCd <= HOWL.wind && w.skillCd > 0) {
       const k = 1 - w.skillCd / HOWL.wind;
       const r = Math.max(12, hh * 0.16);
       const cx = o.x - hh * 0.12;
@@ -1006,14 +1005,18 @@ export class View {
       else if (o.biteK > 0.15) { art = 'wolf_bite'; rot *= 0.3; }
       else if (w.vx === 0 && Math.sin((sim.clock + w.id * 0.37) * 7) < 0) art = 'wolf_walk2';
     } else if (w.kind === 'wman') {
-      // 人狼男：振りかぶり → 大振り（休みの始め）→ のけぞり
-      if (w.mode === 'wind') art = 'wman_wind';
+      // 人狼男：振りかぶり → 大振り（休みの始め）→ のけぞり。打ち上げられたら宙で転がり、強くひるんだら倒れる（foes-motion-v1）
+      if (w.z > 0) art = 'wman_air';
+      else if (w.stun > 0.4) art = 'wman_down';
+      else if (w.mode === 'wind') art = 'wman_wind';
       else if (w.mode === 'rest' && w.stun <= 0.05 && w.modeT > WMAN.rest - 0.35) art = 'wman_swing';
       else if (o.hit > 0 || w.stun > 0.05) art = 'wman_hit';
       rot *= 0.3;
     } else if (w.kind === 'wwoman') {
       // 人狼女：跳ぶ → 着地の構え → ひっかき → のけぞり。跳ぶ直前も構える
       if (w.z > 0 && w.mode === 'leap') art = 'wwoman_leap';
+      else if (w.z > 0) art = 'wwoman_air'; // 打ち上げられた
+      else if (w.stun > 0.4) art = 'wwoman_down';
       else if (o.hit > 0 || w.stun > 0.05) art = 'wwoman_hit';
       else if (w.mode === 'claw') art = 'wwoman_claw';
       else if (w.mode === 'land' || (w.mode === '' && w.skillCd < 0.35)) art = 'wwoman_crouch';
@@ -1026,6 +1029,8 @@ export class View {
     } else if (w.kind === 'crow') {
       // カラス：羽ばたき（上げ・下げ）・とまって突く・叩かれて落ちる
       if (w.mode === 'cling') art = 'crow_cling';
+      else if (w.z <= 0 && w.stun > 0 && w.mode === '') art = 'crow_ko'; // 叩き落とされて地面でのびている
+      else if (w.mode === '' && o.hit <= 0 && w.stun <= 0.05 && Math.abs(w.x - sim.hero.x) < 150 && sim.hero.down <= 0) art = 'crow_dive'; // 主人公へ襲いかかる
       else if (w.mode === 'fall' || w.stun > 0.05 || o.hit > 0) art = 'crow_hit';
       else if (Math.sin((sim.clock + w.id * 0.37) * 16) < 0) art = 'crow_down';
     } else if ((o.hit > 0 || (w.stun > 0.05 && w.z <= 0)) && has(`${w.kind}_hit`)) { art = `${w.kind}_hit` as WolfArt; rot *= 0.3; }
@@ -1847,13 +1852,6 @@ export class View {
         for (let i = 0; i < 3; i++) crescent(o, x - v.dir * i * 12, y, H * (0.07 - i * 0.015), v.dir > 0 ? -Math.PI * 0.35 : Math.PI * 0.65, v.dir > 0 ? Math.PI * 0.35 : Math.PI * 1.35, 9 - i * 2.5, 0xff3040, 0.9 - i * 0.25);
       }
     }
-    // 狼の衝撃波
-    for (const sh of sim.shots) {
-      const x = this.wx(sh.x);
-      const y = this.wy(sh.lane) - this.geo.Hm * 0.06;
-      const r = this.geo.Hm * 0.05;
-      for (let i = 0; i < 3; i++) crescent(o, x + 10 + i * 9, y, r * (1 - i * 0.2), Math.PI * 0.65, Math.PI * 1.35, 6 - i * 1.5, COLOR.shock, 0.8 - i * 0.25);
-    }
     // 数字：跳ねて上へ消える。出た瞬間に大きく、すぐ締まる。大きい一撃は大きく黄色く
     const live = new Map<number, Fx>();
     for (const f of sim.fx) if (f.kind === 'num' || (f.kind === 'poof' && f.n)) live.set(f.id, f);
@@ -2161,6 +2159,7 @@ export class View {
 type DogArt = DogKind | `${DogKind}_run` | `${DogKind}_bite`;
 type WolfArt = WolfKind | 'wolf_walk2' | 'wolf_bite' | 'wolf_hit' | 'wolf_air' | 'pup_bite' | 'armored_bite' | 'howler_bite' | 'alpha_bite' | 'howler_hit' | 'alpha_hit'
   | 'wman_wind' | 'wman_swing' | 'wman_hit' | 'wwoman_crouch' | 'wwoman_leap' | 'wwoman_claw' | 'wwoman_hit' | 'crow_down' | 'crow_cling' | 'crow_hit'
+  | 'wman_air' | 'wman_down' | 'wwoman_air' | 'wwoman_down' | 'pup_hit' | 'armored_hit' | 'crow_dive' | 'crow_ko'
   | 'king_crouch' | 'king_rear' | 'king_howl' | 'king_down';
 const ROLE_COLOR = { guard: 0x70b8ff, attack: 0xff6070, support: 0x80e090 };
 

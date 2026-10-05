@@ -114,7 +114,7 @@ const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 
 function storyPage() {
   return `
-    <figure class="st-hero"><img src="${B}ui/title.webp" alt=""><figcaption>紅い月の晩、狼が来る。</figcaption></figure>
+    <figure class="st-hero"><img src="${B}ui/story-walk.webp" alt=""><figcaption>狼の夜が来るまでの、静かな昼。</figcaption></figure>
     ${CHAPTERS.map((c) => `
       <article class="st-ch">
         <h3><small>${c.no}</small>${c.title}</h3>

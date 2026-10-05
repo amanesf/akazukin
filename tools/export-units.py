@@ -63,6 +63,19 @@ for base, names in FOES.items():
     for n, img in fimgs.items():
         imgs[n] = cv2.resize(img, (int(img.shape[1] * kf), int(img.shape[0] * kf)), interpolation=cv2.INTER_AREA)
     MOTION += [n for n in names if n not in ('wman', 'wwoman', 'crow', 'king')]
+# 動きの絵の足し（foes-motion-v1・2026-10-05：人狼男女の宙と倒れ、子狼・鎧狼ののけぞり、カラスの急降下と倒れ）。
+# 左向きと右向きが混ざって描かれたので、向きは1つずつ（True＝反転。倒れは頭を裂け目の側＝右に）。
+# 同じ1枚の互いの大きさのまま、鎧狼ののけぞりの背を鎧狼の立ち姿にそろえる。人狼は男の倒れの長さを男の立ち姿の背にそろえる
+EXTRA = {'wman_air': True, 'wman_down': True, 'wwoman_air': True, 'wwoman_down': False, 'pup_hit': True, 'armored_hit': True, 'crow_dive': False, 'crow_ko': False}
+eimgs = {n: (lambda im: cv2.flip(im, 1) if f else im)(cv2.imread(f'{SRC}/{n}.png', cv2.IMREAD_UNCHANGED)) for n, f in EXTRA.items()}
+wid = lambda im: bounds(im)[2] - bounds(im)[0]
+ke = hgt(imgs['armored']) / hgt(eimgs['armored_hit'])
+kw = hgt(imgs['wman']) / wid(eimgs['wman_down'])
+kc = wid(imgs['crow']) / wid(eimgs['crow_dive'])
+for n, img in eimgs.items():
+    kk = kw if n.startswith('w') else kc if n.startswith('crow') else ke
+    imgs[n] = cv2.resize(img, (int(img.shape[1] * kk), int(img.shape[0] * kk)), interpolation=cv2.INTER_AREA)
+MOTION += list(EXTRA)
 meta = {}
 for n, img in imgs.items():
     x0, y0, x1, y1 = bounds(img)

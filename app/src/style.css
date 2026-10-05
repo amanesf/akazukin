@@ -403,9 +403,9 @@ body.tutorial #next { display: none; }
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
 /* ストーリー */
-.st-hero { margin: -18px -16px 18px; position: relative; height: 210px; overflow: hidden; }
-.st-hero img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; display: block; }
-.st-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 40%, var(--plum)); }
+.st-hero { margin: -18px -16px 18px; position: relative; aspect-ratio: 16 / 9; overflow: hidden; } /* 絵は横長 16:9（story-walk）をそのまま */
+.st-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(transparent 70%, var(--plum)); }
 .st-hero figcaption { position: absolute; left: 0; right: 0; bottom: 10px; z-index: 1; text-align: center; font-size: 15px; letter-spacing: 0.3em; color: #fff; text-shadow: 0 1px 4px #000; }
 .st-ch h3 { margin: 0 0 10px; display: flex; align-items: baseline; gap: 10px; font-size: 21px; letter-spacing: 0.12em; color: #fff; }
 .st-ch h3 small { font-size: 12px; color: var(--gold); letter-spacing: 0.2em; padding: 2px 8px; border: 1px solid rgba(216, 184, 112, 0.6); border-radius: 2px; }
