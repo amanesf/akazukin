@@ -201,7 +201,7 @@ export const SPECIAL_UPS: Record<Track, { id: UpId; note: string }[]> = {
 };
 export const SPECIAL_COSTS = [300, 700, 1200];
 // デバッグモードの「強化をその晩らしく」：自動操作（scripts/bot.mjs）がその晩の前の昼に着いていた強化。[晩, 上段の回数（5つの平均）, 下段の数（5つの平均）]
-export const GROWTH_TABLE: [number, number, number][] = [[1, 0, 0], [10, 3, 0], [30, 8, 1], [60, 14, 2], [99, 20, 3]];
+export const GROWTH_TABLE: [number, number, number][] = [[1, 0, 0], [11, 2, 1], [21, 4, 2], [31, 7, 3], [41, 10, 3], [61, 15, 3], [81, 18, 3], [99, 20, 3]]; // 2026-10-05 計測（種1〜3）
 // 下段の効き目の数値
 export const UP = {
   rise: 0.6, // 倒れている時間の倍率
