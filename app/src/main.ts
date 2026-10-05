@@ -1,6 +1,6 @@
 import './style.css';
 import { Sfx } from './audio';
-import { SPECIALS, WOLVES, type Special, type WolfKind } from './config';
+import { COMBO, FINISHERS, SPECIALS, WOLVES, type Beat, type Finisher, type Special, type WolfKind } from './config';
 import { Input } from './input';
 import { MOODS, mood as moodOf, night as nightOf } from './nights';
 import { TALKS } from './talks';
@@ -77,7 +77,17 @@ async function main() {
   };
   // 操作の早見（夜だけ・画面の上）。2026-10-04 アマネさん「タップ＝斬る、長押し＝主砲、みたいなのがわかるように」
   const legend = document.getElementById('legend')!;
-  legend.innerHTML = `<span>${ICON('tap')}<b>タップ</b>斬る</span><span><i>⇆</i><b>はじく</b>突進</span><span><i>⇅</i><b>はじく</b>上げ・落とし</span><span>${ICON('cannon')}<b>長押し</b>主砲</span>`;
+  // 2026-10-05 コンボを4拍子に。1段目は基本の操作（はじくは上下左右をまとめる）、2段目は4発目の締め（3拍打つと光る）
+  const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki'];
+  legend.innerHTML = `<div class="row"><span>${ICON('tap')}<b>タップ</b>斬る</span><span><i>✥</i><b>はじく</b>技</span><span>${ICON('cannon')}<b>長押し</b>主砲</span></div>`
+    + `<div class="row fin">${FIN_ORDER.map((f) => `<span><i>${FINISHERS[f].key}</i>${FINISHERS[f].short ?? FINISHERS[f].name}</span>`).join('')}</div>`;
+  const legendFin = legend.querySelector('.fin') as HTMLElement;
+  // 打った拍（桜の印）と、決まった締めの名前
+  const beatsEl = document.getElementById('beats')!;
+  const finEl = document.getElementById('finname')!;
+  const BEAT_MARK: Record<Beat, string> = { tap: '斬', up: '↑', down: '↓', side: '⇆' };
+  let lastBeats = '';
+  let lastFin = 0;
   const comboEl = document.getElementById('combo')!;
   const bubble = document.getElementById('bubble')!;
   const cutin = document.getElementById('cutin')!;
@@ -204,6 +214,23 @@ async function main() {
       else hint.hidden = true;
     }
     legend.hidden = sim.phase !== 'wave' || !!hx;
+    legendFin.classList.toggle('lit', sim.atFinish);
+    // 拍：打った分だけ桜の印が埋まり、次の入力までの残りでしぼむ。混ぜた数で格（並・上・極）
+    const bk = sim.beats.join(',');
+    if (bk !== lastBeats) {
+      lastBeats = bk;
+      const grade = COMBO.grades[Math.max(0, new Set(sim.beats).size - 1)];
+      beatsEl.innerHTML = [0, 1, 2].map((i) => (sim.beats[i] ? `<b data-k="${sim.beats[i]}">${BEAT_MARK[sim.beats[i]]}</b>` : '<b class="empty">・</b>')).join('')
+        + `<i>→</i><b class="empty last">締</b>${sim.beats.length ? `<em data-g="${grade.name}">${grade.name}</em>` : ''}`;
+    }
+    beatsEl.hidden = sim.phase !== 'wave' || !sim.beats.length;
+    beatsEl.style.setProperty('--left', String(Math.max(0, 1 - sim.beatT / COMBO.window)));
+    if (sim.finished.n !== lastFin) {
+      lastFin = sim.finished.n;
+      const f = sim.finished;
+      finEl.innerHTML = `<b>${f.name}</b><small data-g="${COMBO.grades[f.grade].name}">${COMBO.grades[f.grade].name}</small>${f.chain >= 2 ? `<em>×${f.chain}</em>` : ''}`;
+      restart(finEl);
+    }
     comboEl.hidden = sim.combo < 2;
     if (sim.combo !== lastCombo) {
       comboEl.innerHTML = `${sim.combo}<small>HIT</small>`;

@@ -49,7 +49,7 @@ export const BODY = {
 };
 
 // 技。kind は使う構え。hits はその技が当てる時刻（秒）
-export type MoveId = 'slash' | 'launch' | 'air' | 'slam' | 'shiki' | 'kaiten' | 'tosshin' | 'bow' | 'ame' | 'hougeki';
+export type MoveId = 'slash' | 'launch' | 'air' | 'slam' | 'shiki' | 'kaiten' | 'tosshin' | 'bow' | 'ame' | 'hougeki' | 'issen' | 'jiwari';
 export interface MoveSpec {
   name: string;
   dur: number;
@@ -73,6 +73,33 @@ export const MOVES: Record<MoveId, MoveSpec> = {
   bow: { name: '弓', dur: 0.36, reach: 0, damage: 16 },
   ame: { name: '矢の雨', dur: 0.6, reach: 0, damage: 11 },
   hougeki: { name: '主砲の撃ち込み', dur: 0.7, reach: 0, damage: 32, area: 75, shake: 5 },
+  // コンボの締め（4発目）。威力は格（並・上・極）と近接の「締めの威力」で伸びる
+  issen: { name: '一閃', dur: 0.34, reach: 92, damage: 34, kb: 460, stop: 0.11, shake: 9 },
+  jiwari: { name: '地割り', dur: 0.36, reach: 0, damage: 26, kb: 480, lift: 360, area: 200, stop: 0.1, shake: 11 },
+};
+// ── コンボ：4拍子（2026-10-05 アマネさん）。1〜3発目はタップでも、はじく（上・下・左右）でもいい。4発目で締めを選ぶ ──
+// 4発目：タップ＝一閃／左右＝突き抜け／上＝空中連舞／下＝地割り／長押し＝零距離主砲。
+// 1〜3発目に違う種類を混ぜるほど締めが強い（格：並・上・極。アマネさん「かっこいい操作もコンボいれるとあんまりしなくなるのはやだ」）。
+// 切れる：次の入力まで window 秒あく／空振り（アマネさん「空振りは切れていい」）／噛まれてひるむ／必殺技／小さい地図で駆けつける
+export type Beat = 'tap' | 'up' | 'down' | 'side';
+export type Finisher = 'issen' | 'tsuki' | 'renbu' | 'jiwari' | 'reishiki';
+export const COMBO = {
+  beats: 3, // 締めの前の拍
+  window: 0.8, // 次の入力までこれだけあくと切れる（秒）
+  grades: [
+    { name: '並', mul: 1 },
+    { name: '上', mul: 1.35 },
+    { name: '極', mul: 1.8 },
+  ],
+  reishiki: 0.25, // 零距離主砲の溜め（秒）。満タンの主砲として撃つ
+  tsuki: 1.5, // 突き抜けは突進の何倍の距離
+};
+export const FINISHERS: Record<Finisher, { name: string; key: string; short?: string }> = { // short：画面上部の早見に出す短い名前
+  issen: { name: '一閃', key: '●' },
+  tsuki: { name: '突き抜け', key: '⇆' },
+  renbu: { name: '空中連舞', key: '↑' },
+  jiwari: { name: '地割り', key: '↓' },
+  reishiki: { name: '零距離主砲', key: '━', short: '零距離' },
 };
 // 矢はほぼまっすぐ速く（2026-10-04 アマネさん「弓矢がもっとまっすぐ飛ぶように。しょぼい」）。矢の雨だけ空から降る（RAIN）
 export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
@@ -113,11 +140,11 @@ export const COMBO_RESET = 1.2; // これだけ当てずにいるとコンボ数
 // ── 昼に買うもの：体力・近接・主砲の3本（2026-10-03・アマネさん「何を強化するかがわかればいい」
 // 「技選択までボタン増えると多くてしんどい」）。技は近接・遠隔の段を上げると自然に覚える ──
 export type Track = 'body' | 'near' | 'far' | 'dog';
-export type SkillId = 'kaiten' | 'tosshin' | 'shiki' | 'ame' | 'hougeki';
+export type SkillId = 'ame' | 'hougeki';
 export interface Perk {
   note: string; // 昼のボタンに出す「次は何が起きるか」
   hp?: number;
-  combo?: number;
+  finish?: number; // 締めの威力 +割合
   learn?: SkillId;
   power?: number; // その系統の威力 +割合
   rate?: number; // 弓の速さ +割合
@@ -143,12 +170,13 @@ export const TRACKS: Record<Track, { name: string; perks: Perk[] }> = {
   near: {
     name: '近接',
     perks: [
-      { note: 'コンボ +1', combo: 1 },
-      { note: '回転斬りを覚える（囲まれてタップ）', learn: 'kaiten' },
+      // コンボは4拍子で長さは変わらない・締めは最初から全部使える（2026-10-05）。段で伸ばすのは威力
+      { note: '締めの威力 +3割', finish: 0.3 },
       { note: '近接の威力 +2割', power: 0.2 },
-      { note: 'コンボ +1', combo: 1 },
+      { note: '締めの威力 +3割', finish: 0.3 },
       { note: '近接の威力 +2割', power: 0.2 },
-      { note: '連撃の締めが主砲に', learn: 'shiki' },
+      { note: '締めの威力 +4割', finish: 0.4 },
+      { note: '近接の威力 +3割', power: 0.3 },
     ],
   },
   far: {
@@ -183,7 +211,6 @@ export const TRAIN_NOTE: Record<Track, string> = { body: '修練：体力 +10', 
 export const REPAIR = { hp: 150, cost: (wave: number) => 60 + 4 * wave };
 export const DAWN_REPAIR = 100; // 夜が明けると家が直る（家の修繕を買う代わり。案）
 
-export const COMBO_BASE = 4; // 斬り・斬り・斬り上げ・叩き落とし
 
 export const DOG_BLOCK = 2; // 番犬1匹が足止めできる狼の数
 // 番犬は3匹（柴・秋田・土佐）が自分で動く（2026-10-04 アマネさん「5匹固定配置じゃなく3匹が自律的に動くように」）。

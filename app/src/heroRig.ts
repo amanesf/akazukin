@@ -283,10 +283,28 @@ export class HeroRig {
       const over = Math.sin(Math.min(1, after * 1.6) * Math.PI) * (1 - after); // 行きすぎて戻る
       if (m !== this.lastMove || h.moveT < this.lastMoveT) this.moveStep = h.step; // 技の始まり
       if (m === 'slash') {
-        // 斬り：振りかぶり（構えの絵）→ 振り抜きは突きと横なぎを交互に。斬るたびに少し跳ぶ
-        frame = p < 0.4 ? 'idle' : this.moveStep % 2 ? 'sweep' : 'strike';
-        lean = p < 0.4 ? -8 * D * wind : (6 + 10 * over) * D;
-        lift += Math.sin(p * Math.PI) * 24;
+        // 斬り：コンボの拍ごとに動きを変える（2026-10-05 アマネさん「最初のタップ3回もモーションは少し変えたい」）。
+        // 1拍目＝横なぎ／2拍目＝返し斬り（伸び上がって斬り上げる）／3拍目＝踏み込み突き（低く前へ）
+        const k = this.moveStep % 3;
+        if (k === 0) {
+          frame = p < 0.4 ? 'idle' : 'sweep';
+          lean = p < 0.4 ? -8 * D * wind : (6 + 10 * over) * D;
+          lift += Math.sin(p * Math.PI) * 18;
+        } else if (k === 1) {
+          frame = p < 0.4 ? 'idle' : 'rise';
+          lean = p < 0.4 ? 8 * D * wind : (-6 - 6 * over) * D;
+          lift += Math.sin(p * Math.PI) * 34;
+        } else {
+          frame = p < 0.4 ? 'idle' : 'dash';
+          lean = p < 0.4 ? -12 * D * wind : (4 + 6 * over) * D;
+          if (p >= 0.4) { sx = 1.1 - 0.1 * after; sy = 0.92 + 0.08 * after; }
+        }
+      }
+      if (m === 'issen') {
+        // 一閃（4発目のタップ）：深く構えて、大きく横へ払い抜ける
+        frame = p < 0.45 ? 'charge' : 'sweep';
+        lean = p < 0.45 ? -10 * D * wind : (16 + 14 * over) * D;
+        if (p >= 0.45) lift += Math.sin(Math.min(1, after * 2) * Math.PI) * 20;
       }
       if (m === 'air') { frame = after > 0 ? 'strike' : 'rise'; lean = after > 0 ? 14 * D * (0.5 + over) : -6 * D; }
       if (m === 'launch') {
@@ -295,7 +313,7 @@ export class HeroRig {
         lean = p < 0.35 ? 10 * D : -4 * D;
         if (p < 0.35) { sy = 0.8; sx = 1.14; } else { sy = 1 + 0.18 * over; sx = 1 - 0.1 * over; }
       }
-      if (m === 'slam') {
+      if (m === 'slam' || m === 'jiwari') {
         // 叩き落とし：大きく振りかぶり（反って伸びる）、体ごと落ちて地面でつぶれる
         frame = p < 0.45 ? 'up' : 'strike';
         lean = p < 0.45 ? -18 * D * wind : (24 + 12 * over) * D;
@@ -437,7 +455,7 @@ export class HeroRig {
 
     if (h.hitFlash > 0) tint = h.hitFlash > 0.12 ? 0xffc8c8 : 0xffe8e8; // 噛まれた：一瞬だけ淡く赤く（赤く塗りつぶすと汚い）
     else if (h.ouran > 0) tint = Math.floor(t * 20) % 2 ? 0xffe6a0 : 0xffffff;
-    const blink = h.iframes > 0 && h.move !== 'tosshin' && Math.floor(t * 20) % 2 === 0; // 起き上がりの無敵は点滅
+    const blink = h.iframes > 0 && h.move !== 'tosshin' && h.ouran <= 0 && Math.floor(t * 20) % 2 === 0; // 起き上がりの無敵は点滅
     const sw = this.swing(dt, t, x, h.facing, height, lean, lift, run && !m, h.down > 0, droop);
 
     return {

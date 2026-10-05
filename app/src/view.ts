@@ -344,7 +344,7 @@ export class View {
       const groundEnd = g.laneTop + g.laneH * 1.05 * (1 + 2.2 * this.dayK) + g.Hm * 0.02;
       ty = groundEnd - (g.Hm / 2 - g.Hm * 0.15) / tz;
     } else {
-      const fast = h.running > 400 || h.move === 'tosshin' || h.ouran > 0;
+      const fast = h.running > 400 || h.move === 'tosshin' || h.move === 'issen' || h.ouran > 0;
       // 少し引いて広く映す（2026-10-04 アマネさん「ステージ狭い？」。寄りすぎて主人公と狼2匹で画面がいっぱいだった）
       tz = 0.85 * (fast ? 0.9 : 1) * (1 + sim.punch * 0.2) * (sim.finale > 0 ? 1.12 : 1); // 締めの一撃で寄る・最後の1匹のスローでさらに寄る
       tz *= CAM_ZOOM;
@@ -619,8 +619,10 @@ export class View {
         const cy = this.wy(h.lane) - hh * 0.45 - h.z * this.zk() * 0.75;
         const D = Math.PI / 180;
         const mir = (a: number) => (dir > 0 ? a : Math.PI - a);
-        const flipStep = sim.combo % 2 === 0;
-        let [a0, a1, r, w] = flipStep ? [-115 * D, 35 * D, hh * 0.36, hh * 0.05] : [45 * D, -105 * D, hh * 0.34, hh * 0.045];
+        // 斬りはコンボの拍で弧を変える：1拍目は上から振り下ろす横なぎ・2拍目は下から返す・3拍目は前へまっすぐの突き
+        const k = h.step % 3;
+        let [a0, a1, r, w] = k === 0 ? [-115 * D, 35 * D, hh * 0.36, hh * 0.05] : k === 1 ? [45 * D, -105 * D, hh * 0.34, hh * 0.045] : [-12 * D, 12 * D, hh * 0.6, hh * 0.05];
+        if (f.move === 'issen') [a0, a1, r, w] = [-160 * D, 70 * D, hh * 0.6, hh * 0.1];
         if (f.move === 'launch') [a0, a1, r, w] = [120 * D, -75 * D, hh * 0.44, hh * 0.07];
         if (f.move === 'air') [a0, a1, r, w] = [-60 * D, 70 * D, hh * 0.32, hh * 0.05];
         if (f.move === 'slam') [a0, a1, r, w] = [-140 * D, 70 * D, hh * 0.48, hh * 0.08];
@@ -632,7 +634,7 @@ export class View {
           break;
         }
         // 斬り・追い打ちの弧は刃先の軌跡が描く（決まった位置の弧は刃の通り道とずれた）。大きな技だけ弧を重ねる
-        if (f.move === 'launch' || f.move === 'slam' || f.big) P.arc(cx, cy, r, mir(a0), mir(a1), w, f.big ? 0xff5080 : 0xffa0b8, f.move === 'slam' ? 0.2 : 0.15);
+        if (f.move === 'launch' || f.move === 'slam' || f.move === 'issen' || f.big) P.arc(cx, cy, r, mir(a0), mir(a1), w, f.big ? 0xff5080 : 0xffa0b8, f.move === 'slam' || f.move === 'issen' ? 0.22 : 0.15);
         break;
       }
       case 'dash': {
