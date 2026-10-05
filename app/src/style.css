@@ -651,3 +651,13 @@ body.tutorial #next { display: none; }
 .st-card.boss .pic img { transform: scaleX(-1); }
 .st-card.boss .tag { background: #8a1020; }
 #next .rest, #tonight .rest { color: var(--dim); }
+
+/* ストーリー画面の技一覧（2026-10-05）：入力の札・武器の印と名前・説明 */
+.st-mh { margin: 16px 0 6px; font-family: var(--mincho); font-size: 15px; color: var(--gold); letter-spacing: 0.1em; }
+.st-mh small { margin-left: 8px; font-size: 11px; color: var(--dim); letter-spacing: 0; font-family: inherit; }
+.st-moves { margin: 0; padding: 0; list-style: none; border-top: 1px solid rgba(216, 184, 112, 0.25); }
+.st-moves li { display: grid; grid-template-columns: 6.6em 1fr; column-gap: 10px; padding: 8px 2px; border-bottom: 1px solid rgba(216, 184, 112, 0.15); }
+.st-moves .key { grid-row: span 2; align-self: start; padding: 2px 6px; border: 1px solid rgba(216, 184, 112, 0.45); border-radius: 10px; font-size: 11px; color: var(--gold); text-align: center; line-height: 1.5; }
+.st-moves b { display: flex; align-items: center; gap: 5px; font-size: 14px; color: #fff; font-family: var(--mincho); }
+.st-moves b img { width: 20px; height: 20px; }
+.st-moves p { margin: 2px 0 0; font-size: 12.5px; color: #eadbd2; line-height: 1.6; }

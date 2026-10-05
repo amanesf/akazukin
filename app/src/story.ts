@@ -1,6 +1,6 @@
 // 題字の画面の「ストーリー」から開く読みもの：ストーリー・キャラクター・ゲーム概要（2026-10-04 アマネさん）。
 // 文はアマネさんの note「ゲームを作り始める」をもとに詳しくした（**仮・アマネさん未確認**）。絵はゲームの中で使っている絵をそのまま使う
-import { COLOR_ORDER, COLORS, DOG_ORDER, DOGS, SPECIALS, WOLVES, type DogKind, type WolfKind } from './config';
+import { COLOR_ORDER, COLORS, COMBO, DOG_ORDER, DOGS, FINISHERS, SPECIALS, WOLVES, type DogKind, type Finisher, type Special, type WolfKind } from './config';
 
 const B = import.meta.env.BASE_URL;
 
@@ -103,9 +103,9 @@ const CONTROLS: [string, string][] = [
   ['上にはじく', '斬り上げ（追い打ちはタップ）'],
   ['下にはじく', '叩き落とし'],
   ['長押し→離す', '主砲（長く溜めるほど強い）'],
-  ['コンボ', '3発（タップ・はじく、何でも）のあと、4発目で締めを選ぶ。混ぜるほど締めが強い（並・上・極）。0.8秒あく・空振り・噛まれると切れる'],
+  ['コンボ', '3発のあと、4発目で締めの技（下の技一覧）'],
   ['小さい地図をタップ', 'そこへ駆けつける'],
-  ['桜嵐（下の3つ）', '斬り→千本桜・弓→桜流れ矢・主砲→乱れ撃ち。当てた武器のゲージが溜まり、満タンで押す必殺技'],
+  ['桜嵐（下の3つ）', '満タンで押す必殺技（下の技一覧）'],
   ['触らない', '近くは自動で斬り、離れた狼は弓で射る（ゆっくり。触らないと序盤でも負ける）'],
   ['頭の上の印', '色の狼の頭の武器の絵は、弱い武器。その武器で当てると2倍（必殺技も同じ分け方）'],
 ];
@@ -175,6 +175,48 @@ function charaPage() {
     </article>`;
 }
 
+// 技一覧（2026-10-05 アマネさん「ストーリー画面に技一覧ほしい」）。武器の印は、色の狼の弱い武器と同じ分け方
+// （ナイフ＝斬り全部・弓・主砲）。[入力, 名前, 武器の印, 説明]
+const MOVE_LIST: [string, string, string, string][] = [
+  ['タップ', '斬り', 'knife', '近くの狼へ踏み込んで斬る。続けて押すと連撃'],
+  ['左右にはじく', '突進斬り', 'knife', 'はじいた向きへ駆け抜けて、通り道の狼をまとめて斬る。とまったカラスも振りほどく'],
+  ['上にはじく', '斬り上げ', 'knife', '狼を宙へ打ち上げて一緒に跳ぶ。宙でタップすると追い打ち（2段ジャンプまで）'],
+  ['下にはじく', '叩き落とし', 'knife', '宙の狼を地面へ叩きつける。跳ね返った狼がまわりにも当たる'],
+  ['長押し→離す', '主砲', 'cannon', '背中の主砲を撃つ。長く溜めるほど強く、まわりの狼をまとめて吹き飛ばす'],
+  ['触らない', '弓', 'bow', '離れた狼を自動で射る。矢は狙った狼を追い、通り道の狼を3匹まで貫く。狼の頭に当てる'],
+];
+const FIN_TEXT: Record<Finisher, [string, string, string]> = { // [入力, 武器の印, 説明]
+  issen: ['タップ', 'knife', '大きな一太刀。前の狼をまとめて吹き飛ばす'],
+  tsuki: ['左右にはじく', 'knife', 'ふつうの突進の1.5倍の距離を駆け抜け、斬った狼を打ち上げる'],
+  renbu: ['上にはじく', 'knife', '打ち上げて宙で追い打ち3回、最後に叩きつける（自動で続く）'],
+  jiwari: ['下にはじく', 'knife', '地面を割って、まわりの狼をまとめて打ち上げる'],
+  reishiki: ['長押し', 'cannon', 'ほんの少しの溜めで、満タンの主砲を目の前に撃ち込む'],
+};
+const SP_TEXT: Record<Special, string> = {
+  senbon: '斬りで溜まる。桜の竜巻で狼を吸い寄せ、ナイフを手に画面の左右を駆け抜け、最後にまわりをダンとすべて弾く',
+  nagare: '弓で溜まる。竜巻で吸い寄せ、跳んで矢を撃ち下ろし、最後に大きな一本ですべてを貫く',
+  midare: '主砲で溜まる。竜巻で吸い寄せ、まわりの狼に光の弾をズババババと撃ち込み、最後にズドン',
+};
+const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki'];
+const SP_ORDER: Special[] = ['senbon', 'nagare', 'midare'];
+const moveRow = (key: string, name: string, icon: string, text: string) =>
+  `<li><span class="key">${key}</span><b><img src="${B}ui/icons/${icon}.webp" alt="">${name}</b><p>${text}</p></li>`;
+
+function movesPart() {
+  const grades = COMBO.grades.map((g) => `${g.name}×${g.mul}`).join('・');
+  return `
+    <h3 class="st-sub"><small>技一覧</small>赤ずきんの技</h3>
+    <p class="st-lead">技の横の絵は武器（ナイフ・弓・主砲）。色の狼の頭の印と同じ武器で当てると2倍。</p>
+    <h4 class="st-mh">基本の技</h4>
+    <ul class="st-moves">${MOVE_LIST.map(([k, n, i, t]) => moveRow(k, n, i, t)).join('')}</ul>
+    <h4 class="st-mh">コンボの締め<small>3発のあとの4発目</small></h4>
+    <p class="st-lead">タップ・はじくを何でも3発つなぎ、4発目の入力で締めの技を選ぶ。1〜3発目に違う種類を混ぜるほど締めが強くなる（${grades}）。0.8秒あく・空振り・噛まれると切れる。</p>
+    <ul class="st-moves">${FIN_ORDER.map((f) => moveRow(FIN_TEXT[f][0], FINISHERS[f].name, FIN_TEXT[f][1], FIN_TEXT[f][2])).join('')}</ul>
+    <h4 class="st-mh">必殺技・桜嵐<small>画面の下の3つ</small></h4>
+    <p class="st-lead">当てた武器のゲージが溜まり、満タンになったら押す。その夜の狼の体力に対する割合で溜まる（1晩に1回ずつくらい）。</p>
+    <ul class="st-moves">${SP_ORDER.map((sp) => moveRow('満タンで押す', SPECIALS[sp].name, SPECIALS[sp].icon, SP_TEXT[sp])).join('')}</ul>`;
+}
+
 function gamePage() {
   return `
     <p class="st-catch">夜は戦い、昼は備える。<br><span>99夜、おばあさんの家を守り抜け。</span></p>
@@ -185,6 +227,7 @@ function gamePage() {
     </div>
     <h3 class="st-sub"><small>操作</small>指一本で</h3>
     <dl class="st-ctl">${CONTROLS.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    ${movesPart()}
     <p class="st-note">5夜目からは、霧の夜・紅月の夜など、夜の様子が変わることがある。夜が進むと色の狼・人狼・カラスも現れ、十夜ごとに大狼が来る。ゴリ押しより、弱い武器の使い分けと強化が大事。節目の夜を越えると、昼におばあさんと話せる。</p>
     <p class="st-note">スマホの縦画面で遊ぶ。1晩目は「やってみよう」で順に教えてくれる。</p>`;
 }
