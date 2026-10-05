@@ -3,7 +3,7 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { COLORS, GRAY_FUR, HOWL, KING, SHELL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { COLORS, GRAY_FUR, HOWL, KING, OURAN, SHELL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -658,6 +658,7 @@ export class View {
       }
       case 'dash': {
         const dir = f.dir ?? 1;
+        if (h.ouran > 0 && h.special === 'senbon') this.slashTrails.push({ x0: f.x, x1: f.x2 ?? f.x, lane: f.lane, t: 0, burst: false });
         P.dust(x, y, s * 1.4, 6, 50, 60);
         for (let i = 0; i < 6; i++) P.petal(x, y - 4, s, -dir * (100 + Math.random() * 200), -120 - Math.random() * 200); // 足もとの花びらを巻き上げる
         P.glow(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 1.1, 0xff6090, 0.2, 0.5);
@@ -665,6 +666,16 @@ export class View {
           const ly = Math.random() * this.geo.Hm * 0.8 + this.geo.Hm * 0.1;
           this.screenParts.line(dir > 0 ? this.geo.W : -this.geo.W * 0.6, ly, this.geo.W * (0.3 + Math.random() * 0.4), -dir * this.geo.W * 5, 0xffffff, 0.5, 0.18, 1.5 + Math.random() * 2);
         }
+        break;
+      }
+      case 'beam': {
+        // 乱れ撃ちの着弾：小さな爆ぜ
+        if (f.big) break;
+        const bx = this.wx(f.x2 ?? f.x);
+        const by = this.wy(f.lane2 ?? f.lane) - this.heroH(f.lane2 ?? f.lane) * 0.3;
+        P.glow(bx, by, this.heroH(f.lane) * 0.7, 0xffb050, 0.15, 1, 0.5);
+        P.ring(bx, by, 4, this.heroH(f.lane) * 0.4, 3 * s, 0xffe0a0, 0.18);
+        for (let i = 0; i < 3; i++) P.ember(bx, by, s);
         break;
       }
       case 'pound': {
@@ -820,20 +831,24 @@ export class View {
       if (Math.random() < 0.6) P.ember(this.wx(WOLF_SPAWN_X) + (Math.random() - 0.5) * 30, this.wy(Math.random()) - Math.random() * g.Hm * 0.2, g.Hm / 600);
       // 裂け目から黒い瘴気が漏れて昇る
       if (sim.phase === 'wave' && Math.random() < 0.35) P.smoke(this.wx(WOLF_SPAWN_X) + 30 + (Math.random() - 0.5) * 40, g.horizon - g.Hm * (Math.random() * 0.6) + g.Hm * 0.1, g.Hm / 600, 1);
-      // 桜嵐：花吹雪
-      // 桜嵐：竜巻に沿って花びらが渦を巻いて昇る（画面を横切る花吹雪は少しだけ）
+      // 桜嵐（2026-10-05 竜巻をやめた。アマネさん「竜巻うっとおしい」）：吸い寄せのあいだは、まわりから足もとの紋へ花びらが流れ込む。
+      // 発動中ずっと、画面を横切る花吹雪
       if (h.ouran > 0) {
         const hh = this.heroH(h.lane);
-        const cx = this.wx(h.x);
-        const gy = this.wy(h.lane);
-        for (let i = 0; i < 10; i++) {
-          const k = Math.random();
-          const a = this.vt * 9 + Math.random() * Math.PI * 2;
-          const rad = hh * (0.25 + 0.75 * k);
-          P.petal(cx + Math.cos(a) * rad, gy - hh * 1.5 * k, (g.Hm / 600) * 1.3, -Math.sin(a) * rad * 5, -180 - 260 * k, 0.5 + Math.random() * 0.3);
+        const cx = this.wx(h.spX);
+        const gy = this.wy(h.spLane);
+        if (h.spT < OURAN.rush) {
+          for (let i = 0; i < 6; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const R = hh * (1.8 + Math.random() * 1.2);
+            const px = cx + Math.cos(a) * R;
+            const py = gy + Math.sin(a) * R * 0.3 - hh * Math.random() * 0.5;
+            P.petal(px, py, (g.Hm / 600) * 1.2, (cx - px) * 2.4, (gy - hh * 0.3 - py) * 2.4, 0.4);
+          }
         }
-        for (let i = 0; i < 2; i++) this.screenParts.petal(g.W + 10, Math.random() * g.Hm, 1.6, -600 - Math.random() * 500, (Math.random() - 0.5) * 200, 1.4);
+        for (let i = 0; i < 3; i++) this.screenParts.petal(g.W + 10, Math.random() * g.Hm, 1.7, -700 - Math.random() * 500, (Math.random() - 0.5) * 200, 1.4);
       }
+      this.ouranBeats(sim);
       // 溜め：まわりから光の粒が集まる
       if (h.charge >= 0) {
         const hh = this.heroH(h.lane);
@@ -1632,6 +1647,7 @@ export class View {
       blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r, 0.3, col, 0.85 * (1 - q) ** 1.2, 0.32);
       blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r * 0.55, 0.3 + Math.PI / 5, mix(col, 0xffffff, 0.5 * (1 - q)), 0.6 * (1 - q) ** 2, 0.32);
     }
+    this.drawSeal(gr, sim);
     const h = sim.hero;
     this.stepT -= dt;
     if (h.running > 0 && h.z <= 0 && h.down <= 0 && this.stepT <= 0) {
@@ -1677,44 +1693,129 @@ export class View {
     return { x: this.wx(x) - wh * 0.32, y: this.wy(lane) - z * this.zk() - wh * 0.7 };
   }
 
-  // 桜嵐の竜巻：足もとは細く、上へ行くほど広がる漏斗。花の色の帯が回りながら昇る（奥の半周は薄く）
-  private drawTornado(o: Graphics, sim: Sim) {
+  // 桜嵐の節目の演出：始め（まわりから花びらの突風が吹き込む）／吸い寄せの終わり（紋が光って散る）／締め（画面が桜色に光り、
+  // 衝撃波の輪と大輪の花・花びらの爆発）。前の1コマとの差で、節目をまたいだ瞬間に1回だけ出す
+  private spWas = false;
+  private spPrevT = 0;
+  private ouranBeats(sim: Sim) {
     const h = sim.hero;
-    if (h.ouran <= 0) return;
-    const hh = this.heroH(h.lane);
-    // 竜巻は始めた場所に立つ（千本桜の主人公は竜巻を突き抜けて駆ける）。締めのあとはしぼむ
+    const P = this.parts;
+    const on = h.ouran > 0;
+    if (!on) { this.spWas = false; return; }
+    const hh = this.heroH(h.spLane);
     const cx = this.wx(h.spX);
     const gy = this.wy(h.spLane);
-    const grow = Math.min(1, h.spT / 0.4, h.ouran / 0.5);
-    const t = this.vt;
-    const layers = 9;
-    for (let i = 0; i < layers; i++) {
-      const k = i / (layers - 1);
-      const y = gy - hh * 1.7 * k * grow;
-      const rx = hh * (0.18 + 0.85 * k) * grow;
-      const ry = rx * 0.22;
-      for (let j = 0; j < 3; j++) {
-        const a0 = t * (7 - k * 2) + j * 2.1 + i * 0.6;
-        const span = 1.3;
-        const front = Math.sin(a0 + span / 2) > 0;
-        const steps = 10;
-        o.moveTo(cx + Math.cos(a0) * rx, y + Math.sin(a0) * ry);
-        for (let q = 1; q <= steps; q++) {
-          const a = a0 + (span * q) / steps;
-          o.lineTo(cx + Math.cos(a) * rx, y + Math.sin(a) * ry);
-        }
-        o.stroke({ width: (3 + 5 * k) * (front ? 1 : 0.6), color: j === 0 ? 0xffffff : j === 1 ? 0xffb0cc : 0xff6a9a, alpha: (front ? 0.55 : 0.2) * (1 - k * 0.4), cap: 'round' });
+    const s = this.geo.Hm / 600;
+    const crossed = (t: number) => this.spWas && this.spPrevT < t && h.spT >= t;
+    if (!this.spWas) {
+      for (let i = 0; i < 40; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const R = hh * (2.4 + Math.random());
+        const px = cx + Math.cos(a) * R;
+        const py = gy + Math.sin(a) * R * 0.35 - hh * Math.random() * 0.8;
+        P.petal(px, py, s * 1.5, (cx - px) * 3.2, (gy - hh * 0.4 - py) * 3.2, 0.35);
+      }
+      P.glow(cx, gy - hh * 0.4, hh * 2.2, 0xff80b0, 0.3, 0.7, -0.6);
+      for (let i = 0; i < 10; i++) {
+        const ly = Math.random() * this.geo.Hm;
+        const fromL = i % 2 === 0;
+        this.screenParts.line(fromL ? -this.geo.W * 0.3 : this.geo.W * 1.3, ly, this.geo.W * 0.4, (fromL ? 1 : -1) * this.geo.W * 4, 0xffd0e0, 0.6, 0.2, 2);
       }
     }
-    // 足もとの光
-    o.ellipse(cx, gy, hh * 0.5 * grow, hh * 0.1 * grow).fill({ color: 0xff80b0, alpha: 0.18 + 0.08 * Math.sin(t * 12) });
+    if (crossed(OURAN.rush)) {
+      P.ring(cx, gy, hh * 0.3, hh * 2.4, 6 * s, 0xffc0d8, 0.4, 0.3);
+      P.glow(cx, gy, hh * 2.6, 0xffa0c8, 0.25, 0.8, 0.3);
+      for (let i = 0; i < 30; i++) {
+        const a = Math.random() * Math.PI * 2;
+        P.petal(cx, gy - 4, s * 1.3, Math.cos(a) * (300 + Math.random() * 400), Math.sin(a) * 120 - 200 - Math.random() * 200, 0.8);
+      }
+    }
+    if (crossed(OURAN.final)) {
+      const x = this.wx(h.x);
+      const y = this.wy(h.lane);
+      const H = this.heroH(h.lane);
+      this.flash = Math.max(this.flash, 0.4);
+      this.flashColor = 0xffd8e8;
+      this.impact = Math.max(this.impact, 0.12);
+      P.ring(x, y, H * 0.2, H * 4.5, 10 * s, 0xffe0ec, 0.55, 0.28);
+      P.ring(x, y - H * 0.5, H * 0.2, H * 2.6, 8 * s, 0xffffff, 0.35);
+      P.ring(x, y - H * 0.5, H * 0.1, H * 1.8, 5 * s, 0xff6a9a, 0.45);
+      P.flower(x, y - H * 0.5, H * 0.55, 0.4);
+      P.glow(x, y - H * 0.5, H * 2.2, 0xffc0d8, 0.3, 0.7, 0.5);
+      for (let i = 0; i < 70; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const v = 400 + Math.random() * 900;
+        P.petal(x, y - H * 0.5, s * 1.6, Math.cos(a) * v, Math.sin(a) * v * 0.6 - 200, 1 + Math.random() * 0.6);
+      }
+    }
+    this.spWas = true;
+    this.spPrevT = h.spT;
+  }
+
+  // 桜嵐の足もとの紋（地面）：桜の花の形の円が広がり、まわりから中へ流れ込む光の筋で吸い寄せを見せる。
+  // 吸い寄せが終わると、光って散る（ouranBeats）
+  private drawSeal(gr: Graphics, sim: Sim) {
+    const h = sim.hero;
+    if (h.ouran <= 0) return;
+    const t = h.spT;
+    const a = Math.min(1, t / 0.15) * (t < OURAN.rush ? 1 : Math.max(0, 1 - (t - OURAN.rush) / 0.3));
+    if (a <= 0) return;
+    const hh = this.heroH(h.spLane);
+    const x = this.wx(h.spX);
+    const y = this.wy(h.spLane) + 2;
+    const R = hh * 1.15 * (0.6 + 0.4 * easeOut(Math.min(1, t / 0.2)));
+    const rot = this.vt * 0.9;
+    gr.ellipse(x, y, R * 1.5, R * 1.5 * 0.3).stroke({ width: 2, color: 0xffd0e0, alpha: 0.55 * a });
+    gr.ellipse(x, y, R * 1.3, R * 1.3 * 0.3).stroke({ width: 4, color: 0xff7aa8, alpha: 0.6 * a });
+    blossom(gr, x, y, R, rot, 0xff6a9a, 0.4 * a, 0.3);
+    blossom(gr, x, y, R * 0.62, rot + Math.PI / 5, 0xffd0e0, 0.45 * a, 0.3);
+    gr.ellipse(x, y, R * 0.18, R * 0.18 * 0.3).fill({ color: 0xffffff, alpha: 0.7 * a });
+    // 中へ流れ込む光の筋
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * Math.PI * 2 + this.vt * 0.4;
+      const f = (this.vt * 1.8 + i * 0.37) % 1;
+      const r1 = R * (2.2 - 1.8 * f);
+      const r2 = r1 + R * 0.35;
+      const c = Math.cos(ang);
+      const sn = Math.sin(ang) * 0.3;
+      gr.moveTo(x + c * r2, y + sn * r2).lineTo(x + c * r1, y + sn * r1).stroke({ width: 3, color: 0xffe0ec, alpha: 0.7 * a * f, cap: 'round' });
+    }
+  }
+
+  // 千本桜の駆け抜けた跡：細い光の線が一瞬遅れて「ズバッ」と太く光る
+  private slashTrails: { x0: number; x1: number; lane: number; t: number; burst: boolean }[] = [];
+  private drawSlashTrails(o: Graphics, dt: number) {
+    this.slashTrails = this.slashTrails.filter((st) => (st.t += dt) < 0.7);
+    for (const st of this.slashTrails) {
+      const hh = this.heroH(st.lane);
+      const y = this.wy(st.lane) - hh * 0.45;
+      const x0 = this.wx(st.x0);
+      const x1 = this.wx(st.x1);
+      if (st.t < 0.18) {
+        const xe = x0 + (x1 - x0) * Math.min(1, st.t / 0.14);
+        o.moveTo(x0, y).lineTo(xe, y).stroke({ width: 2, color: 0xffffff, alpha: 0.8, cap: 'round' });
+        continue;
+      }
+      const k = 1 - (st.t - 0.18) / 0.52;
+      if (!st.burst) {
+        st.burst = true;
+        for (let i = 0; i < 10; i++) {
+          const px = x0 + (x1 - x0) * Math.random();
+          this.parts.glow(px, y, hh * 0.35, 0xffd0e0, 0.18, 0.9, 0.4);
+          this.parts.petal(px, y, this.geo.Hm / 600, (Math.random() - 0.5) * 300, -100 - Math.random() * 200, 0.6);
+        }
+        this.flash = Math.max(this.flash, 0.12);
+      }
+      o.moveTo(x0, y).lineTo(x1, y).stroke({ width: hh * 0.16 * k, color: 0xff5a8a, alpha: 0.45 * k, cap: 'round' });
+      o.moveTo(x0, y).lineTo(x1, y).stroke({ width: hh * 0.06 * k, color: 0xffe8f0, alpha: 0.95 * k, cap: 'round' });
+    }
   }
 
   // 主砲乱れ撃ちの弾：肩の砲口から狼まで、まっすぐ一瞬で届く光の線。締めの一発は極太
   private drawBeams(o: Graphics, sim: Sim) {
     for (const f of sim.fx) {
       if (f.kind !== 'beam') continue;
-      const life = f.big ? 0.45 : 0.12;
+      const life = f.big ? 0.6 : 0.14;
       if (f.t > life) continue;
       const k = 1 - f.t / life;
       const h = sim.hero;
@@ -1727,13 +1828,13 @@ export class View {
       const x1 = hd ? hd.x : this.wx(f.x2 ?? f.x);
       const y1 = hd ? hd.y : this.wy(f.lane2 ?? f.lane) - hh * (f.big ? 0.5 : 0.25);
       if (f.big) {
-        const w = hh * 0.55 * (0.4 + 0.6 * k);
+        const w = hh * 0.85 * (0.4 + 0.6 * k);
         o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w * 1.8, color: 0xff8030, alpha: 0.25 * k, cap: 'round' });
         o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w, color: 0xffd080, alpha: 0.6 * k, cap: 'round' });
         o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: w * 0.4, color: 0xffffff, alpha: 0.95 * k, cap: 'round' });
       } else {
-        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 10 * k + 2, color: 0xff9040, alpha: 0.35 * k, cap: 'round' });
-        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: 3.5 * k + 1, color: 0xfff0c0, alpha: 0.95 * k, cap: 'round' });
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: hh * 0.09 * k + 3, color: 0xff9040, alpha: 0.4 * k, cap: 'round' });
+        o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: hh * 0.035 * k + 2, color: 0xfff0c0, alpha: 0.95 * k, cap: 'round' });
         o.circle(x0, y0, hh * 0.09 * k).fill({ color: 0xffe0a0, alpha: 0.8 * k });
         o.circle(x1, y1, hh * 0.14 * k).fill({ color: 0xffc060, alpha: 0.6 * k });
       }
@@ -1743,7 +1844,7 @@ export class View {
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
     const K = this.geo.K;
-    this.drawTornado(o, sim);
+    this.drawSlashTrails(o, Math.min(0.05, dt));
     this.drawBeams(o, sim);
     this.drawBlade(o);
     this.drawMarks(o, sim);
@@ -1792,9 +1893,10 @@ export class View {
         }
       }
       // 光の尾（桜色）：飛んだ道に沿って長く
-      const tail = Math.min(a.t, 0.35) * Math.hypot(x1 - x0, y1 - y0);
-      o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 7 * S * (a.giant ? 2 : 1), color: 0xff7aa8, alpha: a.giant ? 0.35 : 0.18, cap: 'round' });
-      o.moveTo(x - ux * (L + tail * 0.5), y - uy * (L + tail * 0.5)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 3 * S, color: 0xffd8e8, alpha: a.giant ? 0.9 : 0.5, cap: 'round' });
+      const tail = (a.giant ? a.t : Math.min(a.t, 0.4)) * Math.hypot(x1 - x0, y1 - y0);
+      o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 10 * S * (a.giant ? 2.6 : 1), color: 0xff7aa8, alpha: a.giant ? 0.45 : 0.32, cap: 'round' });
+      o.moveTo(x - ux * (L + tail * 0.6), y - uy * (L + tail * 0.6)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 4 * S * (a.giant ? 2 : 1), color: 0xfff0f6, alpha: a.giant ? 0.95 : 0.75, cap: 'round' });
+      o.circle(x, y, hh * 0.05 * S).fill({ color: 0xffffff, alpha: 0.55 }); // 矢じりの光
       // 矢柄・矢じり・矢羽
       o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 4.5 * S, color: 0x3a2018, cap: 'round' });
       o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 2.2 * S, color: 0xc89060, cap: 'round' });
@@ -1841,7 +1943,7 @@ export class View {
       const x = this.wx(sh.x);
       const hh = this.heroH(sh.lane);
       const y = this.wy(sh.lane) - hh * 0.62;
-      const tail = Math.min(hh * 1.4, sh.t * SHELL.speed * this.U(sh.lane) * 0.02);
+      const tail = Math.min(hh * 2.4, sh.t * SHELL.speed * this.U(sh.lane) * 0.03);
       o.moveTo(x - sh.dir * tail, y).lineTo(x, y).stroke({ width: hh * 0.07, color: 0xff7a30, alpha: 0.55, cap: 'round' });
       o.moveTo(x - sh.dir * tail * 0.55, y).lineTo(x, y).stroke({ width: hh * 0.035, color: 0xfff0c0, alpha: 0.9, cap: 'round' });
       o.circle(x, y, hh * 0.06).fill({ color: 0xffa040, alpha: 0.45 });

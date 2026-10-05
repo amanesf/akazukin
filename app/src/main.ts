@@ -138,6 +138,8 @@ async function main() {
   const BEAT_MARK: Record<Beat, string> = { tap: '斬', up: '↑', down: '↓', side: '⇆' };
   let lastBeats = '';
   let lastFin = 0;
+  // 桜嵐で倒した数（締めのあとに「○体撃破」と大きく出す）
+  let spKills0 = -1;
   const comboEl = document.getElementById('combo')!;
   const bubble = document.getElementById('bubble')!;
   const cutin = document.getElementById('cutin')!;
@@ -210,6 +212,7 @@ async function main() {
     sfx.play(sim.sounds.splice(0));
     for (const ev of sim.events.splice(0)) {
       if (ev === 'ouran') {
+        spKills0 = sim.kills;
         const name = SPECIALS[sim.hero.special].name;
         cutin.textContent = name;
         cutin.style.fontSize = name.length > 4 ? '30px' : ''; // 長い名前は立ち絵にかからないよう小さく
@@ -305,6 +308,14 @@ async function main() {
     }
     beatsEl.hidden = sim.phase !== 'wave' || !sim.beats.length;
     beatsEl.style.setProperty('--left', String(Math.max(0, 1 - sim.beatT / COMBO.window)));
+    if (spKills0 >= 0 && sim.hero.ouran <= 0) {
+      const n = sim.kills - spKills0;
+      spKills0 = -1;
+      if (n > 0) {
+        finEl.innerHTML = `<b>${n}体撃破</b><small data-g="極">桜嵐</small>`;
+        restart(finEl);
+      }
+    }
     if (sim.finished.n !== lastFin) {
       lastFin = sim.finished.n;
       const f = sim.finished;
