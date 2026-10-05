@@ -1,0 +1,5 @@
+Redraw image 1 exactly as it is, the same picture: the same composition, landscape, cherry trees, flowers, sky, clouds, colors, lighting, the same shiba inu, and the same girl in the same place, pose, face, expression, clothes and basket. Change only one thing: the girl's hairstyle.
+
+Give her exactly the same hairstyle as the girl in image 2: her dark hair in two braids that hang down in front of her shoulders, tied with red ribbons, with the same bangs and side locks as in image 2. Image 2 is only a reference for the hairstyle; nothing else from image 2 appears (no hood, no cape, no weapons, no mechanical arms).
+
+Keep everything else in image 1 unchanged. Same 16:9 framing, same high-quality Japanese theatrical anime painting style. No text, no logo.
