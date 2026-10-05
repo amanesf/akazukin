@@ -1,6 +1,6 @@
-Character sprite sheet of extra motion poses for enemies of the same game as image 1, drawn in exactly the same art style as images 1 and 2: Japanese anime gacha-game illustration, clean outlines, cel shading, rich saturated color. Image 1 shows the small pup wolf and the armored wolf, image 2 shows the werewolf man and the werewolf woman; draw exactly those same characters with the same fur, markings, armor and clothes. Nothing else from images 1 and 2 appears.
+Character sprite sheet of extra motion poses for enemies of the same game as images 1, 2 and 3, drawn in exactly the same art style as those images: Japanese anime gacha-game illustration, clean outlines, cel shading, rich saturated color. Image 1 shows the small pup wolf and the armored wolf, image 2 shows the werewolf man and the werewolf woman, image 3 shows the shadow crow; draw exactly those same characters with the same fur, feathers, markings, armor and clothes. Nothing else from the three images appears.
 
-Six figures in two rows on one flat light gray background, with wide gray space between them, every figure facing left like the figures in images 1 and 2, each drawn at its true size compared with the others (the werewolves are tall, the pup is small).
+Eight figures in two rows on one flat light gray background, with wide gray space between them, every figure facing left like the figures in the images, each drawn at its true size compared with the others (the werewolves are tall, the pup and the crow are small).
 
 Top row, the werewolves:
 1. The werewolf man knocked up into the air: tumbling backward upside down in mid-air, limbs flung out, haori flapping, eyes squeezed shut.
@@ -8,8 +8,10 @@ Top row, the werewolves:
 3. The werewolf woman knocked up into the air: spinning sideways in mid-air, mane and crimson shawl whirling, eyes squeezed shut.
 4. The werewolf woman knocked down: lying on her side on the floor, dazed, eyes spinning.
 
-Bottom row, the wolves:
+Bottom row, the wolves and the crow:
 5. The pup wolf hit: recoiling backward on its hind legs, head thrown back, eyes squeezed shut, a little cute.
 6. The armored wolf hit: staggering backward, head thrown back, armor plates rattling, eyes squeezed shut.
+7. The crow diving to attack: wings folded back, body stretched in a steep dive toward the lower left, talons thrust forward, beak open.
+8. The crow knocked down: lying on its back on the floor, wings splayed, feathers scattered, eyes spinning.
 
-Even soft lighting, the floor the same flat gray. All six fully in frame, no figure touching another.
+Even soft lighting, the floor the same flat gray. All eight fully in frame, no figure touching another.
