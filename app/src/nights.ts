@@ -1,6 +1,6 @@
 // 99晩の組み方（plan.md §5）。手で並べず、晩ごとの「狼の予算」から組む。
 // 同じ晩はいつ遊んでも同じ並びになる（晩の番号から乱数を起こす）。
-import { DAYS_TO_CLEAR, type WolfKind } from './config';
+import { COLOR_ORDER, COLORS, DAYS_TO_CLEAR, type WolfColor, type WolfKind } from './config';
 
 export interface SpawnLine {
   kind: WolfKind;
@@ -8,6 +8,7 @@ export interface SpawnLine {
   interval: number; // 秒
   delay: number; // 晩の始まりからの秒
   surge?: boolean; // 山場（群れの突撃）。2秒前に予告が出る
+  color?: WolfColor; // 色の狼（plan.md §0.10②）
 }
 
 // 狼1匹の重さ（予算を食う量）と、出てくる晩
@@ -31,7 +32,7 @@ export const SURGE_WARN = 2;
 export type Mood = 'kiri' | 'beni' | 'mure' | 'yoroi' | 'toboe' | 'sakura';
 export const MOODS: Record<Mood, { name: string; note: string; from: number }> = {
   kiri: { name: '霧の夜', note: '霧で弓が近くまでしか届かない', from: 5 },
-  beni: { name: '紅月の夜', note: '狼が速い', from: 8 },
+  beni: { name: '紅月の夜', note: '赤い狼（速い）が多い', from: 8 },
   mure: { name: '群れの夜', note: '子狼がたくさん来る', from: 5 },
   yoroi: { name: '鎧の夜', note: '鎧狼が多い', from: 12 },
   toboe: { name: '遠吠えの夜', note: '遠吠えが多い', from: 15 },
@@ -66,9 +67,45 @@ export function night(n: number): SpawnLine[] {
   // 節目：10晩ごとと最後の晩に大狼。99日目は頭目（大狼を3匹）
   if (n % 10 === 0 || n === DAYS_TO_CLEAR) {
     const bosses = n === DAYS_TO_CLEAR ? 3 : 1 + Math.floor(n / 40);
-    lines.push({ kind: 'alpha', count: bosses, interval: 6, delay: length * 0.35 });
+    // 大狼にも色を回す（2026-10-05 plan.md §0.10②）。99日目の頭目は3匹それぞれ別の色
+    if (n === DAYS_TO_CLEAR) for (const c of ['red', 'purple', 'black'] as WolfColor[]) lines.push({ kind: 'alpha', count: 1, interval: 1, delay: length * 0.35 + lines.length * 6, color: c });
+    else lines.push({ kind: 'alpha', count: bosses, interval: 6, delay: length * 0.35, color: bossColor(n) });
     left -= THREAT.alpha * bosses * 0.3; // 大狼の晩は取り巻きを少し減らす
   }
+
+  // 色の狼：予算の一部を色の狼に回す（晩が進むほど多く）。出てくる晩に入った色を、だいたい同じくらいずつ
+  // 初めて出る晩（新顔）は、ほかに紛れないよう晩の始めのほうに3匹だけ
+  const colors = COLOR_ORDER.filter((c) => COLORS[c].from <= n && c !== 'gold' && c !== 'green');
+  if (colors.length) {
+    const share = Math.min(0.4, 0.12 + n / 220);
+    const pot = left * share;
+    left -= pot;
+    const cw: Partial<Record<WolfColor, number>> = {};
+    for (const c of colors) cw[c] = (md === 'beni' && c === 'red' ? 4 : 1) * (COLORS[c].from === n ? 0 : 1);
+    const cwSum = colors.reduce((a, c) => a + cw[c]!, 0);
+    for (const c of colors) {
+      if (COLORS[c].from === n) {
+        lines.push({ kind: 'wolf', count: 3, interval: 2.5, delay: 3, color: c });
+        continue;
+      }
+      if (!cwSum) continue;
+      const kind: WolfKind = rand() < Math.max(0.3, 0.7 - n / 100) ? 'pup' : 'wolf';
+      const count = Math.max(1, Math.round((pot * cw[c]!) / cwSum / (THREAT[kind] * COLORS[c].threat)));
+      const span = length * (0.6 + rand() * 0.3);
+      lines.push({ kind, count, interval: span / count, delay: 2 + rand() * length * 0.3, color: c });
+    }
+  }
+  // 緑（起き上がる）は1晩に2〜3匹まで。金（全部強い）はめったに出ない（4晩に1晩くらい・1匹だけ）
+  if (COLORS.green.from <= n && n % 10 !== 0 && (n === COLORS.green.from || rand() < 0.5)) {
+    const count = n === COLORS.green.from ? 2 : 2 + (rand() < 0.4 ? 1 : 0);
+    lines.push({ kind: 'wolf', count, interval: 6, delay: length * (0.15 + rand() * 0.3), color: 'green' });
+    left -= THREAT.wolf * COLORS.green.threat * count;
+  }
+  if (COLORS.gold.from <= n && (n === COLORS.gold.from || rand() < 0.25)) {
+    lines.push({ kind: 'wolf', count: 1, interval: 1, delay: length * (0.3 + rand() * 0.3), color: 'gold' });
+    left -= THREAT.wolf * COLORS.gold.threat;
+  }
+  left = Math.max(0, left);
 
   // 3割は山場に取っておく（2晩目から）
   const surgeBudget = n >= 2 ? left * 0.3 : 0;
@@ -105,4 +142,15 @@ export function night(n: number): SpawnLine[] {
     if (pups > 0) lines.push({ kind: 'pup', count: pups, interval: 0.2, delay: at + 0.3, surge: true });
   }
   return lines;
+}
+
+// 10晩ごとの大狼の色：10晩は灰、そのあと 赤・紫・橙・黒・緑・金 と回す
+const BOSS_COLORS: (WolfColor | undefined)[] = [undefined, 'red', 'purple', 'orange', 'black', 'green', 'gold'];
+export function bossColor(n: number): WolfColor | undefined {
+  return BOSS_COLORS[(n / 10 - 1) % BOSS_COLORS.length];
+}
+
+// その晩に初めて出る色（新顔）
+export function newColors(n: number): WolfColor[] {
+  return COLOR_ORDER.filter((c) => COLORS[c].from === n);
 }

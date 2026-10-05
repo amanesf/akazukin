@@ -37,6 +37,12 @@ export function bot(s, mem, dogs = true) {
     s.runTo(t.x + 40, t.lane, true);
     return;
   }
+  // 遠吠えは放っておくと子狼を呼び続けるので、家が危なくなければ倒しに行く（人もそうする）
+  const howler = ws.find((w) => w.kind === 'howler' && w.x <= 640 && w.age > 0.5);
+  if (howler && Math.random() < 0.6) {
+    s.tap(howler.x, howler.lane, howler.id);
+    return;
+  }
   if (near.length >= 3 && Math.random() < 0.15) {
     s.holdStart();
     mem.charging = 1.2;

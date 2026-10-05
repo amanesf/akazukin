@@ -61,8 +61,8 @@ for (const seed of SEEDS) {
     if (s.wave !== lastWave) {
       if (s.wave % 10 === 0) {
         const st = s.stats;
-        console.log(`  ${s.wave}晩：倒れた ${st.downs}回・主人公が受けた ${Math.round(st.heroDmg)}・家が噛まれた ${Math.round(st.houseBite)}・衝撃波 ${Math.round(st.houseShock)}・銭 ${Math.floor(s.coins)}・段 ${Object.values(s.levels).join('')}`);
-        s.stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0 };
+        console.log(`  ${s.wave}晩：倒れた ${st.downs}回・主人公が受けた ${Math.round(st.heroDmg)}・家が噛まれた ${Math.round(st.houseBite)}・呼ばれた子狼 ${st.summoned}・銭 ${Math.floor(s.coins)}・段 ${Object.values(s.levels).join('')}`);
+        s.stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0, summoned: 0 };
       }
       minHouse.push(Math.round(low));
       low = 600;

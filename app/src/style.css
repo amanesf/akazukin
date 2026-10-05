@@ -606,3 +606,8 @@ body.tutorial #next { display: none; }
   75% { opacity: 1; }
   100% { transform: translateY(-10px); opacity: 0; }
 }
+
+/* 色の狼（2026-10-05）：名前を色で、弱い武器の印を小さく添える */
+#next .col, #tonight .col { font-weight: bold; }
+#next .col .ic, #tonight .col .ic { height: 14px; width: 14px; margin: 0 1px; }
+#next .col img:not(.ic), #tonight .col img:not(.ic) { filter: drop-shadow(0 0 3px currentColor); }

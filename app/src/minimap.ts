@@ -3,7 +3,7 @@
 // 主人公・狼・番犬は同じ絵の縮小（大きさは盛る）。当たった光・斬撃・爆発・打ち上げ・煙・家の点滅・いま映している枠。
 // タップするとそこへ駆けつける。
 import { Container, Graphics } from 'pixi.js';
-import { DOG_ORDER, DOGS, FIELD_LENGTH, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
+import { COLORS, DOG_ORDER, DOGS, FIELD_LENGTH, GRAY_FUR, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
 import { place } from './fx';
 import { HeroRig } from './heroRig';
 import { DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
@@ -108,7 +108,7 @@ export class Minimap {
       if (rot) g.ellipse(x, this.my(wf.lane), w * 0.5, 1.5).fill({ color: 0x000000, alpha: 0.4 });
       if (art) {
         const hh = unitH * WOLF_REL[wf.kind];
-        this.wolfArt.put(0, wf.kind, x, y - this.wolfArt.center(hh), hh, rot, 1, wf.hitFlash > 0 ? 0xffb0b0 : wf.hasted ? 0xfff080 : 0xffffff, wf.age < 0.45 ? wf.age / 0.45 : 1);
+        this.wolfArt.put(0, wf.kind, x, y - this.wolfArt.center(hh), hh, rot, 1, wf.hitFlash > 0 ? 0xffb0b0 : 0xffffff, wf.age < 0.45 ? wf.age / 0.45 : 1, false, wf.color ? COLORS[wf.color].fur : wf.kind === 'armored' ? undefined : GRAY_FUR); // 色の狼は小さい地図でも同じ色
         continue;
       }
       if (!rot) {

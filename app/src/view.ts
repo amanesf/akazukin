@@ -3,14 +3,14 @@
 // 走り・跳ね・のけぞり・打ち上げの回転・残像・斬撃の弧・火花・桜・土煙・画面の揺れと寄り・ヒットストップ。
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
-import { DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
+import { COLORS, GRAY_FUR, HOWL, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { DOG_CROWN, DOG_REL, UnitArt, WOLF_REL } from './wolfArt';
 import { DOG_COLOR, WOLF_COLOR } from './palette';
 import { Sim, type Dog, type Fx, type Wolf } from './sim';
-import type { WolfKind } from './config';
+import type { WolfColor, WolfKind } from './config';
 
 const COLOR = {
   heroHp: 0xf06070,
@@ -48,6 +48,9 @@ export class View {
   private wolfBack = new Container(); // 狼の絵（主人公より奥）
   private wolfFront = new Container(); // 狼の絵（主人公より手前）
   private wolfHud = new Graphics(); // 狼の体力の棒（絵の上）
+  private headMarks = new Container(); // 色の狼の頭の上の印（弱い武器の絵）
+  private markUsed = 0;
+  private markTex: Record<string, Texture> = {};
   // 月明かりの縁取り（狼・番犬は wolfArt の rim、主人公は rimRig）。体の後ろに、紅く光る同じ絵を右上へずらして置く
   private rimBack = new Container();
   private rimFront = new Container();
@@ -162,7 +165,7 @@ export class View {
       this.fog.push(f);
     }
     this.rimRig.root.blendMode = 'add';
-    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.overG, this.parts.root);
+    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.headMarks, this.overG, this.parts.root);
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -217,6 +220,10 @@ export class View {
     }).catch((e) => console.warn('town', e));
     // 狼の絵。読み込めなければ箱のまま
     this.wolves.load().catch((e) => console.warn('wolves', e));
+    const MARKS = [...new Set(Object.values(COLORS).map((c) => c.icon))];
+    Assets.load(MARKS.map((n) => ({ alias: `mark-${n}`, src: `${import.meta.env.BASE_URL}ui/icons/${n}.webp` }))).then((t: Record<string, Texture>) => {
+      for (const n of MARKS) this.markTex[n] = t[`mark-${n}`];
+    }).catch((e) => console.warn('marks', e));
     this.house.visible = false;
     this.dogArt.load(['house']).then(() => {
       const m = this.dogArt.meta['house' as DogArt];
@@ -398,7 +405,7 @@ export class View {
       dl.rect(0, horizonS, g.W, g.Hm - horizonS).fill({ color: 0x584838, alpha: this.dayK });
     }
     // 空：夜が進むと月が左へ傾いていき、最後の1匹を倒すと空の端が白み始める（決めポーズのあいだに夜明けへ）
-    const pend = sim.phase === 'wave' ? Object.values(sim.pending()).reduce((a, b) => a + (b ?? 0), 0) : 0;
+    const pend = sim.phase === 'wave' ? sim.pending().reduce((a, e) => a + e.n, 0) + sim.sleepers.length : 0;
     const total = sim.nightKills + sim.wolves.length + pend;
     const prog = sim.phase === 'wave' && total > 0 ? sim.nightKills / total : this.moonProg;
     this.moonProg += (prog - this.moonProg) * Math.min(1, dt * 0.8);
@@ -478,6 +485,7 @@ export class View {
     const bg = this.backG.clear();
     const fg = this.frontG.clear();
     this.wolfHud.clear();
+    this.markUsed = 0;
     this.wolves.begin();
     this.dogArt.begin();
     type Item = { lane: number; draw: (gg: Graphics) => void };
@@ -485,10 +493,12 @@ export class View {
     for (const d of dogs) items.push({ lane: d.lane, draw: (gg) => this.drawDog(gg, d, sim) });
     this.wolfBoxes.length = 0;
     for (const w of seen) items.push({ lane: w.lane, draw: (gg) => this.drawWolf(gg, w, sim) });
+    for (const w of sim.sleepers) items.push({ lane: w.lane, draw: (gg) => this.drawSleeper(gg, w) });
     items.sort((a, b) => a.lane - b.lane);
     for (const it of items) it.draw(it.lane <= h.lane ? bg : fg);
     this.wolves.end();
     this.dogArt.end();
+    for (let i = this.markUsed; i < this.headMarks.children.length; i++) this.headMarks.children[i].visible = false;
 
     // ── 主人公 ──
     const hx = this.wx(h.x);
@@ -726,6 +736,24 @@ export class View {
         this.houseFlash = 0.25;
         P.debris(this.wx(HOUSE_X), y - 30, s, 4, y + 6);
         break;
+      case 'howl': {
+        // 遠吠え：大きな輪が3重に広がり、裂け目が光る
+        const hy = y - this.geo.Hm * 0.12;
+        for (let i = 0; i < 3; i++) P.ring(x, hy, 10 + i * 12, this.geo.Hm * (0.45 + i * 0.2), 5 * s, 0xffd060, 0.45 + i * 0.12, 1);
+        P.glow(x, hy, this.geo.Hm * 0.2, 0xffd060, 0.35, 0.6);
+        P.glow(this.wx(WOLF_SPAWN_X), y - this.geo.Hm * 0.06, this.geo.Hm * 0.5, 0xffb040, 0.45, 0.8);
+        break;
+      }
+      case 'wake':
+        // 緑が起き上がる：緑の輪と光
+        P.glow(x, y - this.geo.Hm * 0.06, this.geo.Hm * 0.25, 0x7ad87a, 0.4, 0.7);
+        P.ring(x, y, 6, this.geo.Hm * 0.1, 3 * s, 0x9af09a, 0.4, 0.3);
+        break;
+      case 'sunfade':
+        // 朝日で消える：金色の光に溶けて、花びらになる
+        P.glow(x, y - this.geo.Hm * 0.08, this.geo.Hm * 0.3, 0xffe0a0, 0.6, 0.9);
+        for (let i = 0; i < 10; i++) P.petal(x, y - this.geo.Hm * 0.06, s, (Math.random() - 0.5) * 300, -200 - Math.random() * 250);
+        break;
       case 'emerge':
         P.glow(this.wx(WOLF_SPAWN_X), y - this.geo.Hm * 0.06, this.geo.Hm * (f.big ? 0.8 : 0.35), 0xff3040, 0.4, 0.9);
         P.ring(this.wx(WOLF_SPAWN_X), y, 6, this.geo.Hm * 0.12, 3, 0xff6070, 0.35, 0.3);
@@ -939,7 +967,7 @@ export class View {
 
   // 狼の絵を置く。伸び縮みはさせず、位置・傾き・色で動かす。体力の棒は絵の上に
   private wolfSprite(g: Graphics, w: Wolf, sim: Sim, o: { x: number; ground: number; lift: number; bob: number; rot: number; biteK: number; hit: number; flash: boolean; bw: number }) {
-    let hh = this.heroH(w.lane) * 0.6 * WOLF_REL[w.kind]; // 狼は主人公の0.6倍（0.46倍だと小さな犬に見えた）
+    let hh = this.heroH(w.lane) * 0.6 * WOLF_REL[w.kind] * (w.color ? COLORS[w.color].size : 1); // 狼は主人公の0.6倍（0.46倍だと小さな犬に見えた）
     let rot = o.rot;
     if (o.biteK) rot -= o.biteK * 0.18; // 噛みつき：頭を上げて飛び出す
     if (w.z <= 0 && w.stun > 0.05 && !o.hit) rot += 0.08; // 落ちたあと、へたりこむ
@@ -947,7 +975,16 @@ export class View {
     const born = w.age < 0.45 ? w.age / 0.45 : 1;
     const tint = o.flash ? 0xff9a9a : 0xffffff;
     // 遠吠えで速くなった狼は、足もとの黄色い輪で示す（色を塗ると病気のように濁って見えた）
-    if (w.hasted) this.wolfHud.ellipse(o.x, o.ground, hh * 0.45, hh * 0.08).stroke({ width: 3, color: 0xffe060, alpha: 0.55 + 0.3 * Math.sin(this.vt * 12) });
+    // 遠吠えの溜め：頭の上の輪が満ちていき、満ちると吠えて裂け目から子狼が出る
+    if (w.kind === 'howler' && w.x <= HOWL.holdX + 1 && w.skillCd <= HOWL.wind && w.skillCd > 0) {
+      const k = 1 - w.skillCd / HOWL.wind;
+      const r = Math.max(12, hh * 0.16);
+      const cx = o.x - hh * 0.12;
+      const cyy = o.ground - o.lift - hh * 1.15 - r;
+      this.wolfHud.circle(cx, cyy, r + 2).fill({ color: 0x000000, alpha: 0.5 });
+      this.wolfHud.moveTo(cx, cyy - r).arc(cx, cyy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k).stroke({ width: 4, color: 0xffd060, alpha: 0.95 });
+      this.wolfHud.circle(cx, cyy, r * 0.45 * k).fill({ color: 0xffe080, alpha: 0.8 });
+    }
     const layer: 0 | 1 = g === this.backG ? 0 : 1;
     const cy = o.ground - o.lift - o.bob * 0.6 - this.wolves.center(hh);
     // ふつうの狼は、動きに合わせて絵を差し替える。差し替えた絵は姿勢そのものなので、傾けすぎない
@@ -964,7 +1001,7 @@ export class View {
     const mk = this.wolves.meta[art];
     const base = this.wolves.meta[w.kind];
     if (mk && base && art !== w.kind) hh *= Math.min(1, (mk as { h?: number }).h! / (base as { h?: number }).h!);
-    this.wolves.put(layer, art, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born);
+    this.wolves.put(layer, art, o.x, cy, hh, rot, 0.85 + 0.15 * born, tint, born, false, this.furOf(w.kind, w.color), w.color ? COLOR_GLOW(w.color) : undefined);
     const top = o.ground - o.lift - hh;
     this.wolfBoxes.push({ id: w.id, lane: w.lane, x0: o.x - hh * 0.7, x1: o.x + hh * 0.7, y0: top, y1: o.ground - o.lift + hh * 0.05 });
     if (w.hp < w.maxHp && w.age > 0.4) {
@@ -973,6 +1010,52 @@ export class View {
       this.wolfHud.rect(o.x - hb / 2, hy, hb, 4).fill({ color: 0x000000, alpha: 0.6 });
       this.wolfHud.rect(o.x - hb / 2, hy, (hb * Math.max(0, w.hp)) / w.maxHp, 4).fill(0x70d070);
     }
+    if (w.color && born > 0.5) this.mark(w.color, o.x, o.ground - o.lift - hh * 1.05 - 6, hh);
+  }
+
+  // 毛の色：色の狼はその色、色の付かない狼は明るい銀灰（黒と見分けるため）。鎧狼は鎧の色を残す
+  private furOf(kind: WolfKind, color?: WolfColor): [number, number, number] | undefined {
+    if (color) return COLORS[color].fur;
+    return kind === 'armored' ? undefined : GRAY_FUR;
+  }
+
+  // 頭の上の印：その色の丸に、弱い武器の絵（ナイフ・弓・主砲・桜。金は銭）
+  private mark(color: WolfColor, x: number, y: number, hh: number) {
+    const tex = this.markTex[COLORS[color].icon];
+    const r = Math.max(9, Math.min(17, hh * 0.13));
+    const cy = y - r;
+    this.wolfHud.circle(x, cy, r + 2).fill({ color: 0x000000, alpha: 0.55 });
+    this.wolfHud.circle(x, cy, r).fill({ color: COLOR_GLOW(color), alpha: 0.9 });
+    if (!tex) return;
+    let sp = this.headMarks.children[this.markUsed] as Sprite | undefined;
+    if (!sp) {
+      sp = new Sprite();
+      sp.anchor.set(0.5);
+      this.headMarks.addChild(sp);
+    }
+    this.markUsed++;
+    sp.texture = tex;
+    const k = (r * 1.7) / Math.max(tex.width, tex.height);
+    sp.scale.set(k);
+    sp.position.set(x, cy);
+    sp.visible = true;
+  }
+
+  // 緑が倒れて寝ている：横に倒れて薄く、起き上がるまでの残りを緑の輪で
+  private drawSleeper(g: Graphics, w: Wolf) {
+    if (!this.wolves.ready) return;
+    const x = this.wx(w.x);
+    const ground = this.wy(w.lane);
+    const hh = this.heroH(w.lane) * 0.6 * WOLF_REL[w.kind];
+    const layer: 0 | 1 = g === this.backG ? 0 : 1;
+    const k = Math.max(0, w.sleep) / 4;
+    const twitch = k < 0.25 ? Math.sin(this.vt * 40) * 0.05 : 0; // 起き上がる前にぴくぴく
+    this.wolves.put(layer, w.kind, x, ground - hh * 0.22, hh, 1.35 + twitch, 1, 0xb0c8b0, 0.75, false, this.furOf(w.kind, w.color));
+    const r = Math.max(10, hh * 0.14);
+    const cy = ground - hh * 0.55;
+    this.wolfHud.circle(x, cy, r).stroke({ width: 3, color: 0x000000, alpha: 0.4 });
+    this.wolfHud.moveTo(x, cy - r).arc(x, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - k)).stroke({ width: 3, color: 0x7ad87a, alpha: 0.9 });
+    this.mark('green', x, cy + r + 2, hh);
   }
 
   // ── 番犬（箱。右を向いて構える）──
@@ -1678,7 +1761,7 @@ export class View {
         const t = this.nums[i];
         t.text = f.kind === 'poof' ? `+${f.n}銭` : String(f.n);
         t.style.fontSize = f.kind === 'poof' ? 15 : f.big ? 34 : 22;
-        t.style.fill = f.kind === 'poof' ? 0xffd860 : f.big ? 0xffd040 : 0xffffff;
+        t.style.fill = f.kind === 'poof' ? 0xffd860 : f.color ? COLOR_GLOW(f.color) : f.big ? 0xffd040 : 0xffffff; // 弱い武器で当てた数字はその狼の色で
       }
       const t = this.nums[i];
       const q = f.t / (f.kind === 'num' ? 0.8 : 0.6);
@@ -1713,7 +1796,8 @@ export class View {
       this.parts.petal(x + (Math.random() - 0.5) * hh * 0.9, cy + (Math.random() - 0.5) * hh * 0.6, s, dir * (80 + Math.random() * 220), -60 - Math.random() * 160, 0.9 + Math.random() * 0.8, SHADOW);
     }
     if (!this.wolves.ready || this.splits.length >= 10) return;
-    const tex = this.wolves.tex[kind as keyof typeof this.wolves.tex] as Texture | undefined;
+    const fur = this.furOf(kind, f.color);
+    const tex = (fur ? this.wolves.dye(kind as WolfArt, fur) : this.wolves.tex[kind as keyof typeof this.wolves.tex]) as Texture | undefined;
     const m = this.wolves.meta[kind as keyof typeof this.wolves.meta] as { size: [number, number]; feet: [number, number] } | undefined;
     if (!tex || !m) return;
     const a = -dir * (0.25 + Math.random() * 0.25); // 刃の線（少し斜め）
@@ -1955,3 +2039,6 @@ function backOut(t: number) {
 }
 
 void glowTexture;
+
+// 色の狼の縁取り・印の色（config の ui）
+const COLOR_GLOW = (c: WolfColor) => parseInt(COLORS[c].ui.slice(1), 16);

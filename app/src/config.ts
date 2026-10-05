@@ -262,7 +262,39 @@ export const WOLVES: Record<WolfKind, WolfSpec> = {
   howler: { name: '遠吠え', hp: 120, damage: 6, interval: 1.0, speed: 30, size: 56, bounty: 10, arrowResist: 0.3 },
   alpha: { name: '大狼', hp: 1800, damage: 45, interval: 1.2, speed: 18, size: 120, bounty: 120, arrowResist: 0.4, heavy: 0.8 },
 };
-export const HOWL = { radius: 220, speedMul: 1.5, holdX: 620 };
+// 色の狼（2026-10-05 plan.md §0.10② 5〜6回目・アマネさん「ひとことで分かる」「弱い武器くらいでいい」「弱い武器は2倍・敵の強化も2倍」）。
+// 色は1匹に1つまで、子狼と狼だけ（遠吠え・鎧狼は形で役目が分かる。大狼は10晩ごとに色を回す）。
+// weak：この武器で当てると2倍（senbon＝ナイフ・斬り全部／nagare＝弓／midare＝主砲／sp＝必殺技）。ほかの武器もふつうに効く
+// fur：毛のグラデーション（暗い所・中ほど・明るい所）。掛け算で重ねると沈んで暗くなるので、明るさで色を引き当てる（wolfArt.ts）
+export type WolfColor = 'red' | 'purple' | 'black' | 'orange' | 'green' | 'gold';
+export const COLOR_ORDER: WolfColor[] = ['red', 'purple', 'black', 'orange', 'green', 'gold'];
+export interface ColorSpec {
+  name: string; // 「赤い」狼
+  word: string; // ひとこと
+  weak: Special | 'sp' | null;
+  icon: string; // 頭の上の印（ui/icons）
+  speed: number; hp: number; damage: number; size: number; bounty: number;
+  threat: number; // 晩の予算を食う倍率
+  from: number; // 初めて出る晩
+  fur: [number, number, number];
+  ui: string; // 文字の色
+}
+export const COLORS: Record<WolfColor, ColorSpec> = {
+  red: { name: '赤い', word: '速い', weak: 'senbon', icon: 'knife', speed: 2, hp: 1, damage: 1, size: 1, bounty: 1.5, threat: 1.8, from: 3, fur: [0x400404, 0xd42a20, 0xff9a78], ui: '#ff6a55' },
+  purple: { name: '紫の', word: '体力が多い', weak: 'midare', icon: 'cannon', speed: 1, hp: 2, damage: 1, size: 1.15, bounty: 2, threat: 2, from: 7, fur: [0x280a4a, 0x9a50e0, 0xe0c4ff], ui: '#c08aff' },
+  black: { name: '黒い', word: '攻撃力が高い', weak: 'nagare', icon: 'bow', speed: 1, hp: 1, damage: 2, size: 1, bounty: 1.5, threat: 1.8, from: 16, fur: [0x020204, 0x18161e, 0x5a5468], ui: '#b0a8c8' },
+  orange: { name: '橙の', word: '倒すと爆ぜる', weak: 'midare', icon: 'cannon', speed: 1, hp: 1, damage: 1, size: 1, bounty: 1.5, threat: 1.5, from: 12, fur: [0x4a1002, 0xe85a0c, 0xffb870], ui: '#ff7a2a' },
+  green: { name: '緑の', word: '起き上がる', weak: 'sp', icon: 'sakura', speed: 1, hp: 1, damage: 1, size: 1, bounty: 2, threat: 2.5, from: 24, fur: [0x0a2a14, 0x5aa860, 0xc8f0b8], ui: '#7ad87a' },
+  gold: { name: '金の', word: '全部強い', weak: null, icon: 'coin', speed: 2, hp: 2, damage: 2, size: 1.1, bounty: 5, threat: 5, from: 35, fur: [0x5a3c06, 0xf2cc3a, 0xfffbe0], ui: '#ffe050' },
+};
+// 色の付かない狼（灰）も明るい銀灰にそろえる（2026-10-05 アマネさん「黒と灰色区別つかない。灰色はもっと明るく」）
+export const GRAY_FUR: [number, number, number] = [0x4a4a58, 0xa8a8b8, 0xf0f0f8];
+export const BLAST = { radius: 130, damage: 70, hero: 10 }; // 橙が倒れたときの爆発（狼へ・主人公と番犬へ）
+export const WEAK_MUL = 2; // 弱い武器で当てたとき
+// 遠吠え：後ろに居座り、6秒ごとに1.5秒溜めて吠え、裂け目から子狼を2匹呼ぶ。何回でも呼ぶ（倒さないと増え続ける）。
+// 場の狼が cap 匹を超えているあいだは呼ばない（重くならないように）。呼ばれた子狼は賞金なし（稼ぎ場にしない）。
+// 2026-10-05 アマネさん「倒さないとどんどん敵を呼ぶ」「1匹は無限に呼べていい」。近くの狼を速くする・音波はやめた（見えにくい）
+export const HOWL = { holdX: 620, interval: 6, wind: 1.5, count: 2, cap: 40, first: 3 };
 // 狼の攻め方（特性ごと）：遠吠えは遠くから衝撃波、子狼は飛びかかる
 export const SHOCKWAVE = { range: 460, interval: 3.2, speed: 260, damage: 12 };
 // 子狼は主人公を跳び越えて家へ向かう（立っているだけでは止められない）

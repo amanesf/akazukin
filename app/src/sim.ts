@@ -3,16 +3,18 @@
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
   AUTO, BODY, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
-  FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
+  BLAST, COLORS, WEAK_MUL, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, SHOCKWAVE, STEER, STEP,
   DAWN_REPAIR, DAYS_TO_CLEAR, REPAIR, TRACK_COSTS, TRACKS, TRAIN, TRAIN_NOTE, WOLF_SPAWN_X, WOLVES, dawnBonus,
-  type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfKind,
+  type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Perk, type SkillId, type Special, type Track, type WolfColor, type WolfKind,
 } from './config';
-import { hpScale, mood, night, SURGE_WARN, type Mood } from './nights';
+import { hpScale, mood, newColors, night, SURGE_WARN, type Mood } from './nights';
 
 const PET_GAP = 45; // なでる犬の体の端から主人公の足もとまで（世界の単位。絵の手の届く所は view が合わせる）
 const PET_STEP = 60; // 2匹目・3匹目はその後ろに並ぶ
 const FINALE = 0.4; // 晩の最後の1匹のあとのスローの長さ（sim の秒。実時間ではこの約3倍）
-const CHEER = 2.6; // スローが明けてから、決めポーズ→寄ってきた番犬をなでて昼になるまで（秒）。なでる分を足した（2026-10-04 かわいさ）
+const CHEER = 2.6;
+const GREEN_SLEEP = 4; // 緑が倒れて寝ている秒
+const GREEN_GAIN = 12; // 緑1匹から溜まる必殺技の上限（%） // スローが明けてから、決めポーズ→寄ってきた番犬をなでて昼になるまで（秒）。なでる分を足した（2026-10-04 かわいさ）
 
 export interface Unit {
   id: number;
@@ -36,6 +38,12 @@ export interface Wolf extends Unit {
   skillCd: number; // 衝撃波・飛びかかり
   age: number; // 裂け目から出てきてからの秒（出てくる演出）
   hitDir: number; // 最後に当たった向き（描画で傾ける）
+  color?: WolfColor; // 色の狼（config.ts の COLORS）
+  lastSrc?: Special | 'sp'; // 最後に当たった武器（緑は必殺技で倒れたときだけ消える）
+  sleep: number; // 緑：倒れて寝ている残り秒（寝ているあいだは sleepers に移す）
+  zgain: number; // 緑：この1匹から溜まった必殺技（上限あり）
+  summoned?: boolean; // 遠吠えに呼ばれた子狼（賞金なし）
+  naps: number; // 緑が寝た回数（緑の大狼は2回まで。3回目で倒れる）
 }
 // 番犬（3匹・自分で動く）。role は昼に決めた役目、target は追っている狼、down は倒れて休んでいる残り秒数
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
@@ -44,7 +52,7 @@ export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; 
 export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean }
 export interface Shell { fromX: number; toX: number; t: number; lane: number; damage: number; area: number; sp?: boolean }
 export interface Shot { x: number; lane: number } // 狼の衝撃波（左へ飛ぶ）
-export type FxKind = 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge' | 'beam';
+export type FxKind = 'howl' | 'wake' | 'sunfade' | 'arrowhit' | 'blast' | 'poof' | 'slash' | 'miss' | 'num' | 'spin' | 'land' | 'spark' | 'dash' | 'pound' | 'muzzle' | 'full' | 'bite' | 'emerge' | 'beam';
 export interface Fx {
   id: number;
   kind: FxKind;
@@ -54,6 +62,7 @@ export interface Fx {
   lane2?: number; // 主砲の弾の行き先の奥行き
   move?: MoveId;
   wolf?: WolfKind; // 倒した狼の種類（倒れる演出で絵を割る）
+  color?: WolfColor; // 倒した狼・弱い武器で当てた数字の色
 }
 
 export type Result = 'playing' | 'won' | 'lost';
@@ -61,7 +70,7 @@ export type Result = 'playing' | 'won' | 'lost';
 export type Phase = 'lead' | 'wave' | 'shop';
 // 画面の演出と主人公の吹き出しのための出来事（main が受け取って消す）
 export type Sound = 'swing' | 'hit' | 'heavy' | 'slam' | 'boom' | 'bow' | 'hurt' | 'ouran' | 'horn' | 'buy' | 'dash' | 'charge' | 'full' | 'jump';
-export type Event = 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge' | 'combo10' | 'combo30';
+export type Event = 'night' | 'finisher' | 'ouran' | 'hurt' | 'down' | 'revive' | 'dawn' | 'surge' | 'combo10' | 'combo30' | 'newface' | 'weak';
 
 export interface Save {
   v: 3; wave: number; coins: number; houseHp: number; levels: Record<Track, number>; kills: number; bestCombo: number;
@@ -69,7 +78,7 @@ export interface Save {
 }
 type OldSave = Omit<Save, 'v' | 'roles' | 'losses'> & { v: 1 | 2; losses?: number };
 
-interface Spawner { kind: WolfKind; left: number; interval: number; next: number; surge: boolean; warned: boolean }
+interface Spawner { kind: WolfKind; color?: WolfColor; left: number; interval: number; next: number; surge: boolean; warned: boolean }
 type Flick = 'left' | 'right' | 'up' | 'down';
 type Act = () => boolean;
 
@@ -130,7 +139,7 @@ export class Sim {
   losses = 0; // 家が落ちた回数（負けても1日目には戻らない・2026-10-04）
   nightKills = 0;
   mood: Mood | null = null; // 今夜の様子（霧・紅月など）
-  stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0 }; // 計測用（scripts/balance.mjs）
+  stats = { downs: 0, houseBite: 0, houseShock: 0, heroDmg: 0, summoned: 0 }; // 計測用（scripts/balance.mjs）
   nightEarned = 0;
 
   hero: Hero = {
@@ -163,6 +172,10 @@ export class Sim {
   sounds: Sound[] = []; // 効果音（main が受け取って鳴らす）
 
   wolves: Wolf[] = [];
+  sleepers: Wolf[] = []; // 緑：倒れて寝ている（狙われない・噛まない。4秒で起き上がる）
+  newface: WolfColor | null = null; // 今夜の新顔が初めて出てきた（main が台詞を出す）
+  weakSeen = new Set<WolfColor>(); // 弱い武器で初めて当てた色（main が「効いてる」と言う）
+  private faced = new Set<WolfColor>();
   dogs: Dog[] = [];
   roles: Record<DogKind, DogRole> = { ...DOG_DEFAULT_ROLES }; // 番犬の役目（昼に決める）
   arrows: Arrow[] = [];
@@ -175,8 +188,8 @@ export class Sim {
 
   private spawners: Spawner[] = [];
   // まもなく裂け目から出てくる狼（画面の予告：裂け目の中で赤い目が開く）。next＝出てくるまでの秒
-  get coming(): { kind: WolfKind; next: number; i: number }[] {
-    return this.spawners.flatMap((s, i) => (s.left > 0 && s.next < 1.2 ? [{ kind: s.kind, next: s.next, i }] : []));
+  get coming(): { kind: WolfKind; color?: WolfColor; next: number; i: number }[] {
+    return this.spawners.flatMap((s, i) => (s.left > 0 && s.next < 1.2 ? [{ kind: s.kind, color: s.color, next: s.next, i }] : []));
   }
   private holdWanted = false;
   private queued: { act: Act; t: number } | null = null;
@@ -580,8 +593,10 @@ export class Sim {
   private startWave() {
     this.mood = mood(this.wave + 1);
     const lines = night(this.wave + 1);
-    this.nightHp = Math.max(1, lines.reduce((n, l) => n + l.count * WOLVES[l.kind].hp, 0) * hpScale(this.wave + 1));
-    this.spawners = lines.map((l) => ({ kind: l.kind, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
+    this.nightHp = Math.max(1, lines.reduce((n, l) => n + l.count * WOLVES[l.kind].hp * (l.color ? COLORS[l.color].hp : 1), 0) * hpScale(this.wave + 1));
+    this.faced.clear();
+    this.sleepers = [];
+    this.spawners = lines.map((l) => ({ kind: l.kind, color: l.color, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
     this.phase = 'wave';
     const h = this.hero;
     h.hp = this.maxHp; // 昼のあいだに傷は癒える（案）
@@ -686,12 +701,17 @@ export class Sim {
         warn = true;
       }
       while (s.left > 0 && s.next <= 0) {
-        const w = WOLVES[s.kind];
-        const wolf: Wolf = {
-          ...this.unit(WOLF_SPAWN_X, w.hp * hpScale(this.wave + 1), w.size), kind: s.kind, hasted: false,
-          z: 0, vz: 0, vx: 0, stun: 0, slammed: false, pouncing: false, skillCd: 1 + this.rand() * 2, age: 0, hitDir: 0,
-        };
+        const wolf = this.makeWolf(s.kind, WOLF_SPAWN_X, s.color);
+        wolf.skillCd = s.kind === 'howler' ? 99 : 1 + this.rand() * 2; // 遠吠えは居座る所に着いてから数え始める
         this.wolves.push(wolf);
+        // 今夜の新顔が初めて出てきた
+        if (s.color && !this.faced.has(s.color)) {
+          this.faced.add(s.color);
+          if (newColors(this.wave + 1).includes(s.color)) {
+            this.newface = s.color;
+            this.events.push('newface');
+          }
+        }
         this.fx.push(this.mk({ kind: 'emerge', x: wolf.x, lane: wolf.lane, big: s.kind === 'alpha' }));
         s.left--;
         s.next += s.interval;
@@ -705,25 +725,44 @@ export class Sim {
   }
 
   // 点検用：狼を1匹置く（撮影の場面づくり）
-  debugSpawn(kind: WolfKind, x: number, lane: number) {
-    const w = WOLVES[kind];
-    const wolf: Wolf = {
-      ...this.unit(x, w.hp * hpScale(this.wave + 1), w.size), lane, kind, hasted: false,
-      z: 0, vz: 0, vx: 0, stun: 0, slammed: false, pouncing: false, skillCd: 9, age: 1, hitDir: 0,
-    };
+  debugSpawn(kind: WolfKind, x: number, lane: number, color?: WolfColor) {
+    const wolf = this.makeWolf(kind, x, color);
+    wolf.lane = lane;
+    wolf.skillCd = 9;
+    wolf.age = 1;
     this.wolves.push(wolf);
     return wolf;
   }
 
+  private makeWolf(kind: WolfKind, x: number, color?: WolfColor): Wolf {
+    const w = WOLVES[kind];
+    const c = color ? COLORS[color] : undefined;
+    return {
+      ...this.unit(x, w.hp * hpScale(this.wave + 1) * (c?.hp ?? 1), w.size * (c?.size ?? 1)), kind, color, hasted: false,
+      z: 0, vz: 0, vx: 0, stun: 0, slammed: false, pouncing: false, skillCd: 0, age: 0, hitDir: 0, sleep: 0, zgain: 0, naps: 0,
+    };
+  }
+
   // 次に来る群れの予告：この晩にまだ出ていない狼を種類ごとに数える
-  pending(): Partial<Record<WolfKind, number>> {
-    const out: Partial<Record<WolfKind, number>> = {};
-    for (const s of this.spawners) out[s.kind] = (out[s.kind] ?? 0) + s.left;
+  // 色の狼は色ごとに分けて数える
+  pending(): { kind: WolfKind; color?: WolfColor; n: number }[] {
+    const out: { kind: WolfKind; color?: WolfColor; n: number }[] = [];
+    for (const s of this.spawners) {
+      const o = out.find((e) => e.kind === s.kind && e.color === s.color);
+      if (o) o.n += s.left;
+      else out.push({ kind: s.kind, color: s.color, n: s.left });
+    }
     return out;
   }
 
   // 晩の狼を全滅させたら昼へ。夜明けの銭が入り、家が少し直る
   private endWave() {
+    // 緑（起き上がる）だけが残ったら、朝日で消えて夜が明ける
+    if (this.spawners.length === 0 && (this.wolves.length || this.sleepers.length) && [...this.wolves, ...this.sleepers].every((w) => w.color === 'green')) {
+      for (const w of [...this.wolves, ...this.sleepers]) this.fx.push(this.mk({ kind: 'sunfade', x: w.x, lane: w.lane, r: w.size, wolf: w.kind, color: w.color }));
+      this.wolves = [];
+      this.sleepers = [];
+    }
     if (this.spawners.length > 0 || this.wolves.length > 0) {
       this.finale = -1;
       return;
@@ -755,6 +794,7 @@ export class Sim {
     this.arrows = [];
     this.shells = [];
     this.shots = [];
+    this.sleepers = [];
     this.combo = 0;
     this.hero.move = null;
     this.hero.charge = -1;
@@ -778,7 +818,19 @@ export class Sim {
 
   // ── 狼 ──
   private moveWolves(dt: number) {
-    const howlers = this.wolves.filter((w) => w.kind === 'howler');
+    // 緑：寝ているあいだは狙われず噛まない。4秒で起き上がる。必殺技を出しているあいだは近くの緑が起き上がる（桜でしか消えない）
+    this.sleepers = this.sleepers.filter((w) => {
+      w.sleep -= dt;
+      w.hitFlash = Math.max(0, w.hitFlash - dt);
+      if (w.sleep > 0 && !(this.hero.ouran > 0 && Math.abs(w.x - this.hero.x) < 600)) return true;
+      w.sleep = 0;
+      w.hp = w.maxHp;
+      w.stun = 0.3;
+      w.age = 0.4;
+      this.wolves.push(w);
+      this.fx.push(this.mk({ kind: 'wake', x: w.x, lane: w.lane, r: w.size }));
+      return false;
+    });
     const blocked = new Map<Dog, number>();
     const h = this.hero;
     const heroUp = h.down <= 0;
@@ -819,7 +871,7 @@ export class Sim {
               // 跳び越えの着地：主人公の上に落ちたら噛む
               w.pouncing = false;
               w.vx = 0;
-              if (heroUp && Math.abs(w.x - h.x) <= (w.size + HERO.size) / 2 && Math.abs(w.lane - h.lane) <= LANE_TOL) this.hurtHero(POUNCE.damage * this.bite);
+              if (heroUp && Math.abs(w.x - h.x) <= (w.size + HERO.size) / 2 && Math.abs(w.lane - h.lane) <= LANE_TOL) this.hurtHero(POUNCE.damage * this.bite * this.biteMul(w));
             } else w.stun = Math.max(w.stun, 0.3); // 落ちたら起き上がるまで少し
             w.vz = 0;
             this.fx.push(this.mk({ kind: 'land', x: w.x, lane: w.lane, r: w.size }));
@@ -829,7 +881,6 @@ export class Sim {
       }
       if (w.stun > 0) continue;
 
-      w.hasted = w.kind !== 'howler' && howlers.some((o) => Math.abs(o.x - w.x) < HOWL.radius);
       const ahead = w.x - h.x; // 主人公より右（家と反対側）にいる距離
 
       // 奥行き：狼・鎧狼・大狼は主人公が近いと寄せてくる（子狼と遠吠えは寄せない＝すり抜けて家へ）。1匹ずつ少しずらして、取り囲むように
@@ -839,12 +890,26 @@ export class Sim {
       }
 
       // 特性ごとの攻め方
-      if (w.kind === 'howler' && w.skillCd <= 0) {
-        const near = (heroUp && ahead > 0 && ahead <= SHOCKWAVE.range) || this.dogs.some((d) => d.down <= 0 && d.x < w.x && w.x - d.x <= SHOCKWAVE.range);
-        if (near) {
-          this.shots.push({ x: w.x - w.size / 2, lane: w.lane });
-          w.skillCd = SHOCKWAVE.interval;
+      // 遠吠え：居座る所に着いたら、溜めて（skillCd が wind を切ってから0まで。そのあいだは動かない）吠え、裂け目から子狼を呼ぶ
+      if (w.kind === 'howler' && w.x <= HOWL.holdX + 1) {
+        if (w.skillCd > HOWL.interval) w.skillCd = HOWL.first; // 着いてから最初の遠吠えまで
+        if (w.skillCd <= 0) {
+          w.skillCd = HOWL.interval;
+          this.fx.push(this.mk({ kind: 'howl', x: w.x, lane: w.lane, r: w.size }));
+          if (this.wolves.length < HOWL.cap) {
+            for (let i = 0; i < HOWL.count; i++) {
+              const p = this.makeWolf('pup', WOLF_SPAWN_X);
+              p.summoned = true;
+              this.stats.summoned++;
+              p.age = -0.15 * i;
+              p.skillCd = 1 + this.rand() * 2;
+              this.wolves.push(p);
+              this.fx.push(this.mk({ kind: 'emerge', x: p.x, lane: p.lane }));
+            }
+          }
+          this.sounds.push('horn');
         }
+        if (w.skillCd <= HOWL.wind) continue; // 溜めているあいだは噛まない・動かない
       }
       if (w.kind === 'pup' && w.skillCd <= 0 && heroUp && ahead > 0 && ahead <= POUNCE.range && Math.abs(w.lane - h.lane) <= LANE_TOL + 0.1) {
         // 飛びかかり：主人公を跳び越えて家へ（立っているだけでは止められない）
@@ -865,7 +930,7 @@ export class Sim {
       if (heroTouch || dog || w.x <= HOUSE_X + w.size / 2) {
         if (w.cooldown <= 0) {
           w.cooldown = s.interval;
-          const bite = s.damage * this.bite;
+          const bite = s.damage * this.bite * this.biteMul(w);
           if (heroTouch) this.hurtHero(bite);
           else if (dog) this.hurt(dog, bite);
           else {
@@ -883,7 +948,7 @@ export class Sim {
         w.lane = clamp(w.lane + (w.lane >= front.lane ? 1 : -1) * 0.5 * dt, 0, 1);
         continue;
       }
-      w.x -= s.speed * (w.hasted ? HOWL.speedMul : 1) * (this.mood === 'beni' ? 1.3 : 1) * dt;
+      w.x -= s.speed * (w.color ? COLORS[w.color].speed : 1) * dt;
     }
   }
 
@@ -1605,6 +1670,17 @@ export class Sim {
   private hit(w: Wolf, dmg: number, o: { kb?: number; lift?: number; slam?: boolean; stop?: number; quiet?: boolean; stun?: number; src?: Special | 'sp' }) {
     if (w.age < 0.4) return; // 裂け目から出てくる途中は当たらない
     if (o.kb) o = { ...o, kb: Math.abs(o.kb) };
+    // 弱い武器で当てると2倍（色の狼の頭の上の印）
+    const weak = !!w.color && !o.quiet && COLORS[w.color].weak !== null && COLORS[w.color].weak === o.src;
+    if (weak) {
+      dmg *= WEAK_MUL;
+      if (!this.weakSeen.has(w.color!)) {
+        this.weakSeen.add(w.color!);
+        this.events.push('weak');
+      }
+    }
+    if (o.src) w.lastSrc = o.src;
+    else if (o.quiet) w.lastSrc = undefined;
     const light = 1 - (WOLVES[w.kind].heavy ?? 0);
     this.hurt(w, dmg);
     if (o.kb) {
@@ -1622,7 +1698,7 @@ export class Sim {
     w.pouncing = false;
     w.stun = Math.max(w.stun, o.stun ?? 0.25);
     const big = dmg >= 30;
-    this.fx.push(this.mk({ kind: 'num', x: w.x, lane: w.lane, n: Math.round(dmg), z: w.z, big }));
+    this.fx.push(this.mk({ kind: 'num', x: w.x, lane: w.lane, n: Math.round(dmg), z: w.z, big: big || weak, color: weak ? w.color : undefined }));
     if (o.quiet) return; // 番犬の噛みつきはコンボに数えない
     this.fx.push(this.mk({ kind: 'spark', x: w.x, lane: w.lane, z: w.z, big: big || !!o.slam, dir: w.hitDir || this.hero.facing }));
     this.sounds.push(o.slam || (o.stop ?? 0) >= 0.08 ? 'heavy' : 'hit');
@@ -1631,8 +1707,21 @@ export class Sim {
     if (this.combo === 30) this.events.push('combo30');
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     this.sinceHit = 0;
-    if (o.src && o.src !== 'sp') this.gain(o.src, (100 * dmg) / (this.nightHp * SPECIALS[o.src].share));
+    if (o.src && o.src !== 'sp' && !w.summoned) { // 遠吠えに呼ばれた子狼では溜まらない（呼ばせて溜め放題にしない）
+      let n = (100 * dmg) / (this.nightHp * SPECIALS[o.src].share);
+      // 緑は叩き続ければ溜まる（詰まない理由）。ただし溜め放題にならないよう1匹から溜まる量に上限
+      if (w.color === 'green') {
+        n = Math.max(0, Math.min(n, GREEN_GAIN - w.zgain));
+        w.zgain += n;
+      }
+      this.gain(o.src, n);
+    }
     if (o.stop) this.hitStop = Math.max(this.hitStop, o.stop);
+  }
+
+  // 色の狼の噛む力
+  private biteMul(w: Wolf) {
+    return w.color ? COLORS[w.color].damage : 1;
   }
 
   private gain(sp: Special, n: number) {
@@ -1656,14 +1745,46 @@ export class Sim {
   }
 
   private reap() {
+    // 橙が倒れると爆ぜて、まわりの狼も巻き込む（巻き込まれた橙も爆ぜる）
+    for (let guard = 0; guard < 20; guard++) {
+      const boom = this.wolves.filter((w) => w.hp <= 0 && w.color === 'orange' && w.sleep >= 0);
+      if (!boom.length) break;
+      for (const b of boom) {
+        b.sleep = -1; // 爆ぜた印（もう一度は爆ぜない）
+        this.fx.push(this.mk({ kind: 'blast', x: b.x, lane: b.lane, r: BLAST.radius, big: true }));
+        this.sounds.push('boom');
+        this.kick(5, 0);
+        const dmg = BLAST.damage * hpScale(this.wave + 1);
+        for (const o of this.wolves) {
+          if (o !== b && o.hp > 0 && Math.abs(o.x - b.x) <= BLAST.radius + o.size / 2 && Math.abs(o.lane - b.lane) <= 0.5) this.hit(o, dmg, { kb: 220, lift: 220, stop: 0, stun: 0.5 });
+        }
+        const h = this.hero;
+        if (h.down <= 0 && h.iframes <= 0 && h.ouran <= 0 && Math.abs(h.x - b.x) <= BLAST.radius && Math.abs(h.lane - b.lane) <= 0.5) this.hurtHero(BLAST.hero * this.bite);
+        for (const d of this.dogs) if (d.down <= 0 && Math.abs(d.x - b.x) <= BLAST.radius && Math.abs(d.lane - b.lane) <= 0.5) this.hurt(d, BLAST.hero * this.bite);
+      }
+    }
     this.wolves = this.wolves.filter((w) => {
       if (w.hp > 0) return true;
-      const b = WOLVES[w.kind].bounty;
+      // 緑は必殺技で倒れたときだけ消える。ほかは寝て、4秒で起き上がる（寝ているあいだは家を噛まない）
+      if (w.color === 'green' && w.lastSrc !== 'sp' && !(w.kind === 'alpha' && w.naps >= 2)) {
+        w.naps++;
+        w.hp = 0;
+        w.sleep = GREEN_SLEEP;
+        w.z = 0;
+        w.vz = 0;
+        w.vx = 0;
+        w.slammed = false;
+        w.pouncing = false;
+        this.sleepers.push(w);
+        this.fx.push(this.mk({ kind: 'land', x: w.x, lane: w.lane, r: w.size }));
+        return false;
+      }
+      const b = w.summoned ? 0 : WOLVES[w.kind].bounty * (w.color ? COLORS[w.color].bounty : 1);
       this.coins += b;
       this.nightEarned += b;
       this.kills++;
       this.nightKills++;
-      this.fx.push(this.mk({ kind: 'poof', x: w.x, lane: w.lane, z: w.z, r: w.size, n: b, dir: w.hitDir, wolf: w.kind }));
+      this.fx.push(this.mk({ kind: 'poof', x: w.x, lane: w.lane, z: w.z, r: w.size, n: Math.round(b), dir: w.hitDir, wolf: w.kind, color: w.color }));
       return false;
     });
     // 番犬は消えずに倒れて、家で休んでから戻る

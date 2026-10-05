@@ -1,8 +1,8 @@
 import './style.css';
 import { Sfx } from './audio';
-import { COMBO, FINISHERS, SPECIALS, WOLVES, type Beat, type Finisher, type Special, type WolfKind } from './config';
+import { COLORS, COMBO, FINISHERS, SPECIALS, WOLVES, type Beat, type Finisher, type Special, type WolfColor, type WolfKind } from './config';
 import { Input } from './input';
-import { MOODS, mood as moodOf, night as nightOf } from './nights';
+import { MOODS, mood as moodOf, newColors, night as nightOf } from './nights';
 import { TALKS } from './talks';
 import { Sim, type Event, type Save } from './sim';
 import { ICON, Panel } from './ui';
@@ -69,6 +69,20 @@ async function main() {
     combo10: ['ふふっ、まだまだ♪'],
     combo30: ['止まらないよ〜♪'],
     dawn: ['朝だ〜。おばあちゃん、無事？'],
+  };
+  // 色の狼が初めて出てきたとき（新顔）の台詞。弱い武器の使い方を1回だけ（**仮**）
+  const FACE_LINES: Record<WolfColor, string> = {
+    red: '速い子は、ナイフで待ち伏せ♪',
+    purple: 'おっきい子は、主砲でどーん',
+    black: '噛まれたら痛そう……弓で遠くから',
+    orange: '群れのまんなかで、爆ぜさせちゃお',
+    green: '起き上がってくる……桜でしか眠らないみたい',
+    gold: '金ぴか！ つかまえたらご褒美かも',
+  };
+  // 狼の名前と絵（色の狼は色の名前と、頭の上と同じ弱い武器の印）
+  const wolfTag = (kind: WolfKind, color: WolfColor | undefined, n: number) => {
+    const c = color ? COLORS[color] : null;
+    return `<span${c ? ` class="col" style="color:${c.ui}"` : ''}><img src="${BASE}wolves/${kind}.webp" alt="">${c ? c.name : ''}${WOLVES[kind].name}${c?.weak ? ICON(c.icon) : ''}<i>${n}</i></span>`;
   };
   const SP_LINES: Record<Special, string> = {
     senbon: 'ぜーんぶ、まとめて――おやすみ',
@@ -176,10 +190,19 @@ async function main() {
         if (talk) setTimeout(() => showTalk(talk), 1800); // 節目の晩のあとは、昼におばあさんと話す
       }
       if (ev === 'night') {
-        const n = Object.values(sim.pending()).reduce((a, b) => a + (b ?? 0), 0);
+        const n = sim.pending().reduce((a, e) => a + e.n, 0);
         const m = sim.mood ? MOODS[sim.mood] : null;
-        showCard(m ? m.name : `${sim.wave + 1}日目の夜`, m ? `${sim.wave + 1}日目・狼 ${n}匹<br>${m.note}` : `狼 ${n}匹`);
+        // 新顔の晩は、題の下に「新顔：赤い狼（速い）」
+        const face = newColors(sim.wave + 1).map((c) => `<br><span style="color:${COLORS[c].ui}">新顔：${COLORS[c].name}狼（${COLORS[c].word}）</span>`).join('');
+        const boss = sim.pending().filter((e) => e.kind === 'alpha' && e.color).map((e) => `<br><span style="color:${COLORS[e.color!].ui}">${COLORS[e.color!].name}大狼（${COLORS[e.color!].word}）</span>`).join('');
+        showCard(m ? m.name : `${sim.wave + 1}日目の夜`, (m ? `${sim.wave + 1}日目・狼 ${n}匹<br>${m.note}` : `狼 ${n}匹`) + face + boss);
         document.body.dataset.mood = sim.mood ?? '';
+      }
+      if (ev === 'newface' && sim.newface) {
+        bubble.textContent = FACE_LINES[sim.newface];
+        bubble.hidden = false;
+        said = sim.clock;
+        saidLen = 3.2;
       }
       say(ev);
     }
@@ -249,19 +272,23 @@ async function main() {
       tonight.hidden = !tn;
       if (tn) {
         const m = moodOf(tn);
-        const count: Partial<Record<WolfKind, number>> = {};
-        for (const l of nightOf(tn)) count[l.kind] = (count[l.kind] ?? 0) + l.count;
-        tonight.innerHTML = `<b>今夜 ${tn}日目${m ? `・<em>${MOODS[m].name}</em>` : ''}</b>${m ? `<small>${MOODS[m].note}</small>` : ''}<div>${(Object.keys(count) as WolfKind[]).map((k) => `<span><img src="${BASE}wolves/${k}.webp" alt="">${WOLVES[k].name}<i>${count[k]}</i></span>`).join('')}</div>`;
+        const count: { kind: WolfKind; color?: WolfColor; n: number }[] = [];
+        for (const l of nightOf(tn)) {
+          const e = count.find((o) => o.kind === l.kind && o.color === l.color);
+          if (e) e.n += l.count;
+          else count.push({ kind: l.kind, color: l.color, n: l.count });
+        }
+        const face = newColors(tn).map((c) => `<small style="color:${COLORS[c].ui}">新顔：${COLORS[c].name}狼（${COLORS[c].word}）</small>`).join('');
+        tonight.innerHTML = `<b>今夜 ${tn}日目${m ? `・<em>${MOODS[m].name}</em>` : ''}</b>${m ? `<small>${MOODS[m].note}</small>` : ''}${face}<div>${count.map((e) => wolfTag(e.kind, e.color, e.n)).join('')}</div>`;
       }
     }
     // 予告：この晩にまだ来ていない狼
-    const pend = sim.phase === 'wave' ? sim.pending() : {};
+    const pend = sim.phase === 'wave' ? sim.pending() : [];
     const key = JSON.stringify(pend);
     if (key !== lastPending) {
       lastPending = key;
-      const kinds = Object.keys(pend) as WolfKind[];
-      next.hidden = kinds.length === 0;
-      next.innerHTML = '<b>これから</b>' + kinds.map((k) => `<span><img src="${BASE}wolves/${k}.webp" alt="">${WOLVES[k].name} ${pend[k]}</span>`).join('');
+      next.hidden = pend.length === 0;
+      next.innerHTML = '<b>これから</b>' + pend.map((e) => wolfTag(e.kind, e.color, e.n)).join('');
     }
   };
 
