@@ -205,6 +205,7 @@ export class View {
     Assets.load<Texture>(`${import.meta.env.BASE_URL}ui/moon.webp`).then((t) => {
       this.backdrop.moonArt.texture = t;
       this.backdrop.moonArt.visible = true;
+      this.mini.setArt({ moon: t });
       this.lastWave = '';
     }).catch((e) => console.warn('moon', e));
     // 草と小物の絵（手前の草・道の縁）
@@ -216,6 +217,7 @@ export class View {
     // 背景の町並みの絵。読み込めたら背景を作り直す（読めなければ影絵のまま）
     Assets.load<Texture>(`${import.meta.env.BASE_URL}bg/town.webp`).then((t) => {
       this.backdrop.town = t;
+      this.mini.setArt({ town: t });
       this.lastWave = ''; // 次の draw で作り直す
     }).catch((e) => console.warn('town', e));
     // 狼の絵。読み込めなければ箱のまま
@@ -230,6 +232,7 @@ export class View {
       this.house.texture = this.dogArt.tex['house' as DogArt];
       this.house.anchor.set(m.feet[0] / m.size[0], m.feet[1] / m.size[1]);
       this.house.visible = true;
+      this.mini.setArt({ house: this.house.texture, houseFeet: [m.feet[0], m.feet[1]] });
     }).catch((e) => console.warn('dogs', e));
     // 赤ずきんの絵。読み込めなければ箱のまま遊べる（?rig=0 で箱：見比べ用）
     if (new URLSearchParams(location.search).get('rig') !== '0') {

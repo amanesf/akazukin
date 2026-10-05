@@ -2,7 +2,7 @@
 // 「デフォルメしていいけど、こうげきがあたってるとかわかるようにメイン画面を縮小した感じ」）。
 // 主人公・狼・番犬は同じ絵の縮小（大きさは盛る）。当たった光・斬撃・爆発・打ち上げ・煙・家の点滅・いま映している枠。
 // タップするとそこへ駆けつける。
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Sprite, type Texture } from 'pixi.js';
 import { COLORS, DOG_ORDER, DOGS, FIELD_LENGTH, GRAY_FUR, HOUSE_X, WOLF_SPAWN_X, WOLVES } from './config';
 import { place } from './fx';
 import { HeroRig } from './heroRig';
@@ -12,8 +12,18 @@ import { DOG_COLOR, WOLF_COLOR } from './palette';
 
 export class Minimap {
   root = new Container();
+  private sky = new Graphics();
   private g = new Graphics();
   private top = new Graphics();
+  // 背景の絵（2026-10-05 アマネさん「メイン画面みたいにリアルに」）：町並み・紅い月・家。草や小物は入れない（小さいとちらつくだけ）。
+  // 狼や主人公が埋もれないよう、背景は暗く色を抑える
+  private scene = new Container();
+  private townTex: Texture | null = null;
+  private towns: Sprite[] = [];
+  private moon = new Sprite();
+  private house = new Sprite();
+  private houseFeet: [number, number] | null = null;
+  private sceneKey = '';
   private rig = new HeroRig();
   // 狼・番犬も同じ絵の縮小（2026-10-04。前は色の箱で、何がいるか分からなかった）
   private unitBack = new Container();
@@ -27,7 +37,11 @@ export class Minimap {
   // dyer：本画面の狼の絵。色付きの絵はそちらで作ったものを借りる（同じ絵を2枚作らない。2026-10-05 レビュー1）
   constructor(dyer?: UnitArt<string>) {
     dyer?.lend(this.wolfArt);
-    this.root.addChild(this.g, this.unitBack, this.rig.root, this.top);
+    this.moon.anchor.set(0.5);
+    this.moon.visible = false;
+    this.house.visible = false;
+    this.scene.addChild(this.moon, this.house);
+    this.root.addChild(this.sky, this.scene, this.g, this.unitBack, this.rig.root, this.top);
   }
 
   load() {
@@ -40,6 +54,44 @@ export class Minimap {
     this.root.position.set(0, y);
     this.w = W;
     this.h = h;
+  }
+
+  // メイン画面で読み込んだ絵を借りる
+  setArt(a: { town?: Texture; moon?: Texture; house?: Texture; houseFeet?: [number, number] }) {
+    if (a.town) this.townTex = a.town;
+    if (a.moon) { this.moon.texture = a.moon; this.moon.visible = true; }
+    if (a.house) { this.house.texture = a.house; this.houseFeet = a.houseFeet ?? null; this.house.visible = true; }
+    this.sceneKey = '';
+  }
+
+  // 町並みを地図の空の高さに合わせて、左右反転しながら並べる（大きさが変わったときだけ作り直す）
+  private layoutScene() {
+    const key = `${this.w}x${this.h}:${!!this.townTex}`;
+    if (key === this.sceneKey) return;
+    this.sceneKey = key;
+    for (const t of this.towns) t.destroy();
+    this.towns = [];
+    const gy = this.groundY();
+    if (this.townTex) {
+      const k = (gy * 0.78) / this.townTex.height;
+      const tw = this.townTex.width * k;
+      for (let x = 0, n = 0; x < this.w; x += tw, n++) {
+        const sp = new Sprite(this.townTex);
+        sp.scale.set(n % 2 ? -k : k, k);
+        sp.position.set(n % 2 ? x + tw : x, gy + 1 - this.townTex.height * k);
+        this.scene.addChildAt(sp, 0);
+        this.towns.push(sp);
+      }
+    }
+    const r = gy * 0.62;
+    this.moon.width = this.moon.height = r;
+    this.moon.position.set(this.w * 0.8, gy * 0.42);
+    if (this.houseFeet && this.house.texture) {
+      const hk = (this.h * 0.62) / this.house.texture.height;
+      this.house.scale.set(hk);
+      this.house.anchor.set(this.houseFeet[0] / this.house.texture.width, this.houseFeet[1] / this.house.texture.height);
+      this.house.position.set(this.mx(HOUSE_X) - this.house.texture.width * hk * 0.3, this.my(0.55));
+    }
   }
 
   private km() { return (this.w - this.pad * 2) / FIELD_LENGTH; }
@@ -61,28 +113,45 @@ export class Minimap {
   draw(sim: Sim, t: number, view: { x0: number; x1: number }, day: number) {
     const g = this.g.clear();
     const top = this.top.clear();
+    const sky = this.sky.clear();
     const W = this.w;
     const H = this.h;
     const gy = this.groundY();
-    // 枠と空
-    g.rect(0, 0, W, H).fill(day ? 0x2a3442 : 0x0e0a10);
-    g.rect(0, 0, W, gy).fill(day ? 0x5a7898 : 0x1a1020);
-    g.circle(W * 0.82, gy * 0.42, gy * 0.26).fill(day ? 0xf0d890 : 0x8a2a32);
-    g.rect(0, gy, W, H - gy).fill(day ? 0x4a3c30 : 0x2a1e1e);
-    g.rect(0, gy, W, 1).fill({ color: 0x6a5048, alpha: 0.8 });
+    this.layoutScene();
+    // 空と地面（メイン画面の色に寄せる。夜は紫がかった夜空、昼は青空）
+    sky.rect(0, 0, W, H).fill(day ? 0x3a3a3c : 0x120c14);
+    sky.rect(0, 0, W, gy).fill({ color: day ? 0x6a8cb0 : 0x241430 });
+    sky.rect(0, gy * 0.55, W, gy * 0.45).fill({ color: day ? 0xa8c0d8 : 0x3a1a34, alpha: 0.6 });
+    if (!this.moon.visible || day) sky.circle(W * 0.8, gy * 0.42, gy * 0.26).fill(day ? 0xf0d890 : 0x8a2a32);
+    sky.rect(0, gy, W, H - gy).fill(day ? 0x5a4a3a : 0x2a1c20);
+    sky.rect(0, gy, W, 1).fill({ color: 0x6a5048, alpha: 0.8 });
+    // 絵は暗く・色を抑える（狼が浮いて見えるように）
+    for (const t of this.towns) t.tint = day ? 0xb8b4b0 : 0x7a6a80;
+    this.moon.alpha = 1 - day;
+    this.moon.visible = this.moon.visible && !!this.moon.texture;
     g.rect(0, 0, W, 2).fill(0x3a2a30);
     // 家（齧られると赤く点滅）
     const hx = this.mx(HOUSE_X);
     if (sim.fx.some((f) => f.kind === 'bite' && f.t < 0.25)) this.houseBlink = 0.3;
     this.houseBlink -= Math.max(0, Math.min(0.1, t - this.lastT)); // 画面の速さによらず同じ長さ
     this.lastT = t;
-    const hc = this.houseBlink > 0 && Math.floor(t * 20) % 2 ? 0xff4040 : 0x6a5040;
-    g.rect(2, gy - H * 0.28, hx - 1, H * 0.28 + H * 0.36).fill(hc);
-    g.poly([0, gy - H * 0.28, hx + 3, gy - H * 0.28, hx * 0.5, gy - H * 0.44]).fill(0x2a1e22);
-    g.rect(hx * 0.3, gy - H * 0.2, hx * 0.3, H * 0.08).fill({ color: 0xf0c060, alpha: day ? 0.3 : 0.9 });
-    // 裂け目
+    const blink = this.houseBlink > 0 && Math.floor(t * 20) % 2;
+    if (this.house.visible) this.house.tint = blink ? 0xff5050 : day ? 0xd8d4d0 : 0x9a8a98;
+    else {
+      const hc = blink ? 0xff4040 : 0x6a5040;
+      g.rect(2, gy - H * 0.28, hx - 1, H * 0.28 + H * 0.36).fill(hc);
+      g.poly([0, gy - H * 0.28, hx + 3, gy - H * 0.28, hx * 0.5, gy - H * 0.44]).fill(0x2a1e22);
+      g.rect(hx * 0.3, gy - H * 0.2, hx * 0.3, H * 0.08).fill({ color: 0xf0c060, alpha: day ? 0.3 : 0.9 });
+    }
+    // 裂け目：紅い光のにじみと、脈打つ割れ目（メイン画面のように光らせる）
     const rx = this.mx(WOLF_SPAWN_X) + 2;
-    g.moveTo(rx, gy - H * 0.38).lineTo(rx - 3, gy - H * 0.2).lineTo(rx + 2, gy).lineTo(rx - 1, H - 4).stroke({ width: 3 + Math.sin(t * 4), color: 0xff3040, alpha: day ? 0.3 : 0.9 });
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+    const ra = day ? 0.3 : 1;
+    g.ellipse(rx, gy, 9 + pulse * 3, H * 0.5).fill({ color: 0xff2030, alpha: (0.12 + pulse * 0.08) * ra });
+    g.ellipse(rx, gy, 4 + pulse * 2, H * 0.4).fill({ color: 0xff4050, alpha: 0.18 * ra });
+    const crack = () => g.moveTo(rx, gy - H * 0.38).lineTo(rx - 3, gy - H * 0.2).lineTo(rx + 2, gy).lineTo(rx - 1, H - 4);
+    crack().stroke({ width: 5 + pulse * 2, color: 0xff2030, alpha: 0.35 * ra });
+    crack().stroke({ width: 2, color: 0xffd0d0, alpha: 0.9 * ra });
 
     const u = 0.22; // 体の大きさ1あたりの画素（位置より盛る）
     // 番犬と狼：同じ絵の縮小（読めなければ箱）。奥から手前へ
