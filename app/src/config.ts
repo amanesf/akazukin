@@ -95,8 +95,9 @@ export const MOVES: Record<MoveId, MoveSpec> = {
 // 4発目：タップ＝一閃／左右＝突き抜け／上＝空中連舞／下＝地割り／長押し＝零距離主砲。
 // 1〜3発目に違う種類を混ぜるほど締めが強い（格：並・上・極。アマネさん「かっこいい操作もコンボいれるとあんまりしなくなるのはやだ」）。
 // 切れる：次の入力まで window 秒あく／空振り（アマネさん「空振りは切れていい」）／噛まれてひるむ／必殺技／小さい地図で駆けつける
-export type Beat = 'tap' | 'up' | 'down' | 'side';
-export type Finisher = 'issen' | 'tsuki' | 'renbu' | 'jiwari' | 'reishiki';
+// bow：弓で狼を射た拍（2026-10-06 アマネさん「弓にもコンボほしい」）。ナイフと混ぜると種類が増えて締めが強くなる
+export type Beat = 'tap' | 'up' | 'down' | 'side' | 'bow';
+export type Finisher = 'issen' | 'tsuki' | 'renbu' | 'jiwari' | 'reishiki' | 'taiya';
 export const COMBO = {
   beats: 3, // 締めの前の拍
   window: 0.8, // 次の入力までこれだけあくと切れる（秒）
@@ -114,7 +115,9 @@ export const FINISHERS: Record<Finisher, { name: string; key: string; short?: st
   renbu: { name: '空中連舞', key: '↑' },
   jiwari: { name: '地割り', key: '↓' },
   reishiki: { name: '零距離主砲', key: '━', short: '零距離' },
+  taiya: { name: '桜の大矢', key: '➶', short: '大矢' }, // 弓を持って4発目をタップ：奥行き全部を、届く所まで貫く大きな一本
 };
+export const TAIYA = { mul: 4 }; // 桜の大矢の威力（ふつうの矢の何倍。締めの格も掛かる）
 // 矢はほぼまっすぐ速く（2026-10-04 アマネさん「弓矢がもっとまっすぐ飛ぶように。しょぼい」）。矢の雨だけ空から降る（RAIN）
 export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };

@@ -630,18 +630,6 @@ export class View {
       }
       if (over && Math.random() < 0.3) this.parts.puff(cx, by - bh, 0, -30, hh * 0.03, hh * 0.1, 0xf0eef4, 0.4, 0.6);
     }
-    // 弓を持っているとき：頭の横に小さな弓の印（ナイフ⇔弓の持ち替えが見て分かるように）
-    if (!day && h.down <= 0 && sim.weapon === 'bow') {
-      const o = this.overG;
-      const hh = this.heroH(h.lane);
-      const cx = hx + h.facing * hh * 0.3;
-      const cy = top + hh * 0.3; // 頭の前の横
-      const R = hh * 0.07;
-      const f = h.facing;
-      o.moveTo(cx - f * R * 0.4, cy - R).quadraticCurveTo(cx + f * R * 0.9, cy, cx - f * R * 0.4, cy + R).stroke({ width: 3.5, color: 0x5a2a18, alpha: 0.9, cap: 'round' });
-      o.moveTo(cx - f * R * 0.4, cy - R).quadraticCurveTo(cx + f * R * 0.9, cy, cx - f * R * 0.4, cy + R).stroke({ width: 2, color: 0xffb0d0, alpha: 0.95, cap: 'round' });
-      o.moveTo(cx - f * R * 0.4, cy - R).lineTo(cx - f * R * 0.4, cy + R).stroke({ width: 1, color: 0xffffff, alpha: 0.8 });
-    }
     // 主人公の体力の棒（減ったときだけ）
     if (!day && h.down <= 0 && h.hp < sim.maxHp) {
       const w = this.heroH(h.lane) * 0.42;

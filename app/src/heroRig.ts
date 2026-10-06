@@ -242,14 +242,16 @@ export class HeroRig {
     const run = h.running > 0 && h.down <= 0 && h.charge < 0;
     const fast = h.running > 400 || h.running === 2;
     const legSwing = 0;
+    // 弓を持っているあいだは、待つのも走るのも弓を構えた絵（2026-10-06 アマネさん「弓状態で弓持ってない。弓持たせて」。走る弓の絵はまだ無い）
+    const bow = sim.phase === 'wave' && sim.weapon === 'bow';
     if (run && !h.move) {
       this.walkT += dt * (fast ? 22 : 16);
-      frame = Math.sin(this.walkT) >= 0 ? 'run1' : 'run2';
+      frame = bow ? 'loose' : Math.sin(this.walkT) >= 0 ? 'run1' : 'run2';
       lift += Math.abs(Math.cos(this.walkT)) * (fast ? 30 : 22);
       lean = (fast ? 6 : 3) * D;
     } else if (!h.move && h.down <= 0) {
       // 狼が近い・技を出した直後は構え、何もなければ力を抜いて待つ（技の合間に切り替わると落ち着かなかった）
-      frame = this.alert > 0 ? 'idle' : 'calm';
+      frame = bow ? 'loose' : this.alert > 0 ? 'idle' : 'calm';
       // 待機：ゆっくり少し上下して、わずかに揺れるだけ。絵を伸び縮みさせると気持ち悪かった（2026-10-04 アマネさん「縮んで気持ち悪い」）。
       // 生きている感じは、しっぽ・裾・耳の揺れものに任せる
       lift += (1 - Math.cos(t * 2.2)) * 4;

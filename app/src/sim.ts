@@ -2,7 +2,7 @@
 // 指一本アクション（2026-10-04）：プレイヤーの指で技を出す。自動の攻撃はない（2026-10-05）。タップは持っている武器（ナイフ／弓）で攻撃。
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
-  BASIC, BODY, BOW, BOW_FLIGHT, KNIFE, RANGED, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
+  BASIC, BODY, BOW, BOW_FLIGHT, KNIFE, RANGED, TAIYA, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
   DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus, specialCost,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Special, type Track, type UpId, type WolfColor, type WolfKind,
@@ -387,7 +387,10 @@ export class Sim {
         return true;
       }
     }
+    const fin = this.atFinish; // 4発目：桜の大矢
     this.startMove('bow', t?.id ?? 0, clamp(h.x + dir * Math.min(range, Math.abs(x - h.x) || range), HOUSE_X, WOLF_SPAWN_X));
+    if (fin) this.startFinish('taiya');
+    else h.beat = 'bow';
     return true;
   }
 
@@ -1409,9 +1412,22 @@ export class Sim {
     if (id === 'tosshin') return;
     if (id === 'bow') {
       const t = h.moveTarget ? this.wolves.find((w) => w.id === h.moveTarget) : undefined;
+      if (h.fin === 'taiya') {
+        // 桜の大矢：奥行き全部を、届く所まで貫く大きな一本（必殺技の大きな矢と同じ見た目）
+        const dir = t ? Math.sign(t.x - h.x) || h.facing : (Math.sign(h.dashTo - h.x) || h.facing);
+        this.loose(clamp(h.x + dir * this.bowRange, HOUSE_X, WOLF_SPAWN_X), h.lane, dmg * TAIYA.mul, 0, false, 0, 999);
+        const a = this.arrows[this.arrows.length - 1];
+        a.giant = true;
+        a.flight = 0.28;
+        a.endX = undefined;
+        this.landMove(true);
+        return;
+      }
       // 矢は狙った狼を追いかける（外れて地面に刺さるのが多かった）。狙う狼がいなければ、触った側へ空撃ち
       if (t) this.loose(t.x, t.lane, dmg, 0, false, t.id);
       else this.loose(h.dashTo, h.lane, dmg);
+      // 弓のコンボ：狙う狼がいれば拍に数える（空撃ちは切れる）
+      this.landMove(!!t);
       // 下段「矢を2本ずつ放つ」：2本目は狙った狼のそばの別の狼へ（いなければ同じ狼へ、少し遅れて）
       if (this.has('twin')) {
         const range = this.bowRange;

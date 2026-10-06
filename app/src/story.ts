@@ -191,13 +191,14 @@ const FIN_TEXT: Record<Finisher, [string, string, string]> = { // [入力, 武�
   renbu: ['上にはじく', 'knife', '打ち上げて宙で追い打ち3回、最後に叩きつける（自動で続く）'],
   jiwari: ['下にはじく', 'knife', '地面を割って、まわりの狼をまとめて打ち上げる'],
   reishiki: ['長押し', 'cannon', 'ほんの少しの溜めで、満タンの主砲を目の前に撃ち込む'],
+  taiya: ['弓でタップ', 'bow', '奥行き全部を、届く所まで貫く大きな一本。弓だけでもコンボがつながる（射た矢が狼に向かえば1拍）'],
 };
 const SP_TEXT: Record<Special, string> = {
   senbon: '斬りで溜まる。桜の竜巻で狼を吸い寄せ、ナイフを手に画面の左右を駆け抜け、最後にまわりをダンとすべて弾く',
   nagare: '弓で溜まる。竜巻で吸い寄せ、跳んで矢を撃ち下ろし、最後に大きな一本ですべてを貫く',
   midare: '主砲で溜まる。竜巻で吸い寄せ、まわりの狼に光の弾をズババババと撃ち込み、最後にズドン',
 };
-const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki'];
+const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki', 'taiya'];
 const SP_ORDER: Special[] = ['senbon', 'nagare', 'midare'];
 const moveRow = (key: string, name: string, icon: string, text: string) =>
   `<li><span class="key">${key}</span><b><img src="${B}ui/icons/${icon}.webp" alt="">${name}</b><p>${text}</p></li>`;

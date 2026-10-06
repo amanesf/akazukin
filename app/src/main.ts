@@ -131,14 +131,14 @@ async function main() {
   let lastMarks = '';
   const legend = document.getElementById('legend')!;
   // 2026-10-05 コンボを4拍子に。1段目は基本の操作（はじくは上下左右をまとめる）、2段目は4発目の締め（3拍打つと光る）
-  const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki'];
+  const FIN_ORDER: Finisher[] = ['issen', 'tsuki', 'renbu', 'jiwari', 'reishiki', 'taiya'];
   legend.innerHTML = `<div class="row"><span>${ICON('tap')}<b>タップ</b>斬る</span><span><i>✥</i><b>はじく</b>技</span><span>${ICON('cannon')}<b>長押し</b>主砲</span></div>`
     + `<div class="row fin">${FIN_ORDER.map((f) => `<span><i>${FINISHERS[f].key}</i>${FINISHERS[f].short ?? FINISHERS[f].name}</span>`).join('')}</div>`;
   const legendFin = legend.querySelector('.fin') as HTMLElement;
   // 打った拍（桜の印）と、決まった締めの名前
   const beatsEl = document.getElementById('beats')!;
   const finEl = document.getElementById('finname')!;
-  const BEAT_MARK: Record<Beat, string> = { tap: '斬', up: '↑', down: '↓', side: '⇆' };
+  const BEAT_MARK: Record<Beat, string> = { tap: '斬', up: '↑', down: '↓', side: '⇆', bow: '弓' };
   let lastBeats = '';
   let lastFin = 0;
   // 桜嵐で倒した数（締めのあとに「○体撃破」と大きく出す）
