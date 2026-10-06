@@ -1,7 +1,7 @@
 /*
  * 素朴な自動操作（指一本アクションの版・2026-10-05 タップ＝持っている武器で攻撃・自動の攻撃なし・主砲の熱）。撮影（capture.js）と難しさの計測（balance.mjs）で同じものを使う。
  * 0.1秒ごとに呼ぶ（指を動かすのは1秒に4回まで）。mem は呼び出しをまたいで覚えておく入れ物。
- *   昼：下段（特殊）を買えるだけ（番犬→主砲→弓→ナイフ→体力の順）、残りは上段（基本）を安い順に。家が傷んでいれば直す。番犬は自分で動く（dogs=false なら全員休ませる＝計測用）
+ *   昼：下段（特殊）をいちばん覚えていない列から買えるだけ、残りは上段（基本）を安い順に（下段の半分の銭は取っておく）。番犬は自分で動く（dogs=false なら全員休ませる＝計測用）
  *   夜：近い狼にはナイフでタップ（連撃の途中で上・下にはじく）。離れた狼には弓に持ち替えてタップ。離れた群れへは突進。家に狼が迫れば地図で駆けつける。
  *       群れが目の前に3匹以上なら溜めて主砲（熱があふれそうなら撃たない）。桜嵐は溜まったら押す
  * 文字列にしてページの中でも動かすので、外の変数は使わない。
@@ -10,7 +10,9 @@ export function bot(s, mem, dogs = true) {
   if (s.phase === 'shop') {
     for (let i = 0; i < 40; i++) {
       let bought = false;
-      for (const t of ['dog', 'cannon', 'bow', 'knife', 'body']) if (s.buy(t, 'special')) bought = true;
+      // 下段：いちばん覚えていない列から（同じなら 番犬→主砲→弓→ナイフ→体力）。値段は全体で買った数で上がるので、1つずつ
+      const order = ['dog', 'cannon', 'bow', 'knife', 'body'].sort((a, b) => s.special[a] - s.special[b]);
+      for (const t of order) if (s.buy(t, 'special')) { bought = true; break; }
       if (bought) continue;
       // 下段がまだ残っているなら、その分は少し取っておく（上段ばかり買って下段に届かない、を避ける）
       const next = Math.min(...['dog', 'cannon', 'bow', 'knife', 'body'].map((t) => s.specialCost(t)));
