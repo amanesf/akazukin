@@ -91,7 +91,13 @@ for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), (
                           # まっすぐ立った bowsky の背（頭巾の上 242行目〜ブーツの下 1153行目＝911画素。上に出た弓は除く）を構えにそろえる
                           ('gunbow', 911, ('fire', 'recoil', 'bowdash', 'bowsky')),
                           # 2026-10-06 ナイフを手に描いた構え・振りかぶり・突き・ナイフ投げ（hero-knife-basic-v1）。前の構え・振りかぶり・突きはナイフを拳に差し込んでいた
-                          ('knifebasic', 'guard', ('guard', 'raise', 'thrust', 'toss2'))):
+                          ('knifebasic', 'guard', ('guard', 'raise', 'thrust', 'toss2')),
+                          # 2026-10-06 弓でひるむ・弓で溜める・弓を持って落ちる・ナイフを持って落ちる（hero-bow-extra-v1）。立った人がいない。
+                          # 頭の大きさ（目と目のあいだ）が bowcalm とほぼ同じなので、bowcalm と同じ倍率
+                          ('bowextra', int(height(cv2.imread('assets/game/parts/bowrun/bowcalm.png', cv2.IMREAD_UNCHANGED))), ('bowknock', 'bowcharge', 'bowfall', 'fall')),
+                          # 2026-10-06 弓を下げて待つ絵の表情7つ（hero-bow-faces-a-v1・b-v1。頭だけ bowcalm に重ねてある＝tools/face-swap-bow.py）
+                          ('bowfaces', int(height(cv2.imread('assets/game/parts/bowrun/bowcalm.png', cv2.IMREAD_UNCHANGED))),
+                           ('bowhappy', 'bowwink', 'bowcry', 'bowsmug', 'bowteary', 'bowyawn', 'bowsurprised'))):
     if isinstance(ref, int):
         k = height(p1) / ref
     else:
@@ -100,7 +106,7 @@ for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), (
         img = cv2.imread(f'assets/game/parts/{sheet}/{name}.png', cv2.IMREAD_UNCHANGED)
         img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
         f = feet(img)
-        if sheet in ('motion', 'knifeact') or name in ('recoil', 'bowdash', 'thrust') or name in ('dash', 'rise', 'knock', 'cheer', 'bowrun1', 'bowrun2'):
+        if sheet in ('motion', 'knifeact') or name in ('recoil', 'bowdash', 'thrust') or name in ('dash', 'rise', 'knock', 'cheer', 'bowrun1', 'bowrun2', 'bowknock', 'bowcharge', 'bowfall', 'fall'):
             # 足が前後に開いた絵は、足の真ん中ではなくスカートの真ん中（背の高さの62〜72%の行の、不透明な所の端と端の真ん中）を基準にする。
             # 腰の高さはしっぽとナイフが横に出ていてずれる。
             # 一番下の足を基準にすると、走りの2コマで体が左右へ跳んだ

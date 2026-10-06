@@ -1,0 +1,8 @@
+Edit image 1, a sprite sheet of three figures of the same girl. Keep everything exactly as it is in image 1: the same three figures at the same positions and sizes, the same relaxed standing pose, the same red bow, hood, cape, braids, clothes, tail, boots, the same flat light gray background, the same art style, line weight, colors and cel shading. Do not move, resize or redraw any part of the bodies, arms, bow or clothes.
+
+Change only the face of each figure (eyes, eyebrows, mouth, cheeks), and nothing else:
+1. Teary-eyed but brave: big glossy eyes brimming with tears, eyebrows worried, lips pressed in a small wobbly line.
+2. Big yawn: eyes squeezed closed, mouth wide open in a big round yawn, a tiny tear in the corner of one eye.
+3. Surprised: eyes wide open and round, small round open mouth, eyebrows high.
+
+The heads, hood and wolf ears keep exactly the same shape and position as in image 1.

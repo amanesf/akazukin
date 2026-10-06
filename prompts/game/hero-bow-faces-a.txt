@@ -1,0 +1,9 @@
+Edit image 1, a sprite sheet of four figures of the same girl. Keep everything exactly as it is in image 1: the same four figures at the same positions and sizes, the same relaxed standing pose, the same red bow, hood, cape, braids, clothes, tail, boots, the same flat light gray background, the same art style, line weight, colors and cel shading. Do not move, resize or redraw any part of the bodies, arms, bow or clothes.
+
+Change only the face of each figure (eyes, eyebrows, mouth, cheeks), and nothing else:
+1. Happy: a big bright open-mouthed smile, eyes closed into happy upward arcs, a small blush.
+2. Wink: a playful wink with the left eye closed, the other eye open and sparkling, a cheerful closed-mouth smile.
+3. Hurt: eyes squeezed shut in a ">_<" shape, mouth open in a small cry, eyebrows pinched.
+4. Smug and proud: a confident little closed-mouth smirk, half-lidded eyes looking sideways, eyebrows raised, a small blush. A cute "doya" face.
+
+The heads, hood and wolf ears keep exactly the same shape and position as in image 1.

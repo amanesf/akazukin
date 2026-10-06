@@ -880,7 +880,8 @@ export class Sim {
       this.finale = -1;
       return;
     }
-    // 最後の1匹：すぐ昼にせず、スローで見せてから
+    // 最後の1匹：すぐ昼にせず、スローで見せてから。桜嵐の途中なら、締めまで見せてから（途中で決めポーズに瞬間移動していた）
+    if (this.finale < 0 && this.hero.ouran > 0) return;
     if (this.finale < 0) {
       this.finale = FINALE + CHEER;
       this.punch = 1;

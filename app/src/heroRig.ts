@@ -12,7 +12,12 @@ import type { Sim } from './sim';
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock'
   | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet'
   | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready' | 'plunge' | 'finish' | 'aircut' | 'spin'
-  | 'fire' | 'recoil' | 'bowdash' | 'bowsky' | 'guard' | 'raise' | 'thrust' | 'toss2';
+  | 'fire' | 'recoil' | 'bowdash' | 'bowsky' | 'guard' | 'raise' | 'thrust' | 'toss2'
+  | 'bowknock' | 'bowcharge' | 'bowfall' | 'fall' | 'bowhappy' | 'bowwink' | 'bowcry' | 'bowsmug' | 'bowteary' | 'bowyawn' | 'bowsurprised';
+// 弓を持っているときの顔（2026-10-06 生成 hero-bow-faces。弓を下げて待つ絵に頭だけ重ねた）。前は弓を持つと顔が変わらなかった
+const BOW_FACE: Partial<Record<FrameName, FrameName>> = {
+  happy: 'bowhappy', wink: 'bowwink', cry: 'bowcry', smug: 'bowsmug', teary: 'bowteary', yawn: 'bowyawn', surprised: 'bowsurprised',
+};
 type Gesture = 'stretch' | 'petal' | 'toss' | 'hood';
 // しぐさの長さ（秒）。伸びのあとは、あくびの顔で少し待つ
 const GESTURE: Record<Gesture, number> = { stretch: 2.2, petal: 1.9, toss: 1.5, hood: 1.5 };
@@ -63,7 +68,8 @@ const MESH_STEP = 12; // 網目の細かさ（画素）
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
 const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock',
-  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin', 'fire', 'recoil', 'bowdash', 'bowsky', 'guard', 'raise', 'thrust', 'toss2'];
+  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin', 'fire', 'recoil', 'bowdash', 'bowsky', 'guard', 'raise', 'thrust', 'toss2',
+  'bowknock', 'bowcharge', 'bowfall', 'fall', 'bowhappy', 'bowwink', 'bowcry', 'bowsmug', 'bowteary', 'bowyawn', 'bowsurprised'];
 // ナイフを拳に差し込んでいた絵は、ナイフを手に描いた絵に差し替える（2026-10-06 生成 hero-knife-basic-v1。描き込みが他の絵とそろう）。
 // ナイフ投げも、宙のナイフを描いた絵に（宙のナイフは動かない）
 const DRAWN: Partial<Record<FrameName, FrameName>> = { idle: 'guard', up: 'raise', strike: 'thrust', toss: 'toss2' };
@@ -362,7 +368,7 @@ export class HeroRig {
     // 溜め：しゃがんで力をためる。満タンで小刻みに震えて光る
     if (h.charge >= 0) {
       const c = Math.min(1, h.charge / sim.chargeFull);
-      frame = 'charge'; // しゃがんでナイフを胸の前で交差させる（2026-10-04 生成）
+      frame = bow ? 'bowcharge' : 'charge'; // しゃがんでナイフを胸の前で交差させる（2026-10-04 生成）。弓のときは弓を胸の前に構える（2026-10-06 生成）
       sy = 1 - 0.08 * c;
       sx = 1 + 0.05 * c;
       lean = -4 * D * c;
@@ -386,8 +392,8 @@ export class HeroRig {
         else if (wind) {
           const a = ((e - OURAN.wind) / (OURAN.final - OURAN.wind)) * Math.PI * 4;
           squash = Math.max(0.6, Math.abs(Math.cos(a)));
-          frame = Math.cos(a) < 0 ? 'back' : 'idle';
-        } else { frame = 'strike'; lean = 22 * D * Math.max(0, 1 - (e - OURAN.final) * 3); sy = 0.85; sx = 1.12; }
+          frame = Math.cos(a) < 0 ? 'spin' : 'idle'; // 背中側は、ナイフを持って両手を広げて回る絵（back は何も持っていなくて、半回転ごとに刃が消えた）
+        } else { frame = 'plunge'; lean = 0; sy = 0.85; sx = 1.12; } // ダン：両手のナイフを真下へ突き下ろす（前は前へ突く絵だった）
       } else if (h.special === 'midare') {
         // 足を踏ん張って撃ちまくる（撃つたびに少しのけぞる）→ 溜める → ズドン
         if (e < OURAN.rush) frame = 'idle';
@@ -403,13 +409,14 @@ export class HeroRig {
       }
       if (end) tint = 0xffffff;
     }
-    if (h.stun > 0 && !m) { frame = 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
+    if (h.stun > 0 && !m) { frame = bow ? 'bowknock' : 'knock'; lean = -6 * D; sx = 0.94; sy = 1.04; } // ひるみ：のけぞる（>_<・ナイフは持ったまま）
     // 待機のしぐさ：力を抜いた待機が続いたら始める。ほかの姿になったらすぐやめる
     let prop = 0;
-    if (frame === 'calm' && !this.face && h.ouran <= 0 && h.stun <= 0) {
+    if ((frame === 'calm' || frame === 'bowcalm') && !this.face && h.ouran <= 0 && h.stun <= 0) {
       this.idleFor += dt;
       if (!this.gesture && this.idleFor > this.nextGesture) {
-        const all = Object.keys(GESTURE) as Gesture[];
+        // 弓のときは伸び（あくび）だけ。ほかのしぐさの絵はナイフを持っている
+        const all = bow ? (['stretch'] as Gesture[]) : (Object.keys(GESTURE) as Gesture[]);
         this.gesture = { name: all[Math.floor(Math.random() * all.length)], t: 0 };
       }
     } else {
@@ -426,17 +433,22 @@ export class HeroRig {
         this.nextGesture = (sim.phase === 'shop' ? 3 : 4) + Math.random() * 4;
       } else {
         prop = gs.t / len;
-        frame = gs.name === 'stretch' && gs.t > 1.3 ? 'yawn' : gs.name;
-        if (gs.name === 'stretch' && gs.t < 1.3) lift += Math.sin(Math.min(1, gs.t / 0.5) * Math.PI * 0.5) * 10; // つま先立ち
+        frame = bow ? 'bowyawn' : gs.name === 'stretch' && gs.t > 1.3 ? 'yawn' : gs.name; // 弓のときは、弓を下げたままあくびだけ
+        if (gs.name === 'stretch' && gs.t < 1.3 && !bow) lift += Math.sin(Math.min(1, gs.t / 0.5) * Math.PI * 0.5) * 10; // つま先立ち
         if (gs.name === 'hood' && Math.abs(gs.t - 0.5) < dt) this.earKick += 8; // 直した耳がぴょこっ
         lean = 0;
       }
     }
     if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && this.face) frame = this.face.name;
     else if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && low) frame = 'teary'; // 体力が少ない：涙目でがんばる
+    else if ((frame === 'bowcalm' || frame === 'bowready') && !m && (this.face || low)) frame = BOW_FACE[this.face ? this.face.name : 'teary'] ?? frame; // 弓のときも顔を変える
     // 宙にいるあいだ（技のあと落ちてくるところ）は跳んだ姿。立った姿のまま浮くとおかしかった
-    // 必殺技のあいだは除く（桜流れ矢で跳んでいるあいだ、ナイフで斬り上げる絵になって弓を持っていなかった）
-    if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0 && h.ouran <= 0) { frame = 'rise'; lean = h.vz < 0 ? 4 * D : -4 * D; }
+    // 必殺技のあいだは除く（桜流れ矢で跳んでいるあいだ、ナイフで斬り上げる絵になって弓を持っていなかった）。
+    // 上がっている間は斬り上げの絵、落ちてくるときは足を曲げて降りる絵（2026-10-06 生成。前は落ちるときも斬り上げの絵だった）。弓のときは弓を持って降りる絵
+    if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0 && h.ouran <= 0) {
+      frame = bow ? 'bowfall' : h.vz > 0 ? 'rise' : 'fall';
+      lean = h.vz < 0 ? 4 * D : -4 * D;
+    }
     // 晩の最後の1匹：スローのあいだは振り抜いたまま見せ、スローが明けてから拳を上げる（2026-10-04 アマネさん「拳あげる早すぎ」）。
     // 上げる瞬間に少し沈んで跳ねる
     // 決めポーズは晩ごとに替える（ピース・跳んで万歳・主砲を担いでどや・お辞儀）。そのあと、寄ってきた番犬をしゃがんでなでる
