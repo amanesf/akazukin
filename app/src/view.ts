@@ -2238,7 +2238,9 @@ export class View {
       const H = this.geo.Hm;
       for (let ln = 0; ln <= 1.001; ln += 0.25) {
         const y = this.wy(ln) - H * 0.03;
-        for (let i = 0; i < 3; i++) crescent(o, x - v.dir * i * 12, y, H * (0.07 - i * 0.015), v.dir > 0 ? -Math.PI * 0.35 : Math.PI * 0.65, v.dir > 0 ? Math.PI * 0.35 : Math.PI * 1.35, 9 - i * 2.5, 0xff3040, 0.9 - i * 0.25);
+        // 光の層に：紅いにじみの上に、芯の明るい三日月（加算で光る）
+        crescent(L, x, y, H * 0.07, v.dir > 0 ? -Math.PI * 0.35 : Math.PI * 0.65, v.dir > 0 ? Math.PI * 0.35 : Math.PI * 1.35, 22, 0xff2030, 0.3);
+        for (let i = 0; i < 3; i++) crescent(L, x - v.dir * i * 12, y, H * (0.07 - i * 0.015), v.dir > 0 ? -Math.PI * 0.35 : Math.PI * 0.65, v.dir > 0 ? Math.PI * 0.35 : Math.PI * 1.35, 9 - i * 2.5, i ? 0xff3040 : 0xff8090, 0.9 - i * 0.25);
       }
     }
     // 数字：跳ねて上へ消える。出た瞬間に大きく、すぐ締まる。大きい一撃は大きく黄色く
