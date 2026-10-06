@@ -84,6 +84,7 @@ export class View {
   private impact = 0; // 白い影の残り（秒。画面の時計）
   private splitLayer = new Container(); // 斬られて上下にずれる狼の影
   private splits: { top: Container; bot: Container; t: number; dir: number; hh: number; x: number; y: number; a: number }[] = [];
+  private heroAim = (4 / 3) * Math.PI; // 主砲の向き。小さい地図も同じ向きにする（2026-10-06 アマネさん「主砲の向きがメイン画面とミニマップでズレてる」）
   private crests: { x: number; lane: number; r: number; t: number }[] = []; // 主砲の跡に焼き付く桜の紋
   private branch: { t: number; big: boolean } | null = null; // 連撃の節目に画面の縁から伸びる桜の枝
   private lastCombo = 0;
@@ -594,7 +595,8 @@ export class View {
     this.petShift += (petWant - this.petShift) * Math.min(1, dt * 12);
     this.petLift += (liftWant - this.petLift) * Math.min(1, dt * 12);
     const hy = this.wy(h.lane) - this.petLift;
-    const pose = this.rig.pose(sim, hx + this.petShift, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.gunAim(sim, hx, hy));
+    this.heroAim = this.gunAim(sim, hx, hy);
+    const pose = this.rig.pose(sim, hx + this.petShift, hy, this.heroH(h.lane), this.vt, this.zk() * 0.75, this.heroAim);
     if (pose) {
       // ガス灯の近くでは、ほんのり橙に照らされる
       const lamp = this.lamps.find((l) => Math.abs(l.x - h.x) < 80);
@@ -707,7 +709,7 @@ export class View {
 
     // ── 画面に固定の演出 ──
     this.drawScreen(sim, dt, z, ox);
-    this.mini.draw(sim, this.vt, { x0: (0 - ox) / z / g.K, x1: (g.W - ox) / z / g.K }, day);
+    this.mini.draw(sim, this.vt, { x0: (0 - ox) / z / g.K, x1: (g.W - ox) / z / g.K }, day, this.heroAim);
   }
 
   // ── 出来事 → 演出 ──

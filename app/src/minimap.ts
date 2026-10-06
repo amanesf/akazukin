@@ -111,7 +111,8 @@ export class Minimap {
 
   private lastT = 0;
 
-  draw(sim: Sim, t: number, view: { x0: number; x1: number }, day: number) {
+  // aim：メイン画面の主砲の向き（ここで計算し直すと縮み方の違いでずれる）
+  draw(sim: Sim, t: number, view: { x0: number; x1: number }, day: number, aim?: number) {
     const g = this.g.clear();
     const top = this.top.clear();
     const sky = this.sky.clear();
@@ -198,7 +199,7 @@ export class Minimap {
     const h = sim.hero;
     const px = this.mx(h.x);
     const py = this.my(h.lane);
-    const pose = this.rig.pose(sim, px, py, H * 0.46, t, 0.12); // 大きすぎて狼が点に見えた
+    const pose = this.rig.pose(sim, px, py, H * 0.46, t, 0.12, aim); // 大きすぎて狼が点に見えた
     if (pose) {
       this.rig.apply(pose);
     } else g.rect(px - 2, py - H * 0.5, 4, H * 0.5).fill(0xc0303a);

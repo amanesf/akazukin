@@ -415,7 +415,6 @@ async function main() {
     store.clear();
     sim = new Sim(seed());
   };
-  // 家が落ちた：その晩の前の昼に戻る。負けた晩に拾った銭は残さない（2026-10-04・アマネさん）
   // 負けたら前の昼に戻る。その夜に拾った銭は残す（2026-10-05 アマネさん「負けてもお金は残るように」。強化して挑み直せる）
   const retry = () => {
     const losses = sim.losses;
