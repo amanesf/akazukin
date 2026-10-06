@@ -566,8 +566,21 @@ export class Particles {
     for (let i = 0; i < 9; i++) this.petal(x, y, s, rnd(-260, 260), rnd(-380, -80), rnd(1, 1.8));
   }
 
+  // 花が花びらにほどける
+  private burst(p: P) {
+    for (let i = 0; i < 5; i++) {
+      const a = p.rot - Math.PI / 2 + (i * Math.PI * 2) / 5;
+      const s = p.size / 22;
+      this.petal(p.x + Math.cos(a) * p.size * 0.5, p.y + Math.sin(a) * p.size * 0.5, s, Math.cos(a) * 160, Math.sin(a) * 160 - 60, rnd(0.6, 1));
+    }
+    this.ring(p.x, p.y, p.size * 0.3, p.size * 1.3, 2, 0xffc0d8, 0.25);
+  }
+
   update(dt: number) {
     const keep: P[] = [];
+    // 粒を進めているあいだに新しい粒を足すと、数が上限のとき一番古い粒が外されて絵が返されるのに、keep に残ってしまう
+    // （次の draw で絵が無くて止まった。2026-10-06 アマネさん「第2ステージでフリーズ」）。足すのは進め終わってから
+    const later: (() => void)[] = [];
     for (const p of this.ps) {
       p.t += dt;
       if (p.t >= p.life) {
@@ -586,17 +599,12 @@ export class Particles {
       if (p.kind === 'petal') {
         p.x += Math.sin(p.t * 7 + p.rot) * 30 * dt; // ひらひら
         // 表がこちらを向いた一瞬、月の光にきらっと光る（5枚に1枚）
-        if (p.tw && Math.abs(Math.cos(p.rot * 0.7)) > 0.97 && Math.random() < dt * 3) this.flare(p.x, p.y, p.size * 5, 0xfff0f6, 0.22);
+        if (p.tw && Math.abs(Math.cos(p.rot * 0.7)) > 0.97 && Math.random() < dt * 3) later.push(() => this.flare(p.x, p.y, p.size * 5, 0xfff0f6, 0.22));
       }
       if (p.kind === 'flower' && !p.done && p.t > p.life * 0.5) {
         // 花びらにほどけて散る
         p.done = true;
-        for (let i = 0; i < 5; i++) {
-          const a = p.rot - Math.PI / 2 + (i * Math.PI * 2) / 5;
-          const s = p.size / 22;
-          this.petal(p.x + Math.cos(a) * p.size * 0.5, p.y + Math.sin(a) * p.size * 0.5, s, Math.cos(a) * 160, Math.sin(a) * 160 - 60, rnd(0.6, 1));
-        }
-        this.ring(p.x, p.y, p.size * 0.3, p.size * 1.3, 2, 0xffc0d8, 0.25);
+        later.push(() => this.burst(p));
       }
       if (p.kind === 'bokeh') p.y += Math.sin(p.t * 2.2 + p.rot) * 40 * dt; // ゆったり揺れる
       if (p.y > p.floor) {
@@ -607,6 +615,7 @@ export class Particles {
       keep.push(p);
     }
     this.ps = keep;
+    for (const f of later) f();
   }
 
   draw() {

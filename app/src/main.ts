@@ -23,7 +23,8 @@ const store = {
     if (debug) return debugSave;
     try {
       const d = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
-      return d && (d.v === 1 || d.v === 2 || d.v === 3) ? d : null;
+      // 2026-10-06：v4（武器の持ち替えが入った版）を読み落としていて、続きからも、負けたときの戻り先も消えていた
+      return d && (d.v === 1 || d.v === 2 || d.v === 3 || d.v === 4) ? d : null;
     } catch {
       return null;
     }
@@ -525,7 +526,14 @@ async function main() {
     overlays();
   };
   view.app.ticker.add((t) => {
-    if (!manual) frame((t.deltaMS / 1000) * SPEED);
+    // 1コマで投げられた例外で、Pixi の時計ごと止まって画面が固まった（2026-10-06）。記録して次のコマへ進む
+    if (!manual) {
+      try {
+        frame((t.deltaMS / 1000) * SPEED);
+      } catch (e) {
+        console.error(e);
+      }
+    }
     if (sim.result !== shown) {
       shown = sim.result;
       running = false;
