@@ -176,7 +176,7 @@ export function night(n: number): SpawnLine[] {
     king: 0,
   };
   if (md === 'mure') weight.pup *= 4;
-  if (md === 'yoroi') weight.armored *= 3;
+  if (md === 'yoroi') weight.armored *= 2; // 2026-10-06 3倍だと46晩で鎧狼が20匹（ふつうの晩の約3倍）になり、自動操作がそこで止まった
   if (md === 'toboe') weight.howler *= 3;
   const total = kinds.reduce((a, k) => a + weight[k], 0);
   for (const k of kinds) {

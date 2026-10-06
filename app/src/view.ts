@@ -131,7 +131,7 @@ export class View {
   private seenArrows = new WeakSet<object>();
   private beamGeo = new Map<number, { x0: number; y0: number; x1: number; y1: number }>(); // 乱れ撃ちの光線の道（撃った瞬間に決める）
   private shellAt = new WeakMap<object, { dx: number; dy: number }>(); // 砲弾が出た砲口（砲弾の位置からのずれ）
-  private arrowAim = new WeakMap<object, { x: number; lane: number; z: number; rel: (typeof WOLF_REL)[keyof typeof WOLF_REL] | null }>(); // 矢の行き先（放った瞬間に決めて動かさない）
+  private arrowAim = new WeakMap<object, { x: number; lane: number; z: number; rel: (typeof WOLF_REL)[keyof typeof WOLF_REL] | null; leg: number; dy: number }>(); // 矢の行き先（放った瞬間に決めて動かさない）
   private wolfBoxes: { id: number; lane: number; x0: number; x1: number; y0: number; y1: number }[] = []; // 描いた狼の絵の範囲（世界の座標）。タップで狼を選ぶ
   private xf = { z: 1, ox: 0, oy: 0 }; // 世界→画面
 
@@ -2099,17 +2099,27 @@ export class View {
       const hh = this.heroH(a.fromLane);
       const S = a.giant ? 3 : a.big ? 1.7 : 1; // 必殺技の矢は大きく
       // 弓の絵の矢の高さ（足もとから背の73%・前へ30%）から放つ（55%だと腰のあたりから出て見えた。2026-10-04 アマネさん）
-      const x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;
-      const y0 = this.wy(a.fromLane) - hh * 0.73 - (a.fromZ ?? 0) * this.zk() * 0.75;
       let aim = this.arrowAim.get(a);
       if (!aim) {
         const tw = !a.rain ? sim.wolves.find((w) => w.id === a.target) : undefined;
-        aim = tw ? { x: tw.x, lane: tw.lane, z: tw.z, rel: WOLF_REL[tw.kind] } : { x: a.toX, lane: a.lane, z: 0, rel: null };
+        aim = tw ? { x: tw.x, lane: tw.lane, z: tw.z, rel: WOLF_REL[tw.kind], leg: 0, dy: 0 } : { x: a.toX, lane: a.lane, z: 0, rel: null, leg: 0, dy: 0 };
         this.arrowAim.set(a, aim);
       }
-      const hd = aim.rel !== null ? this.wolfHead(aim.x, aim.lane, aim.z, aim.rel) : null;
-      const x1 = hd ? hd.x : this.wx(aim.x);
-      const y1 = hd ? hd.y : a.giant ? y0 : this.wy(aim.lane) - (a.rain ? this.geo.Hm * 0.05 : hh * 0.4);
+      let x0: number, y0: number, x1: number, y1: number;
+      if (a.leg) {
+        // 狙った狼を抜けたあと：当たった高さのまま、届く所までまっすぐ
+        x0 = this.wx(a.fromX);
+        y0 = this.wy(a.fromLane) + aim.dy;
+        x1 = this.wx(a.toX);
+        y1 = this.wy(a.lane) + aim.dy;
+      } else {
+        x0 = this.wx(a.fromX) + Math.sign(a.toX - a.fromX) * hh * 0.3;
+        y0 = this.wy(a.fromLane) - hh * 0.73 - (a.fromZ ?? 0) * this.zk() * 0.75;
+        const hd = aim.rel !== null ? this.wolfHead(aim.x, aim.lane, aim.z, aim.rel) : null;
+        x1 = hd ? hd.x : this.wx(aim.x);
+        y1 = hd ? hd.y : a.giant ? y0 : this.wy(aim.lane) - (a.rain ? this.geo.Hm * 0.05 : hh * 0.4);
+        aim.dy = y1 - this.wy(aim.lane); // 抜けたあとの高さ
+      }
       // 放った瞬間：弓のまわりに輪と花びら
       if (!this.seenArrows.has(a)) {
         this.seenArrows.add(a);

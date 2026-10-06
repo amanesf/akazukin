@@ -43,6 +43,7 @@ const every = (dt) => (s, t, m) => { if (t >= (m.next ?? 0)) { m.next = t + dt; 
 const tapper = (dt, weapon) => { const go = every(dt); return (s, t, m) => { s.weapon = weapon; if (go(s, t, m)) s.tap(380, 0.5); }; };
 console.log(`強化なし・${SEC}秒の平均（的は主人公の前 80）`);
 for (const r of [4, 6, 8]) measure(`ナイフ タップ ${r}回/秒`, tapper(1 / r, 'knife'));
+measure('ナイフ 4回/秒・3匹かたまる', tapper(1 / 4, 'knife'), { xs: [380, 400, 420] });
 for (const r of [2, 4]) measure(`弓 タップ ${r}回/秒`, tapper(1 / r, 'bow'));
 measure('弓 4回/秒・3匹縦に並ぶ', tapper(1 / 4, 'bow'), { xs: [380, 420, 460] });
 // 主砲：長押し c 秒 → 離す をくり返す（熱を見ない。オーバーヒートするとその間は撃てない）

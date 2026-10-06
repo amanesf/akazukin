@@ -2,7 +2,7 @@
 // 指一本アクション（2026-10-04）：プレイヤーの指で技を出す。自動の攻撃はない（2026-10-05）。タップは持っている武器（ナイフ／弓）で攻撃。
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
-  BASIC, BODY, BOW, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
+  BASIC, BODY, BOW, BOW_FLIGHT, KNIFE, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
   DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus, specialCost,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Special, type Track, type UpId, type WolfColor, type WolfKind,
@@ -61,7 +61,8 @@ export interface Wave { x: number; dir: number; lane: number; hit: boolean; dogs
 export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; target: number; down: number; facing: 1 | -1; run: number } // run：走っている速さ（描画）
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
 // sp：必殺技が出したもの（当てても必殺技は溜まらない）。fromZ：跳んだ高さから放つ。big：大きい矢・giant：奥行き全部を貫く大きな一本
-export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean }
+// leg：狙った狼を抜けたあとの2本目の道（届く所 endX までまっすぐ。通り道の狼を貫く）
+export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean; endX?: number; leg?: number }
 // 主砲の撃ち込み：4連装の砲身から真っすぐ飛ぶ砲弾。通り道の狼を貫き、届く所まで行くと爆ぜる（t が負のあいだはまだ撃っていない）
 // row：どの砲口から出たか（0〜3。2本の砲×上下2段。描画の高さ）
 // slash：ナイフの締めから前へ飛ぶ斬撃（下段「締めで斬撃が前へ飛ぶ」。爆ぜずに消える）
@@ -1462,10 +1463,13 @@ export class Sim {
       this.landMove(hits.length > 0);
       return;
     }
-    // 連撃は相手1匹に。範囲の技と主砲はまとめて
-    const targets = area ? hits : [hits.find((w) => w.id === h.moveTarget) ?? hits[0]].filter((w): w is Wolf => !!w);
+    // 範囲の技と主砲はまとめて。ナイフの斬りは狙った1匹に加え、目の前の狼にもまとめて当たる（近い順に KNIFE.cleave 匹まで・少し弱く）。一閃は前の全部に
+    const main = hits.find((w) => w.id === h.moveTarget) ?? hits[0];
+    const near = (w: Wolf) => Math.abs(w.x - h.x);
+    const extra = area || !main ? [] : hits.filter((w) => w !== main).sort((a, b) => near(a) - near(b)).slice(0, id === 'issen' ? 99 : KNIFE.cleave);
+    const targets = area ? hits : main ? [main, ...extra] : [];
     for (const w of targets) {
-      this.hit(w, dmg, { kb, lift: m.lift, slam: m.slam, stop: m.stop, src: id === 'shiki' ? 'midare' : 'senbon' });
+      this.hit(w, dmg * (area || w === main || id === 'issen' ? 1 : KNIFE.mul), { kb, lift: m.lift, slam: m.slam, stop: m.stop, src: id === 'shiki' ? 'midare' : 'senbon' });
     }
     this.sounds.push(id === 'shiki' ? 'boom' : 'swing');
     if (id === 'kaiten') this.fx.push(this.mk({ kind: 'spin', x: h.x, lane: h.lane, r: area }));
@@ -1718,7 +1722,8 @@ export class Sim {
     const h = this.hero;
     const F = rain ? RAIN_FLIGHT : BOW_FLIGHT;
     const flight = F.base + Math.abs(toX - h.x) * F.perUnit;
-    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain, target, pierce, hits: [], sp });
+    const endX = rain || sp ? undefined : clamp(h.x + (Math.sign(toX - h.x) || h.facing) * this.bowRange, HOUSE_X, WOLF_SPAWN_X);
+    this.arrows.push({ fromX: h.x, fromLane: h.lane, toX, lane, t: -delay / flight, flight, damage, rain, target, pierce, hits: [], sp, endX });
     this.sounds.push('bow');
   }
 
@@ -1748,6 +1753,19 @@ export class Sim {
           if (a.hits.length >= a.pierce) return false;
         }
         if (a.t < 1) return true;
+        // 狙った狼を抜けて、届く所までまっすぐ飛び続ける（貫く数が残っていれば。前は狙った狼の所で消え、後ろの狼に「貫く」が効かなかった）
+        const rest = a.endX !== undefined && !a.leg ? (a.endX - a.toX) * Math.sign(a.toX - a.fromX || 1) : 0;
+        if (rest > 30 && a.hits.length < a.pierce) {
+          const dir = Math.sign(a.toX - a.fromX) || 1;
+          a.leg = 1;
+          a.fromX = a.toX;
+          a.fromLane = a.lane;
+          a.toX = a.toX + dir * rest;
+          a.target = 0;
+          a.t = 0;
+          a.flight = Math.max(0.05, rest * BOW_FLIGHT.perUnit * 1.3);
+          return true;
+        }
         if (!a.hits.length) this.fx.push(this.mk({ kind: 'miss', x: a.toX, lane: a.lane }));
         return false;
       }
