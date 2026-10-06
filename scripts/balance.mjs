@@ -33,6 +33,12 @@ await rm(dir, { recursive: true });
 const mem = {};
 for (const seed of SEEDS) {
   const s = new Sim(seed);
+  // --off id,id：下段のその効き目を無いことにする（どれが効いているかを測る）
+  if (args.off) {
+    const off = new Set(args.off.split(','));
+    const has = s.has.bind(s);
+    s.has = (id) => !off.has(id) && has(id);
+  }
   // 誰がどれだけ削ったか（番犬＝quiet、それ以外は主人公）
   const dealt = { hero: 0, dogs: 0 };
   const hit = s.hit.bind(s);
