@@ -33,6 +33,8 @@ await rm(dir, { recursive: true });
 const mem = {};
 for (const seed of SEEDS) {
   const s = new Sim(seed);
+  // --nobuy 1：昼に何も買わない（強化なしでどこまで行けるか）
+  if (args.nobuy) s.buy = () => false;
   // --off id,id：下段のその効き目を無いことにする（どれが効いているかを測る）
   if (args.off) {
     const off = new Set(args.off.split(','));

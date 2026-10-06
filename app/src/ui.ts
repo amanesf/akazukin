@@ -1,7 +1,7 @@
 // 下のボタン類（DOM）。毎フレーム sim から状態を写すだけ。
 // 夜（戦闘中）は銭・家・日付と、武器の持ち替え（ナイフ⇔弓・2026-10-05）、桜嵐の3つの必殺技（斬り・弓・主砲で別々に溜まる・2026-10-04）（主砲は戦場の長押し。ボタンは連打で強すぎたのでやめた・2026-10-04）。
 // 昼は10個の強化（上段＝基本・何回でも／下段＝特殊・各3つ。2026-10-05）と、番犬の役目（タップで切り替え）。
-import { BASIC, DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, REPAIR, SPECIAL_ORDER, SPECIAL_UPS, SPECIALS, TRACK_NAME, TRACK_ORDER, type DogKind, type DogRole, type Special, type Track } from './config';
+import { BASIC, DAYS_TO_CLEAR, DOG_ORDER, DOG_ROLES, DOGS, HOUSE_HP, SPECIAL_ORDER, SPECIAL_UPS, SPECIALS, TRACK_NAME, TRACK_ORDER, type DogKind, type DogRole, type Special, type Track } from './config';
 import type { Sim } from './sim';
 
 // アイコン（2026-10-04 生成 icons-v1・tools/export-icons.py）。文字よりアイコンで（アマネさん）
@@ -21,15 +21,17 @@ export class Panel {
   private ups: [Track, HTMLButtonElement][] = [];
   private specialUps: [Track, HTMLButtonElement][] = [];
   private weapon: HTMLButtonElement;
-  private repair: HTMLButtonElement;
   private next: HTMLButtonElement;
   private dawn: HTMLElement;
   private sim: () => Sim;
   private lastCoins = -1;
   private lastWave = '';
 
-  constructor(host: HTMLElement, sim: () => Sim) {
+  private busy: () => boolean;
+
+  constructor(host: HTMLElement, sim: () => Sim, busy: () => boolean = () => false) {
     this.sim = sim;
+    this.busy = busy;
     host.innerHTML = `
       <div class="status">
         <span class="coins"></span>
@@ -42,7 +44,6 @@ export class Panel {
         <p class="dawn"></p>
         <div class="ups"></div>
         <div class="ups sp"></div>
-        <button class="repair"></button>
         <div class="dogrow"><p class="dogtitle">番犬の役目 <span>（タップで切り替え）</span></p><div class="dogs"></div></div>
         <button class="next">夜を迎える</button>
       </div>
@@ -66,11 +67,9 @@ export class Panel {
       this.battle.appendChild(b);
       this.specials.push([sp, b]);
     }
-    this.repair = q('.repair');
-    this.repair.addEventListener('click', () => this.sim().repair());
     this.next = q('.next');
     this.dawn = q('.dawn');
-    this.next.addEventListener('click', () => this.sim().nextWave());
+    this.next.addEventListener('click', () => !this.busy() && this.sim().nextWave());
     for (const kind of DOG_ORDER) {
       const b = document.createElement('button');
       b.className = 'dog';
@@ -138,9 +137,8 @@ export class Panel {
         b.querySelector('small')!.textContent = up ? up.note : '覚えきった';
         b.querySelector('em')!.textContent = up ? `${s.specialCost(t)}銭` : '';
       }
-      const full = s.houseHp >= HOUSE_HP;
-      this.repair.disabled = !s.canRepair();
-      this.repair.innerHTML = `${ICON('house')}家を直す <span>${full ? '（傷はない）' : `+${REPAIR.hp}`}</span><em>${s.repairCost}銭</em>`;
+      // 会話が出ているあいだ（と、出る前の間）は夜を迎えられない（2026-10-06 アマネさん「セリフ出てる状態で夜を迎える押せなくしたい」）
+      this.next.disabled = this.busy();
       const owned = s.dogKinds;
       for (const [kind, b] of this.dogs) {
         const r = s.roles[kind];

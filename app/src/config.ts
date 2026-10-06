@@ -255,9 +255,7 @@ export const OLD_TRAIN_COST = (n: number) => 1300 + 450 * n;
 // 半チャージ 0.5・満タン 1（撃ち込みもまとめて1）・零距離主砲 0。撃っている間は冷えない：最後に撃ってから wait 秒たつと rate/秒で冷める。
 // max でオーバーヒート：lock 秒撃てない（そのあと 0）
 export const HEAT = { half: 0.5, full: 1, max: 5, wait: 1.5, rate: 1, lock: 10 };
-// 家の修繕（昼に銭で買う）。値段は晩が進むほど少し上がる
-export const REPAIR = { hp: 150, cost: (wave: number) => 60 + 4 * wave };
-export const DAWN_REPAIR = 100; // 夜が明けると家が直る（家の修繕を買う代わり。案）
+// 家の修繕はやめた：家は毎晩、元どおりに直って始まる（2026-10-06 アマネさん「家の修理はなくしたい。毎回家はリセット」）
 
 
 export const DOG_BLOCK = 2; // 番犬1匹が足止めできる狼の数

@@ -26,7 +26,6 @@ for (const mode of (args.modes ?? 'idle,nobuy,full').split(',')) {
       if (s.phase === 'shop') {
         if (mode !== 'nobuy') {
           for (let i = 0; i < 6; i++) for (const k of ['knife', 'body', 'cannon', 'bow', 'dog']) { s.buy(k, 'special'); s.buy(k); }
-          if (s.houseHp < 450) s.repair();
         }
         s.nextWave();
       } else if (mode !== 'idle') bot(s, mem, true);

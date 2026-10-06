@@ -51,7 +51,9 @@ async function main() {
   const overlay = document.getElementById('overlay')!;
   await view.init(field);
   new Input(view.app.canvas, view, () => sim);
-  const panel = new Panel(document.getElementById('panel')!, () => sim);
+  // 節目の会話が出ている（出る前の間も）あいだは「夜を迎える」を押せない
+  let talkPending = false;
+  const panel = new Panel(document.getElementById('panel')!, () => sim, () => talkPending || !document.getElementById('talk')!.hidden);
 
   // 音：最初は切。押すと入る
   const sound = document.getElementById('sound') as HTMLButtonElement;
@@ -231,7 +233,14 @@ async function main() {
         store.write(sim.save()); // 夜が明けたら保存（家が落ちたら、ここへ戻る）
         showCard('夜明け', `${sim.wave}日目の夜を越えた`);
         const talk = TALKS[sim.wave];
-        if (talk) setTimeout(() => showTalk(talk), 1800); // 節目の晩のあとは、昼におばあさんと話す
+        if (talk) {
+          // 節目の晩のあとは、昼におばあさんと話す
+          talkPending = true;
+          setTimeout(() => {
+            talkPending = false;
+            if (sim.phase === 'shop') showTalk(talk);
+          }, 1800);
+        }
       }
       if (ev === 'night') {
         const n = sim.pending().reduce((a, e) => a + e.n, 0);

@@ -8,7 +8,6 @@
  */
 export function bot(s, mem, dogs = true) {
   if (s.phase === 'shop') {
-    if (s.houseHp < 450) s.repair();
     for (let i = 0; i < 40; i++) {
       let bought = false;
       for (const t of ['dog', 'cannon', 'bow', 'knife', 'body']) if (s.buy(t, 'special')) bought = true;

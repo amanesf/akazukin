@@ -4,7 +4,7 @@
 import {
   BASIC, BODY, BOW, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
-  DAWN_REPAIR, DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, REPAIR, SPECIAL_COSTS, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus,
+  DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, SPECIAL_COSTS, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Special, type Track, type UpId, type WolfColor, type WolfKind,
 } from './config';
 import { dogScale, hpScale, mood, newColors, night, SURGE_WARN, themeColors, type Mood } from './nights';
@@ -664,21 +664,6 @@ export class Sim {
     return SPECIAL_COSTS[this.special[t]] ?? Infinity;
   }
 
-  // 家の修繕（昼）
-  get repairCost() {
-    return REPAIR.cost(this.wave);
-  }
-  canRepair() {
-    return this.phase === 'shop' && this.houseHp < HOUSE_HP && this.coins >= this.repairCost;
-  }
-  repair() {
-    if (!this.canRepair()) return false;
-    this.coins -= this.repairCost;
-    this.houseHp = Math.min(HOUSE_HP, this.houseHp + REPAIR.hp);
-    this.sounds.push('buy');
-    return true;
-  }
-
   canBuy(t: Track, row: 'basic' | 'special' = 'basic') {
     const cost = row === 'basic' ? this.basicCost(t) : this.specialCost(t);
     return this.phase === 'shop' && this.coins >= cost;
@@ -707,6 +692,9 @@ export class Sim {
     this.sleepers = [];
     this.spawners = lines.map((l) => ({ kind: l.kind, color: l.color, left: l.count, interval: l.interval, next: l.delay, surge: !!l.surge, warned: false }));
     this.phase = 'wave';
+    // 家と桜嵐のゲージは毎晩まっさらから（2026-10-06 アマネさん「毎回家はリセット。桜嵐ゲージもリセット」）
+    this.houseHp = HOUSE_HP;
+    for (const k of SPECIAL_ORDER) this.gauges[k] = 0;
     const h = this.hero;
     h.hp = this.maxHp; // 昼のあいだに傷は癒える（案）
     h.down = 0;
@@ -923,7 +911,7 @@ export class Sim {
       const bonus = dawnBonus(this.wave);
       this.coins += bonus;
       this.nightEarned += bonus;
-      this.houseHp = Math.min(HOUSE_HP, this.houseHp + DAWN_REPAIR);
+      this.houseHp = HOUSE_HP; // 家は毎晩、元どおりに直る（修繕はやめた）
       this.events.push('dawn');
     }
   }
