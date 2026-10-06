@@ -12,7 +12,7 @@ import type { Sim } from './sim';
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock'
   | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet'
   | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready' | 'plunge' | 'finish' | 'aircut' | 'spin'
-  | 'fire' | 'recoil' | 'bowdash' | 'bowsky';
+  | 'fire' | 'recoil' | 'bowdash' | 'bowsky' | 'guard' | 'raise' | 'thrust' | 'toss2';
 type Gesture = 'stretch' | 'petal' | 'toss' | 'hood';
 // しぐさの長さ（秒）。伸びのあとは、あくびの顔で少し待つ
 const GESTURE: Record<Gesture, number> = { stretch: 2.2, petal: 1.9, toss: 1.5, hood: 1.5 };
@@ -63,7 +63,10 @@ const MESH_STEP = 12; // 網目の細かさ（画素）
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
 const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock',
-  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin', 'fire', 'recoil', 'bowdash', 'bowsky'];
+  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin', 'fire', 'recoil', 'bowdash', 'bowsky', 'guard', 'raise', 'thrust', 'toss2'];
+// ナイフを拳に差し込んでいた絵は、ナイフを手に描いた絵に差し替える（2026-10-06 生成 hero-knife-basic-v1。描き込みが他の絵とそろう）。
+// ナイフ投げも、宙のナイフを描いた絵に（宙のナイフは動かない）
+const DRAWN: Partial<Record<FrameName, FrameName>> = { idle: 'guard', up: 'raise', strike: 'thrust', toss: 'toss2' };
 // しぐさの小道具（書き出した絵の画素）。宙のナイフと手のひらの花びらは切り抜きで落ちたので描く
 const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
 const TOSS_TOP = 40; // ナイフのいちばん高い所
@@ -471,7 +474,7 @@ export class HeroRig {
     const sw = this.swing(dt, t, x, h.facing, height, lean, lift, run && !m, h.down > 0, droop);
 
     return {
-      frame, x: x + shiver, y, k, facing, lean, lift, sx: sx * squash, sy, legSwing, tint, ...this.aimGun(sim, dt), aim,
+      frame: DRAWN[frame] ?? frame, x: x + shiver, y, k, facing, lean, lift, sx: sx * squash, sy, legSwing, tint, ...this.aimGun(sim, dt), aim,
       alpha: blink ? 0.4 : 1, prop, ...sw,
     };
   }

@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right at the same three-quarter angle as in image 1, standing on the same baseline. In every figure she wears the same patterned hood pulled up over her head, with its fur trim around her face and the wolf ears on top of the hood, exactly as in image 1. Same fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1. She grips one large knife from image 2 tightly in each hand, fingers closed around the handles. No speed lines or effects in the background.
+
+1. Battle stance: feet apart, her front hand raised beside her face holding its knife with the blade pointing up and forward, her other hand held at her chest gripping its knife in reverse grip with the blade pointing down; alert eyes looking right, a small confident smile.
+2. Overhead wind-up: standing tall, her front arm raised straight up above her head with its knife held high, blade pointing up, ready to bring it down; her other hand at her waist holding its knife; a fierce, determined face.
+3. Thrust: stepping forward to the right, her front arm punched straight out to the right at shoulder height with its knife pointing forward like a spear; her other hand at her chest holding its knife; a sharp, focused face.
+4. Knife toss: standing relaxed, her front hand open and palm up at shoulder height, one knife spinning in the air just above that hand; her other hand holding its knife at her hip; a playful grin with her tongue slightly out and one eye winking.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.

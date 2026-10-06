@@ -19,6 +19,7 @@ ap.add_argument('--out', required=True)
 ap.add_argument('--names', required=True, help='左から順の名前（カンマ区切り）')
 ap.add_argument('--tol', type=int, default=14, help='背景とみなす色の差')
 ap.add_argument('--hole', type=int, default=1500, help='囲まれた背景（弓と弦のあいだ等）も、この画素数より大きければ抜く')
+ap.add_argument('--merge', type=int, default=0, help='この画素数より大きい離れた塊（宙に投げたナイフ等）を、横の位置がいちばん近い絵に足す（0 で足さない）')
 a = ap.parse_args()
 
 im = cv2.imread(a.src)
@@ -51,6 +52,20 @@ n, labels, stats, _ = cv2.connectedComponentsWithStats((alpha > 0).astype(np.uin
 names = a.names.split(',')
 blobs = sorted(range(1, n), key=lambda i: -stats[i, cv2.CC_STAT_AREA])[: len(names)]
 blobs.sort(key=lambda i: stats[i, cv2.CC_STAT_LEFT])
+# 離れた塊を、横の真ん中がいちばん近い絵の仲間にする（2026-10-06 ナイフ投げの宙のナイフが落ちた）
+extra = {i: [] for i in blobs}
+if a.merge:
+    cx = lambda i: stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] / 2
+    for j in range(1, n):
+        if j in extra or stats[j, cv2.CC_STAT_AREA] < a.merge:
+            continue
+        extra[min(blobs, key=lambda i: abs(cx(i) - cx(j)))].append(j)
+for i in blobs:
+    for j in extra[i]:
+        labels[labels == j] = i
+        x0 = min(stats[i, 0], stats[j, 0]); y0 = min(stats[i, 1], stats[j, 1])
+        x1 = max(stats[i, 0] + stats[i, 2], stats[j, 0] + stats[j, 2]); y1 = max(stats[i, 1] + stats[i, 3], stats[j, 1] + stats[j, 3])
+        stats[i, :4] = [x0, y0, x1 - x0, y1 - y0]
 os.makedirs(a.out, exist_ok=True)
 rgba = cv2.cvtColor(im, cv2.COLOR_BGR2BGRA)
 rgba[:, :, 3] = alpha
