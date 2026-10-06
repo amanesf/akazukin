@@ -11,7 +11,7 @@ import type { Sim } from './sim';
 // stretch・petal・toss・hood＝待機のしぐさ（伸び・花びら・ナイフ投げ・頭巾直し）／shoulder・cheer・curtsy・pet＝晩の終わり
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock'
   | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet'
-  | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready';
+  | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready' | 'plunge' | 'finish' | 'aircut' | 'spin';
 type Gesture = 'stretch' | 'petal' | 'toss' | 'hood';
 // しぐさの長さ（秒）。伸びのあとは、あくびの顔で少し待つ
 const GESTURE: Record<Gesture, number> = { stretch: 2.2, petal: 1.9, toss: 1.5, hood: 1.5 };
@@ -62,7 +62,7 @@ const MESH_STEP = 12; // 網目の細かさ（画素）
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
 const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock',
-  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready'];
+  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin'];
 // しぐさの小道具（書き出した絵の画素）。宙のナイフと手のひらの花びらは切り抜きで落ちたので描く
 const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
 const TOSS_TOP = 40; // ナイフのいちばん高い所
@@ -306,11 +306,12 @@ export class HeroRig {
       }
       if (m === 'issen') {
         // 一閃（4発目のタップ）：深く構えて、大きく横へ払い抜ける
-        frame = p < 0.45 ? 'charge' : 'sweep';
-        lean = p < 0.45 ? -10 * D * wind : (16 + 14 * over) * D;
+        // 振り抜きは大きく払い抜けた低い構えの絵（2026-10-06 生成 hero-knife-action-v1。絵そのものが大きく動いているので、傾けは控えめ）
+        frame = p < 0.45 ? 'charge' : 'finish';
+        lean = p < 0.45 ? -10 * D * wind : (4 + 8 * over) * D;
         if (p >= 0.45) lift += Math.sin(Math.min(1, after * 2) * Math.PI) * 20;
       }
-      if (m === 'air') { frame = after > 0 ? 'strike' : 'rise'; lean = after > 0 ? 14 * D * (0.5 + over) : -6 * D; }
+      if (m === 'air') { frame = after > 0 ? 'aircut' : 'rise'; lean = after > 0 ? 6 * D * (0.5 + over) : -6 * D; } // 宙の斜め斬り（2026-10-06 生成）
       if (m === 'launch') {
         // 斬り上げ：深く沈んで、宙へ伸び上がる（2026-10-04 生成の絵。前は頭上の絵を回していた）
         frame = p < 0.35 ? 'idle' : 'rise';
@@ -319,9 +320,10 @@ export class HeroRig {
       }
       if (m === 'slam' || m === 'jiwari') {
         // 叩き落とし：大きく振りかぶり（反って伸びる）、体ごと落ちて地面でつぶれる
-        frame = p < 0.45 ? 'up' : 'strike';
-        lean = p < 0.45 ? -18 * D * wind : (24 + 12 * over) * D;
-        if (p < 0.45) { sy = 1 + 0.12 * wind; sx = 1 - 0.08 * wind; lift += wind * 30; } else { sy = 1 - 0.24 * over; sx = 1 + 0.2 * over; }
+        // 落ちる所は、両手のナイフを真下へ突き下ろす絵（2026-10-06 生成）
+        frame = p < 0.45 ? 'up' : 'plunge';
+        lean = p < 0.45 ? -18 * D * wind : (8 + 6 * over) * D;
+        if (p < 0.45) { sy = 1 + 0.12 * wind; sx = 1 - 0.08 * wind; lift += wind * 30; } else { sy = 1 - 0.14 * over; sx = 1 + 0.12 * over; }
       }
       if (m === 'tosshin') {
         // 突進：低く長い踏み込みの絵（2026-10-04 生成）。絵そのものが前のめりなので、傾けすぎない
@@ -342,7 +344,7 @@ export class HeroRig {
         // 回転：横幅を縮めて背中の絵へ、また縮めて正面へ
         const a = p * Math.PI * 2;
         squash = Math.max(0.6, Math.abs(Math.cos(a))); // 細い線になるまで縮めない（縮むと気持ち悪い）
-        frame = Math.cos(a) < 0 ? 'back' : 'idle';
+        frame = Math.cos(a) < 0 ? 'spin' : 'idle'; // 背中側は、両手を広げて回る絵（2026-10-06 生成）
         sy = 1 + 0.05 * Math.sin(p * Math.PI);
       }
     }

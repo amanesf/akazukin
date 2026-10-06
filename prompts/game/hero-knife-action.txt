@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right. She grips one large knife from image 2 tightly in each hand in every figure, fingers closed around the handles. Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1. Dynamic action poses like a fighting game key frame, strong motion in the hair, skirt, cape and tail.
+
+1. Plunging down: she drops from the air feet first toward the ground at the right, body tilted forward, both knives driven straight down in front of her with arms extended downward, the skirt and cape blown upward by the fall, a fierce shout.
+2. Finishing slash: a deep wide stance low to the ground after one huge horizontal cut, her front arm swept all the way out to the right with its knife held level, the other knife pulled back behind her hip, upper body twisted, braids and tail whipping around, sharp determined eyes.
+3. Aerial cut: in mid-air with both feet off the ground and knees bent, body turned diagonally, one knife slashing diagonally downward across her front, the other raised behind her head, the skirt swirling.
+4. Spinning slash: mid-spin on one foot, her back half turned toward the viewer, both arms stretched out wide to the sides with the knives held flat like blades of a fan, the skirt flaring out in a full circle, braids flying.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.
