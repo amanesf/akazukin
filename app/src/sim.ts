@@ -4,7 +4,7 @@
 import {
   BASIC, BODY, BOW, BOW_FLIGHT, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
-  DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, SPECIAL_COSTS, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus,
+  DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus, specialCost,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Special, type Track, type UpId, type WolfColor, type WolfKind,
 } from './config';
 import { dogScale, hpScale, mood, newColors, night, SURGE_WARN, themeColors, type Mood } from './nights';
@@ -660,8 +660,10 @@ export class Sim {
   nextUp(t: Track) {
     return SPECIAL_UPS[t][this.special[t]];
   }
+  // 下段の値段：どの列でも、これまでに下段をいくつ買ったかで上がる（覚えきった列は買えない）
   specialCost(t: Track): number {
-    return SPECIAL_COSTS[this.special[t]] ?? Infinity;
+    if (this.special[t] >= SPECIAL_UPS[t].length) return Infinity;
+    return specialCost(TRACK_ORDER.reduce((n, k) => n + this.special[k], 0));
   }
 
   canBuy(t: Track, row: 'basic' | 'special' = 'basic') {
