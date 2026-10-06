@@ -4,7 +4,7 @@
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import { Backdrop, mix } from './backdrop';
 import { COLORS, GRAY_FUR, HOWL, KING, OURAN, SHELL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
-import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
+import { bandTexture, blossomTexture, CREST_R, crescent, crestTexture, easeOut, glowTexture, NIGHT_PINK, Particles, petalTexture, PINK, place, puffTexture, SpritePool } from './fx';
 import { AdvancedBloomFilter, ShockwaveFilter } from 'pixi-filters';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
@@ -43,6 +43,18 @@ export class View {
   private shade = new Graphics(); // 桜嵐で背景を暗くする
   private dayLift = new Graphics(); // 昼の光：背景（町・地面）だけを明るく足す。人物は明るくしない
   private ground = new Graphics(); // 影・地面の輪・家
+  // 地面の光（2026-10-06 アマネさん「地面の桜マークがプラスチック感。光とか模様でリッチに」）：
+  // 塗った形をやめ、ぼけた素材を並べる。焦げ跡（ふつうの重ね方）と、紋・輪・光だまり（加算。にじみの代わりに素材をぼかしてある）
+  private petalBed = new Container(); // 道に積もった花びら
+  private bedPool = new SpritePool(this.petalBed);
+  private scorch = new Container(); // 焦げ跡
+  private scorchPool = new SpritePool(this.scorch);
+  private groundLight = new Container(); // 地面の光（加算）
+  private glG = new Graphics(); // 地面の光の線（加算）
+  private gl = new SpritePool(new Container());
+  private lightPool = new SpritePool(new Container()); // 光の層の光の玉（砲口・矢じり）
+  private flowerPool = new SpritePool(new Container()); // 画面の桜の枝の花
+  private pools: { x: number; lane: number; r: number; t: number; life: number; color: number; a: number }[] = []; // 地面の光だまり（爆発の下が照らされる）
   private backG = new Graphics(); // 主人公より奥の箱
   private frontG = new Graphics(); // 主人公より手前の箱
   private wolfBack = new Container(); // 狼の絵（主人公より奥）
@@ -178,10 +190,12 @@ export class View {
       this.fog.push(f);
     }
     this.rimRig.root.blendMode = 'add';
-    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.headMarks, this.overG, this.parts.root, this.lightLayer);
+    this.groundLight.blendMode = 'add';
+    this.groundLight.addChild(this.glG, this.gl.root);
+    this.world.addChild(this.ground, this.petalBed, this.scorch, this.groundLight, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.headMarks, this.overG, this.parts.root, this.lightLayer);
     this.lightLayer.blendMode = 'add';
     this.lightG.blendMode = 'add';
-    this.lightLayer.addChild(this.lightG, this.parts.light); // 粒の光るものも、ここでまとめてにじませる
+    this.lightLayer.addChild(this.lightG, this.lightPool.root, this.parts.light); // 粒の光るものも、ここでまとめてにじませる
     if (!this.bloomOff) {
       this.bloom = new AdvancedBloomFilter({ threshold: 0.35, bloomScale: 0.8, brightness: 1, blur: 6, quality: 4 });
       this.bloom.resolution = 0.5; // にじみは粗くてよい（軽くする）
@@ -211,7 +225,7 @@ export class View {
     }
     this.grade.blendMode = 'multiply';
     this.whiteFilter.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
-    st.addChild(this.grade, this.screenParts.root, this.screen);
+    st.addChild(this.grade, this.screenParts.root, this.screen, this.flowerPool.root);
     for (let i = 0; i < 2; i++) {
       const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 14, fill: 0xffffff, stroke: { color: 0x000000, width: 4 } } });
       t.anchor.set(0.5);
@@ -469,6 +483,10 @@ export class View {
 
     // ── 地面・家・裂け目・影 ──
     const gr = this.ground.clear();
+    this.glG.clear();
+    this.bedPool.begin();
+    this.scorchPool.begin();
+    this.gl.begin();
     if (!day) this.drawPath(gr, sim);
     if (sim.phase === 'wave' && this.lastPhase !== 'wave') this.groundPetals = []; // 晩の始まりに道をきれいに
     this.lastPhase = sim.phase;
@@ -499,7 +517,8 @@ export class View {
       if (d.down > 0) continue;
       shadow(d.x, d.lane, d.size * this.U(d.lane), 0);
       const r = d.size * this.U(d.lane) * 0.6;
-      gr.ellipse(this.wx(d.x), this.wy(d.lane) + 2, r, r * 0.25).stroke({ width: 3, color: ROLE_COLOR[d.role], alpha: 0.75 });
+      this.gl.ring(this.wx(d.x), this.wy(d.lane) + 2, r, ROLE_COLOR[d.role], 0.9, 0.25);
+      this.gl.glow(this.wx(d.x), this.wy(d.lane) + 2, r * 0.9, ROLE_COLOR[d.role], 0.18, 0.25);
     }
     this.roleText.forEach((t, i) => {
       const d = dogs[i];
@@ -520,8 +539,13 @@ export class View {
     if (h.charge >= 0) {
       const c = Math.min(1, h.charge / sim.chargeFull);
       const r = this.heroH(h.lane) * (0.35 + 0.25 * c);
-      gr.ellipse(this.wx(h.x), this.wy(h.lane), r, r * 0.25).stroke({ width: 3 + 3 * c, color: c >= 1 ? 0xffe070 : 0xff9050, alpha: 0.5 + 0.4 * Math.sin(this.vt * 30) * c });
+      const col = c >= 1 ? 0xffe070 : 0xff9050;
+      this.gl.ring(this.wx(h.x), this.wy(h.lane), r, col, 0.6 + 0.35 * Math.sin(this.vt * 30) * c, 0.25);
+      this.gl.glow(this.wx(h.x), this.wy(h.lane), r * 0.8, col, 0.15 + 0.25 * c, 0.25);
     }
+    this.bedPool.end();
+    this.scorchPool.end();
+    this.gl.end();
     // ── 体（奥から手前へ。主人公より奥は backG、手前は frontG）──
     const bg = this.backG.clear();
     const fg = this.frontG.clear();
@@ -592,6 +616,7 @@ export class View {
     // ── 矢・砲弾・衝撃波・斬撃の弧・数字 ──
     this.drawOver(sim, dt);
     if (!day) this.drawGunLight(sim, dt);
+    this.lightPool.end();
     // 主砲の溜め：頭の上の丸い目盛り。撃てる所（短い印）から満タンまで溜まり、満タンで金色に脈打つ（ボタンをやめた代わり）
     if (h.charge >= 0) {
       const o = this.overG;
@@ -787,6 +812,8 @@ export class View {
         // 着いた地面に桜の紋が焼き付く（数秒で冷めて消える）
         this.crests.push({ x: f.x, lane: f.lane, r: (f.r ?? 60) * (f.big ? 1.1 : 0.8), t: 0 });
         if (this.crests.length > 8) this.crests.shift();
+        this.pools.push({ x: f.x, lane: f.lane, r: (f.r ?? 60) * this.geo.K * (f.big ? 4.5 : 3.2), t: 0, life: 1.1, color: 0xff9050, a: 0.9 });
+        P.ring(x, y, r * 0.3, r * 2.2, 4 * s, 0xffe0b0, 0.35, 0.32); // 紋が描かれる光の輪
         break;
       }
       case 'muzzle': {
@@ -882,6 +909,7 @@ export class View {
         // 当たった所から、きらめきが散る
         for (let i = 0; i < 4; i++) P.flare(hd.x, hd.y, this.geo.Hm * (0.02 + Math.random() * 0.025), Math.random() < 0.5 ? 0xffd0e4 : 0xffffff, 0.4 + Math.random() * 0.3, (Math.random() - 0.5) * 260 * s, -(60 + Math.random() * 160) * s, 30);
         P.flower(hd.x, hd.y, this.geo.Hm * 0.03 * rel, 0.55); // 当たった所に桜がぱっと咲く
+        this.pools.push({ x: f.x, lane: f.lane, r: this.geo.Hm * 0.06, t: 0, life: 0.45, color: 0xff90b8, a: 0.35 }); // 足もとが桜色に照らされる
         for (let i = 0; i < 4; i++) P.petal(hd.x, hd.y, s, (Math.random() - 0.3) * 260 * (f.dir ?? 1), -120 - Math.random() * 200, 0.6);
         if (f.big) break; // 千本桜のナイフは刺さったまま残さない（数が多い）
         this.stuck.push({ id: f.n ?? 0, x: f.x, lane: f.lane, z: f.z ?? 0, rel, t: 0, dir: f.dir ?? 1 });
@@ -1402,7 +1430,7 @@ export class View {
     const o = sim.hero.order;
     if (o) {
       const pulse = 1 + 0.15 * Math.sin(this.vt * 10);
-      g.ellipse(this.wx(o.x), this.wy(o.lane), 34 * pulse, 10 * pulse).stroke({ width: 3, color: o.sprint ? 0xffe070 : 0xffffff, alpha: 0.7 });
+      this.gl.ring(this.wx(o.x), this.wy(o.lane), 34 * pulse, o.sprint ? 0xffe070 : 0xffffff, 0.75, 0.3);
     }
   }
 
@@ -1470,9 +1498,10 @@ export class View {
     const live = sim.phase === 'wave' ? 1 : 0.45;
     const pulse = 0.85 + 0.15 * Math.sin(t * 3.2) + 0.05 * Math.sin(t * 11);
     // 背の光（紅いにじみ）
+    // （2026-10-06 楕円の塗りを重ねると段が見えた。ぼけた光の素材に）
     for (let i = 0; i < 4; i++) {
       const yy = top + (bot - top) * (0.15 + i * 0.25);
-      g.ellipse(x, yy, gx.Hm * 0.24 * pulse * live, (bot - top) * 0.24).fill({ color: 0xc01028, alpha: 0.08 * live });
+      this.gl.glow(x, yy, gx.Hm * 0.26 * pulse * live, 0xc01028, 0.16 * live, ((bot - top) * 0.26) / (gx.Hm * 0.26 * pulse * live || 1));
     }
     // 割れ目の背骨：決まったぎざぎざ（毎コマ同じ形）に、少しのゆらぎ
     const n = 18;
@@ -1490,8 +1519,11 @@ export class View {
       for (let i = n; i >= 0; i--) pts.push(spine[i][0] + half(i) * k * 0.8, spine[i][1]);
       return pts;
     };
-    g.poly(outline(1.6)).fill({ color: 0xff2040, alpha: 0.18 * pulse });
-    g.poly(outline(1.15)).fill({ color: 0xff3048, alpha: 0.55 });
+    // 縁から漏れる紅い光（平たい紅の縁取りはプラスチックに見えた）：割れ目に沿って光の玉を並べ、ゆらめかせる
+    for (let i = 1; i < n; i++) {
+      const fl = 0.75 + 0.25 * Math.sin(t * 7 + i * 1.7) * Math.sin(t * 3.1 + i);
+      this.gl.glow(spine[i][0], spine[i][1], half(i) * 1.5 + 8, 0xe01838, 0.16 * pulse * fl, 1.4);
+    }
     g.poly(outline(1)).fill(0x12000a);
     // 中の渦と、光る目（ときどき瞬く）
     for (let i = 0; i < 4; i++) {
@@ -1519,7 +1551,8 @@ export class View {
       }
     }
     // 縁の光る線
-    g.poly(outline(1)).stroke({ width: 2.5, color: 0xff7080, alpha: 0.9 * pulse });
+    this.glG.poly(outline(1.08)).stroke({ width: 9, color: 0xff2040, alpha: 0.25 * pulse });
+    this.glG.poly(outline(1.02)).stroke({ width: 2, color: 0xff9aa8, alpha: 0.95 * pulse });
     // 枝分かれしたひび（空へ・地面へ）
     const branches: [number, number, number][] = [[0.08, -1, 0.9], [0.18, 1, 1.1], [0.35, -1, 0.7], [0.55, 1, 0.8], [0.8, -1, 0.6]];
     for (const [k, dir, len] of branches) {
@@ -1638,7 +1671,7 @@ export class View {
     for (const tr of this.blade) {
       const n = tr.length;
       if (n < 2) continue;
-      for (const [wk, color, alpha] of [[1, 0xffb0c8, 0.55], [0.4, 0xffffff, 0.9]] as const) {
+      for (const [wk, color, alpha] of [[2.4, 0xff6a9a, 0.16], [1, 0xffb0c8, 0.5], [0.4, 0xffffff, 0.9]] as const) {
         const left: number[] = [];
         const right: number[] = [];
         for (let i = 0; i < n; i++) {
@@ -1761,29 +1794,86 @@ export class View {
     if (!Number.isNaN(band)) {
       const y0 = this.wy(0) - this.geo.Hm * 0.02;
       const y1 = this.wy(1) + this.geo.Hm * 0.03;
-      for (let i = 0; i < 6; i++) {
-        const k = 1 - i / 6;
-        gr.rect(band - bw * k, y0, bw * 2 * k, y1 - y0).fill({ color: 0xffe0a0, alpha: 0.09 });
-      }
+      const sp = this.gl.get(bandTexture(), band, (y0 + y1) / 2);
+      sp.width = bw * 2.4;
+      sp.height = (y1 - y0) * 1.2;
+      sp.tint = 0xffd890;
+      sp.alpha = 0.4;
     }
     for (const p of this.groundPetals) {
       const px = this.wx(p.x);
       const near = Number.isNaN(band) ? 0 : Math.max(0, 1 - Math.abs(px - band) / bw);
       const passed = !Number.isNaN(band) && px < band ? 0.35 : 0;
       const gold = Math.max(near, passed);
-      gr.ellipse(px, this.wy(p.lane) + 2, p.r * 1.4 * (1 + near * 0.3), p.r * 0.6 * (1 + near * 0.3)).fill({ color: gold ? mix(p.c, 0xffd060, gold) : p.c, alpha: 0.55 + 0.4 * near });
+      // 地面に寝た花びら（素材の絵を平たくつぶす）。夜明けの光が通ると金色に光る
+      const sp = this.bedPool.get(petalTexture(), px, this.wy(p.lane) + 2, 0.45);
+      sp.rotation = p.rot * 2.1;
+      sp.width = p.r * 3 * (1 + near * 0.3);
+      sp.height = p.r * 1.9 * (1 + near * 0.3);
+      sp.tint = gold ? mix(p.c, 0xffd060, gold) : mix(p.c, 0x9a7a90, 0.25);
+      sp.alpha = 0.7 + 0.3 * near;
+      if (near > 0.3) this.gl.glow(px, this.wy(p.lane) + 2, p.r * 2.2, 0xffd890, 0.5 * near, 0.45);
     }
-    // 主砲の跡：地面に平たく焼き付いた桜の紋。橙に光ってから冷めて紅く、薄れて消える
-    this.crests = this.crests.filter((c) => (c.t += dt) < 3.2);
+    // 地面の光だまり：爆発や紋の下の地面が照らされて、冷めていく
+    this.pools = this.pools.filter((p) => (p.t += dt) < p.life);
+    if (this.pools.length > 24) this.pools.splice(0, this.pools.length - 24);
+    for (const p of this.pools) {
+      const k = 1 - p.t / p.life;
+      this.gl.glow(this.wx(p.x), this.wy(p.lane) + 2, p.r * (1 + 0.2 * (1 - k)), p.color, p.a * k * k, 0.3);
+    }
+    // 主砲の跡：地面に焼き付く桜の紋（2026-10-06 塗った花をやめ、光る線の紋に）。
+    // 中から外へ光が走って紋が描かれ、白→橙→紅と冷め、輪郭から火の粉と桜色の光が昇り、ちらつきながら消える。下には焦げ跡
+    const CL = 3.2;
+    this.crests = this.crests.filter((c) => (c.t += dt) < CL);
+    const s = this.geo.Hm / 600;
     for (const c of this.crests) {
-      const q = c.t / 3.2;
-      const r = c.r * this.geo.K * 1.7 * (c.t < 0.15 ? easeOut(c.t / 0.15) : 1); // 0.9 倍では小さく暗く、撮影で見えなかった
-      const col = mix(0xffc060, 0xe04870, Math.min(1, c.t / 1.2));
-      blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r * 1.15, 0.3, 0x200008, 0.35 * (1 - q), 0.32); // 焦げ
-      blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r, 0.3, col, 0.85 * (1 - q) ** 1.2, 0.32);
-      blossom(gr, this.wx(c.x), this.wy(c.lane) + 2, r * 0.55, 0.3 + Math.PI / 5, mix(col, 0xffffff, 0.5 * (1 - q)), 0.6 * (1 - q) ** 2, 0.32);
+      const q = c.t / CL;
+      const open = c.t < 0.25 ? easeOut(c.t / 0.25) : 1;
+      const r = c.r * this.geo.K * 1.7; // 0.9 倍では小さく暗く、撮影で見えなかった
+      const x = this.wx(c.x);
+      const y = this.wy(c.lane) + 2;
+      const FL = 0.32;
+      const col = c.t < 0.15 ? mix(0xffffff, 0xffd080, c.t / 0.15) : c.t < 0.9 ? mix(0xffd080, 0xff6a8a, (c.t - 0.15) / 0.75) : mix(0xff6a8a, 0xb02858, Math.min(1, (c.t - 0.9) / 1.6));
+      const flick = q < 0.45 ? 1 : 0.8 + 0.2 * Math.sin(this.vt * 37 + c.x) * Math.sin(this.vt * 23 + c.lane * 9);
+      const tex = (r2: number) => (r2 / CREST_R) * 2;
+      // 焦げ跡：ふちのぼけた暗い花と土の焼け
+      let sp = this.scorchPool.get(puffTexture(), x, y, FL);
+      sp.width = sp.height = r * 2.8 * open;
+      sp.tint = 0x0c0408;
+      sp.alpha = 0.55 * (1 - q) ** 0.6;
+      sp = this.scorchPool.get(crestTexture('fill'), x, y, FL);
+      sp.rotation = 0.3;
+      sp.width = sp.height = tex(r * 1.1) * open;
+      sp.tint = 0x1a0610;
+      sp.alpha = 0.45 * (1 - q) ** 0.7;
+      // 光：花の中の光・外の輪（ゆっくり逆へ回る）・光る線の紋・芯
+      sp = this.gl.get(crestTexture('fill'), x, y, FL);
+      sp.rotation = 0.3;
+      sp.width = sp.height = tex(r) * open;
+      sp.tint = col;
+      sp.alpha = 0.7 * (1 - q) ** 1.8 * flick;
+      sp = this.gl.get(crestTexture('ring'), x, y, FL);
+      sp.rotation = 0.3 - c.t * 0.5;
+      sp.width = sp.height = tex(r * 1.15) * easeOut(Math.min(1, c.t / 0.4));
+      sp.tint = mix(col, 0xffffff, 0.2);
+      sp.alpha = 0.8 * (1 - q) ** 1.3 * flick;
+      sp = this.gl.get(crestTexture('line'), x, y, FL);
+      sp.rotation = 0.3;
+      sp.width = sp.height = tex(r) * open;
+      sp.tint = mix(col, 0xffffff, 0.45 * (1 - q));
+      sp.alpha = Math.min(1, 1.2 * (1 - q) ** 1.1) * flick;
+      this.gl.glow(x, y, r * 0.5, mix(col, 0xffffff, 0.6), 0.9 * (1 - q) ** 2, FL);
+      // 輪郭から昇る火の粉と桜色の光
+      if (c.t > 0.2 && c.t < CL * 0.8 && Math.random() < dt * 14) {
+        const a = 0.3 - Math.PI / 2 + Math.floor(Math.random() * 5) * ((Math.PI * 2) / 5) + (Math.random() - 0.5) * 0.7;
+        const d = r * (0.5 + Math.random() * 0.45);
+        const ex = x + Math.cos(a) * d;
+        const ey = y + Math.sin(a) * d * FL;
+        if (Math.random() < 0.5) this.parts.ember(ex, ey, s);
+        else this.parts.mote(ex, ey, (Math.random() - 0.5) * 20 * s, -(40 + Math.random() * 60) * s, (8 + Math.random() * 8) * s, Math.random() < 0.5 ? 0xffb0d0 : 0xffe0ec, 0.9 + Math.random() * 0.6);
+      }
     }
-    this.drawSeal(gr, sim);
+    this.drawSeal(sim);
     const h = sim.hero;
     this.stepT -= dt;
     if (h.running > 0 && h.z <= 0 && h.down <= 0 && this.stepT <= 0) {
@@ -1859,6 +1949,10 @@ export class View {
       }
     }
     if (crossed(OURAN.rush)) {
+      // 紋から光の柱が立ちのぼる
+      P.pillar(cx, gy, hh * 1.4, hh * 3.2, 0xff90c0, 0.5, 0.8);
+      P.pillar(cx, gy, hh * 0.45, hh * 2.8, 0xffffff, 0.35, 0.9);
+      this.pools.push({ x: h.spX, lane: h.spLane, r: hh * 3, t: 0, life: 0.8, color: 0xff80b0, a: 0.9 });
       P.ring(cx, gy, hh * 0.3, hh * 2.4, 6 * s, 0xffc0d8, 0.4, 0.3);
       P.glow(cx, gy, hh * 2.6, 0xffa0c8, 0.25, 0.8, 0.3);
       for (let i = 0; i < 30; i++) {
@@ -1890,7 +1984,7 @@ export class View {
 
   // 桜嵐の足もとの紋（地面）：桜の花の形の円が広がり、まわりから中へ流れ込む光の筋で吸い寄せを見せる。
   // 吸い寄せが終わると、光って散る（ouranBeats）
-  private drawSeal(gr: Graphics, sim: Sim) {
+  private drawSeal(sim: Sim) {
     const h = sim.hero;
     if (h.ouran <= 0) return;
     const t = h.spT;
@@ -1901,12 +1995,34 @@ export class View {
     const y = this.wy(h.spLane) + 2;
     const R = hh * 1.15 * (0.6 + 0.4 * easeOut(Math.min(1, t / 0.2)));
     const rot = this.vt * 0.9;
-    gr.ellipse(x, y, R * 1.5, R * 1.5 * 0.3).stroke({ width: 2, color: 0xffd0e0, alpha: 0.55 * a });
-    gr.ellipse(x, y, R * 1.3, R * 1.3 * 0.3).stroke({ width: 4, color: 0xff7aa8, alpha: 0.6 * a });
-    blossom(gr, x, y, R, rot, 0xff6a9a, 0.4 * a, 0.3);
-    blossom(gr, x, y, R * 0.62, rot + Math.PI / 5, 0xffd0e0, 0.45 * a, 0.3);
-    gr.ellipse(x, y, R * 0.18, R * 0.18 * 0.3).fill({ color: 0xffffff, alpha: 0.7 * a });
-    // 中へ流れ込む光の筋
+    // 2026-10-06 塗った花をやめ、光る紋に：外の陣の輪（逆へ回る）・桜色の光の花・光る線の紋（2重・互い違い）・芯。下が照らされる
+    const FL = 0.3;
+    const tex = (r2: number) => (r2 / CREST_R) * 2;
+    const beat = 0.85 + 0.15 * Math.sin(this.vt * 9);
+    this.gl.glow(x, y, R * 2.4, 0xff70a8, 0.35 * a, FL);
+    let sp = this.gl.get(crestTexture('ring'), x, y, FL);
+    sp.rotation = -rot * 0.6;
+    sp.width = sp.height = tex(R * 1.5);
+    sp.tint = 0xffc0d8;
+    sp.alpha = 0.9 * a;
+    sp = this.gl.get(crestTexture('fill'), x, y, FL);
+    sp.rotation = rot;
+    sp.width = sp.height = tex(R);
+    sp.tint = 0xff6a9a;
+    sp.alpha = 0.6 * a * beat;
+    sp = this.gl.get(crestTexture('line'), x, y, FL);
+    sp.rotation = rot;
+    sp.width = sp.height = tex(R);
+    sp.tint = 0xffb0cc;
+    sp.alpha = a;
+    sp = this.gl.get(crestTexture('line'), x, y, FL);
+    sp.rotation = -rot * 1.3 + Math.PI / 5;
+    sp.width = sp.height = tex(R * 0.6);
+    sp.tint = 0xfff0f6;
+    sp.alpha = 0.85 * a;
+    this.gl.glow(x, y, R * 0.3, 0xffffff, 0.9 * a * beat, FL);
+    // 中へ流れ込む光の筋（光の層：にじみ＋白い芯）
+    const G = this.glG;
     for (let i = 0; i < 14; i++) {
       const ang = (i / 14) * Math.PI * 2 + this.vt * 0.4;
       const f = (this.vt * 1.8 + i * 0.37) % 1;
@@ -1914,7 +2030,8 @@ export class View {
       const r2 = r1 + R * 0.35;
       const c = Math.cos(ang);
       const sn = Math.sin(ang) * 0.3;
-      gr.moveTo(x + c * r2, y + sn * r2).lineTo(x + c * r1, y + sn * r1).stroke({ width: 3, color: 0xffe0ec, alpha: 0.7 * a * f, cap: 'round' });
+      G.moveTo(x + c * r2, y + sn * r2).lineTo(x + c * r1, y + sn * r1).stroke({ width: 8, color: 0xff80b0, alpha: 0.25 * a * f, cap: 'round' });
+      G.moveTo(x + c * r2, y + sn * r2).lineTo(x + c * r1, y + sn * r1).stroke({ width: 2.5, color: 0xfff0f6, alpha: 0.9 * a * f, cap: 'round' });
     }
   }
 
@@ -1926,7 +2043,6 @@ export class View {
   private drawGunLight(sim: Sim, dt: number) {
     const h = sim.hero;
     if (h.down > 0) return;
-    const L = this.lightG;
     const hh = this.heroH(h.lane);
     const s = this.geo.Hm / 600;
     const charging = h.charge >= 0;
@@ -1936,9 +2052,8 @@ export class View {
     this.gunLightT -= dt;
     const tick = this.gunLightT <= 0;
     if (tick) this.gunLightT = 0.03;
-    const soft = (x: number, y: number, r: number, color: number, a: number) => {
-      for (let i = 4; i >= 1; i--) L.circle(x, y, r * (i / 4)).fill({ color, alpha: a * 0.28 });
-    };
+    // 光の玉（円を4枚重ねると段が見えた。ぼけた素材1枚に）
+    const soft = (x: number, y: number, r: number, color: number, a: number) => this.lightPool.glow(x, y, r, color, Math.min(1, a * 1.1));
     for (const i of [0, 1]) {
       const gn = this.rig.cannonAxis(this.world, i);
       if (!gn) continue;
@@ -2062,8 +2177,8 @@ export class View {
       } else {
         o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: hh * 0.09 * k + 3, color: 0xff9040, alpha: 0.4 * k, cap: 'round' });
         o.moveTo(x0, y0).lineTo(x1, y1).stroke({ width: hh * 0.035 * k + 2, color: 0xfff0c0, alpha: 0.95 * k, cap: 'round' });
-        o.circle(x0, y0, hh * 0.09 * k).fill({ color: 0xffe0a0, alpha: 0.8 * k });
-        o.circle(x1, y1, hh * 0.14 * k).fill({ color: 0xffc060, alpha: 0.6 * k });
+        this.lightPool.glow(x0, y0, hh * 0.12 * k, 0xffe0a0, 0.9 * k);
+        this.lightPool.glow(x1, y1, hh * 0.18 * k, 0xffc060, 0.8 * k);
       }
     }
   }
@@ -2071,6 +2186,7 @@ export class View {
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
     const L = this.lightG.clear();
+    this.lightPool.begin(); // 終わりは drawGunLight のあと
     const K = this.geo.K;
     this.drawSlashTrails(L, Math.min(0.05, dt));
     this.drawBeams(L, sim);
@@ -2128,20 +2244,22 @@ export class View {
         const k = 1 - i / 5;
         const l = L * (0.75 + 0.25 * k);
         const al = 0.42 * k;
-        o.moveTo(p.x - p.ux * l, p.y - p.uy * l).lineTo(p.x, p.y).stroke({ width: (3.5 * k + 1) * S, color: 0xff9cc0, alpha: al, cap: 'round' });
-        o.poly([p.x + p.ux * 10, p.y + p.uy * 10, p.x - p.uy * 5, p.y + p.ux * 5, p.x + p.uy * 5, p.y - p.ux * 5]).fill({ color: 0xffd0e2, alpha: al });
+        // 光の層に（平たい桜色の影だとプラスチックに見えた）：にじむ桜色の筋と、細い芯
+        LG.moveTo(p.x - p.ux * l, p.y - p.uy * l).lineTo(p.x, p.y).stroke({ width: (7 * k + 2) * S, color: 0xff6a9c, alpha: al * 0.35, cap: 'round' });
+        LG.moveTo(p.x - p.ux * l, p.y - p.uy * l).lineTo(p.x, p.y).stroke({ width: (2 * k + 0.8) * S, color: 0xffd0e2, alpha: al, cap: 'round' });
+        LG.poly([p.x + p.ux * 10, p.y + p.uy * 10, p.x - p.uy * 5, p.y + p.ux * 5, p.x + p.uy * 5, p.y - p.ux * 5]).fill({ color: 0xffb0cc, alpha: al * 0.7 });
         for (const sg of [1, -1]) {
           const fx = p.x - p.ux * l;
           const fy = p.y - p.uy * l;
-          o.poly([fx, fy, fx + p.ux * 14 - p.uy * 6 * sg, fy + p.uy * 14 + p.ux * 6 * sg, fx + p.ux * 18, fy + p.uy * 18]).fill({ color: 0xffd0e2, alpha: al });
+          LG.poly([fx, fy, fx + p.ux * 14 - p.uy * 6 * sg, fy + p.uy * 14 + p.ux * 6 * sg, fx + p.ux * 18, fy + p.uy * 18]).fill({ color: 0xffb0cc, alpha: al * 0.6 });
         }
       }
       // 光の尾（桜色）：飛んだ道に沿って長く。光の層に描く（加算・にじむ）
       const tail = (a.giant ? a.t : Math.min(a.t, 0.4)) * Math.hypot(x1 - x0, y1 - y0);
       LG.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 14 * S * (a.giant ? 2.6 : 1), color: 0xff6a9c, alpha: a.giant ? 0.4 : 0.28, cap: 'round' });
       LG.moveTo(x - ux * (L + tail * 0.6), y - uy * (L + tail * 0.6)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 4 * S * (a.giant ? 2 : 1), color: 0xfff0f6, alpha: a.giant ? 0.95 : 0.8, cap: 'round' });
-      LG.circle(x, y, hh * 0.07 * S).fill({ color: 0xffd0e4, alpha: 0.5 }); // 矢じりの光
-      LG.circle(x, y, hh * 0.03 * S).fill({ color: 0xffffff, alpha: 0.9 });
+      this.lightPool.glow(x, y, hh * 0.08 * S, 0xffb0d0, 0.6); // 矢じりの光
+      this.lightPool.glow(x, y, hh * 0.03 * S, 0xffffff, 0.95);
       // キラキラ：通った跡に十字のきらめきが瞬きながら残る（2026-10-06 アマネさん「矢とかもキラキラキラ」）
       const nSp = a.giant ? 3 : a.big ? 2 : 1;
       for (let i = 0; i < nSp; i++) {
@@ -2188,8 +2306,8 @@ export class View {
       const k = hb.moveT / (MOVES[hb.move].dur * 0.5);
       const bx = this.wx(hb.x) + hb.facing * hh * 0.25;
       const by = this.wy(hb.lane) - hh * 0.73 - hb.z * this.zk() * 0.75;
-      o.circle(bx, by, hh * (0.05 + 0.08 * k)).fill({ color: 0xffb0d0, alpha: 0.25 * k });
-      o.circle(bx, by, hh * (0.02 + 0.03 * k)).fill({ color: 0xffffff, alpha: 0.5 * k });
+      this.lightPool.glow(bx, by, hh * (0.06 + 0.1 * k), 0xff90c0, 0.5 * k);
+      this.lightPool.glow(bx, by, hh * (0.02 + 0.03 * k), 0xffffff, 0.7 * k);
     }
     // 砲弾（4連装・真っすぐ）：主砲の高さを真横へ。白く光る弾と、後ろへ伸びる火の尾
     for (const sh of sim.shells) {
@@ -2222,8 +2340,8 @@ export class View {
       const tail = Math.min(hh * 2.4, sh.t * SHELL.speed * this.U(sh.lane) * 0.03);
       L.moveTo(x - sh.dir * tail, y).lineTo(x, y).stroke({ width: hh * 0.11, color: 0xff6a20, alpha: 0.4, cap: 'round' });
       L.moveTo(x - sh.dir * tail * 0.55, y).lineTo(x, y).stroke({ width: hh * 0.04, color: 0xfff0c0, alpha: 0.95, cap: 'round' });
-      L.circle(x, y, hh * 0.09).fill({ color: 0xff9030, alpha: 0.35 });
-      L.circle(x, y, hh * 0.035).fill(0xffffff);
+      this.lightPool.glow(x, y, hh * 0.12, 0xff9030, 0.6);
+      this.lightPool.glow(x, y, hh * 0.04, 0xffffff, 1);
       if (Math.random() < 0.4) this.parts.puff(x - sh.dir * hh * 0.15, y, -sh.dir * 30, -20, hh * 0.05, hh * 0.15, 0xd8d0d8, 0.35, 0.6);
       if (Math.random() < 0.5) this.parts.spark(x - sh.dir * hh * 0.1, y, -sh.dir * (150 + Math.random() * 200), (Math.random() - 0.5) * 120, this.geo.Hm / 600, 0xffb060, 0.2, 300);
     }
@@ -2410,8 +2528,13 @@ export class View {
         const bt = Math.max(0, b.t - (i / 10) * 0.55);
         const open = Math.min(1, bt / 0.25);
         const r = g.W * (b.big ? 0.03 : 0.024) * easeOut(open) * (0.85 + ((i * 13) % 5) * 0.06);
-        blossom(s, tx, ty, r, i * 0.7, PINK[i % 4], 0.95 * fade);
-        blossom(s, px, py, r * 0.75, i * 1.3, PINK[(i + 1) % 4], 0.9 * fade);
+        for (const [fx, fy, rr, rot] of [[tx, ty, r, i * 0.7], [px, py, r * 0.75, i * 1.3]]) {
+          if (rr <= 0.5) continue;
+          const f = this.flowerPool.get(blossomTexture(), fx, fy);
+          f.rotation = rot;
+          f.width = f.height = rr * 2.7;
+          f.alpha = 0.95 * fade;
+        }
       }
     }
   }
@@ -2480,7 +2603,9 @@ export class View {
         }
       }
     }
+    this.flowerPool.begin();
     this.drawBranches(s, dt);
+    this.flowerPool.end();
     // 画面の外の狼：端に矢印と数（家に近い狼がいると赤く脈打つ）
     const x0 = (0 - ox) / z / g.K;
     const x1 = (g.W - ox) / z / g.K;
