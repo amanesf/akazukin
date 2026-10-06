@@ -27,8 +27,9 @@ export class Minimap {
   private rig = new HeroRig();
   // 狼・番犬も同じ絵の縮小（2026-10-04。前は色の箱で、何がいるか分からなかった）
   private unitBack = new Container();
+  private dogBack = new Container(); // 番犬は別の入れ物（同じだと、番犬の後片付けが狼の絵を隠し、狼が番犬の数しか映らなかった。2026-10-06）
   private wolfArt = new UnitArt<string>('wolves', ['pup', 'wolf', 'armored', 'howler', 'alpha'], this.unitBack, new Container());
-  private dogArt = new UnitArt<string>('dogs', ['shiba', 'akita', 'tosa'], this.unitBack, new Container());
+  private dogArt = new UnitArt<string>('dogs', ['shiba', 'akita', 'tosa'], this.dogBack, new Container());
   private w = 0;
   private h = 0;
   private pad = 10;
@@ -41,7 +42,7 @@ export class Minimap {
     this.moon.visible = false;
     this.house.visible = false;
     this.scene.addChild(this.moon, this.house);
-    this.root.addChild(this.sky, this.scene, this.g, this.unitBack, this.rig.root, this.top);
+    this.root.addChild(this.sky, this.scene, this.g, this.dogBack, this.unitBack, this.rig.root, this.top);
   }
 
   load() {

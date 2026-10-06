@@ -270,19 +270,8 @@ export class Backdrop {
     for (const l of this.lights) l.s.alpha = (0.32 + 0.1 * Math.sin(t * 3 + l.ph) + 0.05 * Math.sin(t * 11 + l.ph)) * (1 - day * 0.8);
     this.moonG.alpha = this.moonArt.visible ? 0 : 1 - day;
     this.moonArt.alpha = 1 - day;
-    // 光の筋：月から左下へ、ゆっくり明滅
-    const r = this.rays.clear();
-    if (day < 1) {
-      const mx = this.moon.x;
-      const my = this.moon.y;
-      for (let i = 0; i < 4; i++) {
-        const a = 2.2 + i * 0.13;
-        const len = horizon * 1.6;
-        const wdt = 0.035 + 0.012 * Math.sin(i * 3.1);
-        const al = (0.05 + 0.03 * Math.sin(t * 0.7 + i * 1.9)) * (1 - day);
-        r.poly([mx, my, mx + Math.cos(a - wdt) * len, my + Math.sin(a - wdt) * len, mx + Math.cos(a + wdt) * len, my + Math.sin(a + wdt) * len]).fill({ color: 0xffd0d8, alpha: al });
-      }
-    }
+    // 月から左下へ差す光の筋はやめた（2026-10-06 アマネさん「月から出てる放射状の線みたいなの嫌だな」）
+    this.rays.clear();
     this.sunG.alpha = day;
     this.moonGlow.tint = mix(0xff4050, 0xfff0c0, day);
     const tint = mix(0xffffff, 0xd8c8d0, day);
