@@ -164,7 +164,7 @@ export const BASIC: Record<Track, { note: string; step: number }> = {
   bow: { note: '攻撃力 +5%', step: 0.05 },
   dog: { note: '体力・噛む力 +5%', step: 0.05 },
 };
-export const basicCost = (n: number) => Math.round((25 * 1.35 ** n) / 5) * 5;
+export const basicCost = (n: number) => Math.round((25 * 1.4 ** n) / 5) * 5;
 // 下段：順に覚える。id で効き目を見る（2026-10-06 アマネさん「下段は３段階しかないのは寂しい。５個以上」→ 各6つ）。
 // 列ごとの性格：体力＝倒れない・粘る／ナイフ＝前へ攻める・つなぐ／主砲＝熱と付き合う・一発を大きく／弓＝離れて手数・崩す／番犬＝仲間を増やして任せる。
 // 並びは「安い順に、効き目が分かりやすい物 → 遊び方が変わる物」。熱を軽くするもの（主砲 2・4）は、熱そのものを無くさない
