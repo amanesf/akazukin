@@ -2,7 +2,7 @@
 // 指一本アクション（2026-10-04）：プレイヤーの指で技を出す。自動の攻撃はない（2026-10-05）。タップは持っている武器（ナイフ／弓）で攻撃。
 // 奥行き（lane）がある：主人公も狼も奥行きを動き、離れた奥行きの相手は噛めない・斬れない。
 import {
-  BASIC, BODY, BOW, BOW_FLIGHT, KNIFE, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
+  BASIC, BODY, BOW, BOW_FLIGHT, KNIFE, RANGED, RAIN_FLIGHT, CHARGE, COMBO, COMBO_RESET, FINISHERS, COIN_START, DASH, DOG_BLOCK, DOG_DEFAULT_ROLES, DOG_MAX_X, DOG_ORDER, DOG_REVIVE, DOG_ROLE_ORDER, DOGS,
   BLAST, COLORS, CROW, KING, SHELL, WEAK_MUL, WMAN, WWOMAN, FIRST_WAVE_DELAY, GIRL_X, HERO, HOUSE_HP, HOUSE_X, HOWL, LANE_TOL, MOVE_CD, MOVES, OURAN, POUNCE, SPECIAL_ORDER, SPECIALS, STEER, STEP,
   DAYS_TO_CLEAR, HEAT, OLD_TRACK_COSTS, OLD_TRAIN_COST, SPECIAL_UPS, TAP_REACH, TRACK_ORDER, UP, WOLF_SPAWN_X, WOLVES, basicCost, dawnBonus, specialCost,
   type Beat, type DogKind, type DogRole, type Finisher, type MoveId, type Special, type Track, type UpId, type WolfColor, type WolfKind,
@@ -1425,8 +1425,9 @@ export class Sim {
     let kb = m.kb ?? 0;
     if (id === 'shiki') {
       const lvl = h.dashTo || 1;
+      if (lvl < 2) dmg *= RANGED.halfMul; // 半チャージは弱め（熱あたりで満タンより得にならないように）
       if (lvl >= 2) {
-        dmg *= 2;
+        dmg *= RANGED.fullMul;
         area = m.area! * 1.5 * (this.has('bigBlast') ? UP.bigBlast : 1);
         kb *= 1.3;
         if (this.has('hougeki')) {
@@ -1748,7 +1749,8 @@ export class Sim {
           if (a.hits.includes(w.id) || w.age < 0.4 || w.z > (a.giant ? 400 : 80) || (!a.giant && Math.abs(w.lane - lane) > 0.35)) continue;
           if (w.x + w.size / 2 < lo || w.x - w.size / 2 > hi) continue;
           a.hits.push(w.id);
-          this.hit(w, a.damage * (a.giant ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.giant ? 650 : 70, lift: a.giant ? 300 : 0, stun: a.giant ? 0.6 : this.has('stagger') && !a.sp ? UP.stagger : 0.3, src: a.sp ? 'sp' : 'nagare' });
+          const first = a.hits.length === 1 || a.giant || a.sp; // 2匹目からは弱く（必殺技の矢はそのまま）
+          this.hit(w, a.damage * (first ? 1 : RANGED.pierceMul) * (a.giant ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.giant ? 650 : 70, lift: a.giant ? 300 : 0, stun: a.giant ? 0.6 : this.has('stagger') && !a.sp ? UP.stagger : 0.3, src: a.sp ? 'sp' : 'nagare' });
           this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1, big: a.sp }));
           if (a.hits.length >= a.pierce) return false;
         }
