@@ -449,7 +449,7 @@ async function main() {
     // ストーリー・キャラクター・ゲーム概要（題字の画面だけ。押しても始まらない）
     const sb = document.createElement('button');
     sb.className = 'storybtn';
-    sb.textContent = 'ストーリー';
+    sb.textContent = 'ゲーム概要'; // 2026-10-06 アマネさん「ストーリーボタンをゲーム概要ボタンに名前変えて」
     sb.addEventListener('click', () => openStory());
     overlay.querySelector('.choices')!.appendChild(sb);
     // デバッグモード：題字の画面のいちばん下に小さく（誰でも押せる）
