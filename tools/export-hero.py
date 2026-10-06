@@ -82,13 +82,15 @@ calm_h = height(cv2.imread('assets/game/parts/relax/calm.png', cv2.IMREAD_UNCHAN
 for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), ('motion', 'victory', ('run1', 'run2', 'sweep', 'victory')),
                           ('action2', None, ('dash', 'rise', 'charge')), ('extra', None, ('aim', 'loose', 'knock')),
                           ('faces2', None, ('smug', 'teary', 'yawn', 'surprised')),
-                          ('gesture', 'petal', ('stretch', 'petal', 'toss', 'hood')), ('victory2', 'curtsy', ('shoulder', 'cheer', 'curtsy', 'pet'))):
+                          ('gesture', 'petal', ('stretch', 'petal', 'toss', 'hood')), ('victory2', 'curtsy', ('shoulder', 'cheer', 'curtsy', 'pet')),
+                          # 2026-10-06 弓を持った絵（hero-bow-run-v1）：弓を持って走る2コマ・弓を下げて待つ・矢をつがえて構える。まっすぐ立った bowcalm の背を構えにそろえる
+                          ('bowrun', 'bowcalm', ('bowrun1', 'bowrun2', 'bowcalm', 'bowready'))):
     k = height(p1) / (height(cv2.imread(f'assets/game/parts/{sheet}/{ref}.png', cv2.IMREAD_UNCHANGED)) if ref else calm_h)
     for name in names:
         img = cv2.imread(f'assets/game/parts/{sheet}/{name}.png', cv2.IMREAD_UNCHANGED)
         img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
         f = feet(img)
-        if sheet == 'motion' or name in ('dash', 'rise', 'knock', 'cheer'):
+        if sheet == 'motion' or name in ('dash', 'rise', 'knock', 'cheer', 'bowrun1', 'bowrun2'):
             # 足が前後に開いた絵は、足の真ん中ではなくスカートの真ん中（背の高さの62〜72%の行の、不透明な所の端と端の真ん中）を基準にする。
             # 腰の高さはしっぽとナイフが横に出ていてずれる。
             # 一番下の足を基準にすると、走りの2コマで体が左右へ跳んだ

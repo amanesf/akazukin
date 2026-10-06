@@ -10,7 +10,8 @@ import type { Sim } from './sim';
 // 2026-10-04 かわいさの追加：smug・teary・yawn・surprised＝待機の顔（calm に頭だけ重ねた）／
 // stretch・petal・toss・hood＝待機のしぐさ（伸び・花びら・ナイフ投げ・頭巾直し）／shoulder・cheer・curtsy・pet＝晩の終わり
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock'
-  | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet';
+  | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet'
+  | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready';
 type Gesture = 'stretch' | 'petal' | 'toss' | 'hood';
 // しぐさの長さ（秒）。伸びのあとは、あくびの顔で少し待つ
 const GESTURE: Record<Gesture, number> = { stretch: 2.2, petal: 1.9, toss: 1.5, hood: 1.5 };
@@ -61,7 +62,7 @@ const MESH_STEP = 12; // 網目の細かさ（画素）
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
 const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock',
-  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet'];
+  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready'];
 // しぐさの小道具（書き出した絵の画素）。宙のナイフと手のひらの花びらは切り抜きで落ちたので描く
 const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
 const TOSS_TOP = 40; // ナイフのいちばん高い所
@@ -242,16 +243,17 @@ export class HeroRig {
     const run = h.running > 0 && h.down <= 0 && h.charge < 0;
     const fast = h.running > 400 || h.running === 2;
     const legSwing = 0;
-    // 弓を持っているあいだは、待つのも走るのも弓を構えた絵（2026-10-06 アマネさん「弓状態で弓持ってない。弓持たせて」。走る弓の絵はまだ無い）
+    // 弓を持っているあいだは、弓を持った絵（2026-10-06 アマネさん「弓状態で弓持ってない。弓持たせて」→ hero-bow-run-v1 で生成）：
+    // 走る2コマ・狼が近い／技の直後は矢をつがえて構える・何もなければ弓を下げて待つ
     const bow = sim.phase === 'wave' && sim.weapon === 'bow';
     if (run && !h.move) {
       this.walkT += dt * (fast ? 22 : 16);
-      frame = bow ? 'loose' : Math.sin(this.walkT) >= 0 ? 'run1' : 'run2';
+      frame = Math.sin(this.walkT) >= 0 ? (bow ? 'bowrun1' : 'run1') : bow ? 'bowrun2' : 'run2';
       lift += Math.abs(Math.cos(this.walkT)) * (fast ? 30 : 22);
       lean = (fast ? 6 : 3) * D;
     } else if (!h.move && h.down <= 0) {
       // 狼が近い・技を出した直後は構え、何もなければ力を抜いて待つ（技の合間に切り替わると落ち着かなかった）
-      frame = bow ? 'loose' : this.alert > 0 ? 'idle' : 'calm';
+      frame = bow ? (this.alert > 0 ? 'bowready' : 'bowcalm') : this.alert > 0 ? 'idle' : 'calm';
       // 待機：ゆっくり少し上下して、わずかに揺れるだけ。絵を伸び縮みさせると気持ち悪かった（2026-10-04 アマネさん「縮んで気持ち悪い」）。
       // 生きている感じは、しっぽ・裾・耳の揺れものに任せる
       lift += (1 - Math.cos(t * 2.2)) * 4;

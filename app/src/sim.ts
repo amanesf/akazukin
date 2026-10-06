@@ -62,7 +62,8 @@ export interface Dog extends Unit { kind: DogKind; role: DogRole; bite: number; 
 // 矢：target を追いかけ（少し曲がる）、通り道の狼を pierce 匹まで貫く（2026-10-04 アマネさん「弓矢もっと役に立たせたい」）
 // sp：必殺技が出したもの（当てても必殺技は溜まらない）。fromZ：跳んだ高さから放つ。big：大きい矢・giant：奥行き全部を貫く大きな一本
 // leg：狙った狼を抜けたあとの2本目の道（届く所 endX までまっすぐ。通り道の狼を貫く）
-export interface Arrow { fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean; endX?: number; leg?: number }
+// full：貫いても弱まらない（桜の大矢）
+export interface Arrow { full?: boolean; fromX: number; fromLane: number; toX: number; lane: number; t: number; flight: number; damage: number; rain: boolean; target: number; pierce: number; hits: number[]; sp?: boolean; fromZ?: number; big?: boolean; giant?: boolean; endX?: number; leg?: number }
 // 主砲の撃ち込み：4連装の砲身から真っすぐ飛ぶ砲弾。通り道の狼を貫き、届く所まで行くと爆ぜる（t が負のあいだはまだ撃っていない）
 // row：どの砲口から出たか（0〜3。2本の砲×上下2段。描画の高さ）
 // slash：ナイフの締めから前へ飛ぶ斬撃（下段「締めで斬撃が前へ飛ぶ」。爆ぜずに消える）
@@ -1413,11 +1414,12 @@ export class Sim {
     if (id === 'bow') {
       const t = h.moveTarget ? this.wolves.find((w) => w.id === h.moveTarget) : undefined;
       if (h.fin === 'taiya') {
-        // 桜の大矢：奥行き全部を、届く所まで貫く大きな一本（必殺技の大きな矢と同じ見た目）
+        // 桜の大矢：同じ奥行きの狼を、届く所まで弱まらずに貫く大きな一本
         const dir = t ? Math.sign(t.x - h.x) || h.facing : (Math.sign(h.dashTo - h.x) || h.facing);
-        this.loose(clamp(h.x + dir * this.bowRange, HOUSE_X, WOLF_SPAWN_X), h.lane, dmg * TAIYA.mul, 0, false, 0, 999);
+        this.loose(clamp(h.x + dir * this.bowRange, HOUSE_X, WOLF_SPAWN_X), h.lane, dmg * TAIYA.mul, 0, false, 0, TAIYA.pierce);
         const a = this.arrows[this.arrows.length - 1];
-        a.giant = true;
+        a.big = true;
+        a.full = true;
         a.flight = 0.28;
         a.endX = undefined;
         this.landMove(true);
@@ -1771,7 +1773,7 @@ export class Sim {
           if (a.hits.includes(w.id) || w.age < 0.4 || w.z > (a.giant ? 400 : 80) || (!a.giant && Math.abs(w.lane - lane) > 0.35)) continue;
           if (w.x + w.size / 2 < lo || w.x - w.size / 2 > hi) continue;
           a.hits.push(w.id);
-          const first = a.hits.length === 1 || a.giant || a.sp || this.has('pierce'); // 2匹目からは弱く（必殺技の矢・下段「貫く数+2」を覚えたらそのまま）
+          const first = a.hits.length === 1 || a.giant || a.sp || a.full || this.has('pierce'); // 2匹目からは弱く（必殺技の矢・下段「貫く数+2」を覚えたらそのまま）
           this.hit(w, a.damage * (first ? 1 : RANGED.pierceMul) * (a.giant ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.giant ? 650 : 70, lift: a.giant ? 300 : 0, stun: a.giant ? 0.6 : this.has('stagger') && !a.sp ? UP.stagger : 0.3, src: a.sp ? 'sp' : 'nagare' });
           this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1, big: a.sp }));
           if (a.hits.length >= a.pierce) return false;

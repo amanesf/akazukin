@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right at the same three-quarter angle as in image 1. In every figure she carries the red compound bow from image 2 in one hand (no knives, no arrows in hand except figure 4). Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1, cheerful determined face.
+
+1. Running with the bow, contact pose: leaning forward, her front leg reaching forward with the heel about to land, the back leg pushing off behind; her front hand holds the bow upright by its grip at waist height, the other arm swings back, elbows bent; the skirt, braids and tail stream back.
+2. Running with the bow, passing pose: the opposite moment of the same run, the other leg forward with the knee raised high, the bow hand swung back and the empty hand forward.
+3. Standing at ease with the bow: weight on one leg, head slightly tilted, the bow held lowered at her side in one hand pointing down, the other hand relaxed, a gentle smile.
+4. Ready stance: feet apart, the bow held forward at chest height in her front hand with an arrow nocked but the string not drawn yet, her other hand resting on the string, alert eyes looking right.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.

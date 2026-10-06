@@ -115,9 +115,11 @@ export const FINISHERS: Record<Finisher, { name: string; key: string; short?: st
   renbu: { name: '空中連舞', key: '↑' },
   jiwari: { name: '地割り', key: '↓' },
   reishiki: { name: '零距離主砲', key: '━', short: '零距離' },
-  taiya: { name: '桜の大矢', key: '➶', short: '大矢' }, // 弓を持って4発目をタップ：奥行き全部を、届く所まで貫く大きな一本
+  taiya: { name: '桜の大矢', key: '➶', short: '大矢' }, // 弓を持って4発目をタップ：届く所まで貫く大きな一本
 };
-export const TAIYA = { mul: 4 }; // 桜の大矢の威力（ふつうの矢の何倍。締めの格も掛かる）
+// 桜の大矢：ふつうの矢の mul 倍（締めの格も掛かる）で、同じ奥行きの狼を pierce 匹まで、弱まらずに貫く。
+// 2026-10-06 アマネさん「桜の大矢強すぎない？」：前は4倍・奥行き全部・何匹でも・鎧も素通しで、20匹の群れに約640/秒（主砲より上）だった
+export const TAIYA = { mul: 2.5, pierce: 6 };
 // 矢はほぼまっすぐ速く（2026-10-04 アマネさん「弓矢がもっとまっすぐ飛ぶように。しょぼい」）。矢の雨だけ空から降る（RAIN）
 export const BOW_FLIGHT = { base: 0.12, perUnit: 0.00025, hitRadius: 40, pierce: 3 }; // 矢は狙った狼を追い、通り道の狼を3匹まで貫く
 export const RAIN_FLIGHT = { base: 0.3, perUnit: 0.0005 };
