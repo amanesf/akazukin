@@ -1,0 +1,9 @@
+Sprite sheet of the girl in 1枚目 = image 1: four figures of her side by side on one flat light gray background, with wide gray space between them, all at the same size, facing right at the same three-quarter angle as in image 1. Same hood with wolf ears, fur cape, braids, blouse, belts, two small wolf heads, wolf tail, skirt, black tights and red boots as image 1. Nothing is on her back except the fur cape (do not draw any cannon or gun). Dynamic action poses like a fighting game key frame.
+
+1. Bracing to fire: feet planted wide apart and knees bent, leaning forward into the wind, both large knives from image 2 held low at her sides in reverse grip, eyes fixed to the right, mouth open in a shout, the cape and braids blown back as if a huge blast is going off just above her shoulder.
+2. Recoil: a moment later, she is pushed back by the blast, leaning backward with one boot sliding back on the ground, the other knee bent, both knives from image 2 still gripped with her arms thrown back for balance, eyes squeezed tight, the skirt and cape whipped forward.
+3. Dash with the bow: a low, long lunge to the right, body leaning far forward, front knee deeply bent and back leg stretched behind, carrying the red compound bow from image 3 low in her front hand, the other arm swept back; no knives; the skirt, braids and tail streaming back; a focused face.
+4. Shooting at the sky: feet apart, leaning back slightly, the red compound bow from image 3 raised high and drawn fully with an arrow aimed steeply up to the upper right, about 60 degrees above level; no knives; a confident smile.
+
+Same colors, shading, line weight and art style as image 1. Even soft lighting, clean outlines, cel shading, the floor the same flat gray.
+Her height 158cm. Camera 6m away at her waist height (アイレベル 0.8m), all four figures fully in frame.
