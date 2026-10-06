@@ -3,6 +3,8 @@
  * 素朴な bot と違い、技をつないで見せ場を作る：
  *   斬り2回 → 打ち上げ → 宙で追い打ち → 叩き落とし／群れの列へ突進／3匹以上固まったら満タンまで溜めて主砲／
  *   囲まれたら桜嵐／家に迫られたら駆けつける
+ * 2026-10-06（武器の持ち替えのあとの作り）：まわりが空いていて遠くに狼がいれば弓に持ち替えて射る（流れ矢を溜める）、
+ *   狼が寄ってきたらナイフに戻す。桜嵐は、まだこの夜に使っていない種類を先に出す（3種類を見せる）
  * 乱数は mem の中の決まった数列だけを使う（同じ seed なら毎回同じ動き。撮る前に描画なしで一番いい1回を選ぶため）。
  * 文字列にしてページの中でも動かすので、外の変数は使わない。
  * k：見せ方の癖（0〜1。乱数の種を変えるのと同じく、違う1回を作るためのつまみ）
@@ -36,7 +38,25 @@ export function director(s, mem, k = 0.5) {
   // 桜嵐：まわりに5匹以上（または大狼が近い）
   const crowd = ws.filter((w) => Math.abs(w.x - h.x) < 220).length;
   const boss = ws.some((w) => w.kind === 'alpha' && Math.abs(w.x - h.x) < 200);
-  if (s.canOuran() && (crowd >= 5 || (boss && crowd >= 3))) { s.ouran(); return; }
+  if (crowd >= 5 || (boss && crowd >= 3)) {
+    mem.used ??= {};
+    const ready = ['senbon', 'nagare', 'midare'].filter((k) => s.canOuran(k));
+    const sp = ready.find((k) => !mem.used[k]) ?? ready[0];
+    if (sp && s.ouran(sp)) { mem.used[sp] = (mem.used[sp] ?? 0) + 1; return; }
+  }
+  // 武器：寄ってきたらナイフ。まわりが空いていて、流れ矢がまだ溜まっていなければ弓で遠くを射る
+  const close = ws.filter((w) => Math.abs(w.x - h.x) < 160 && Math.abs(w.lane - h.lane) < 0.5).length;
+  const wantBow = close === 0 && s.gauges.nagare < 100 && !(mem.used?.nagare >= 1 && s.gauges.senbon < 100);
+  if (s.weapon === 'bow' && !wantBow) { s.switchWeapon('knife'); return; }
+  if (wantBow) {
+    const far = ws.filter((w) => Math.abs(w.x - h.x) <= s.bowRange && w.age >= 0.4);
+    if (far.length) {
+      if (s.weapon !== 'bow') { s.switchWeapon('bow'); return; }
+      const t = far.reduce((a, b) => (dist(a) < dist(b) ? a : b));
+      s.tap(t.x, t.lane, t.id);
+      return;
+    }
+  }
   // 主砲：前に3匹以上が固まっている（噛まれていないとき）
   const ahead = (dir) => ws.filter((w) => (w.x - h.x) * dir > -20 && Math.abs(w.x - h.x) < 200 && Math.abs(w.lane - h.lane) < 0.55).length;
   if (h.stun <= 0 && Math.max(ahead(1), ahead(-1)) >= 3 && (mem.lastShot ?? -9) < s.clock - 5 - rnd() * 3) {

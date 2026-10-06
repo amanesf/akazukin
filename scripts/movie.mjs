@@ -44,6 +44,14 @@ await p.waitForFunction(() => document.body.classList.contains('ready'));
 // 絵が全部読み込まれるまで（主人公・狼・番犬）
 await p.waitForFunction(() => { const v = window.akazukin.view; return v.rig.ready && v.wolves.ready && v.dogArt.ready; }, null, { timeout: 60000 });
 await p.waitForTimeout(1000);
+// 字体（しっぽり明朝）が読めているか。読めないまま撮ると、文字が代わりの字体になる（2026-10-06 アマネさん「フォントないと文字おかしい」）
+const fontOk = await p.evaluate(async () => {
+  await Promise.all(['400', '500', '700', '800'].map((w) => document.fonts.load(`${w} 20px "Shippori Mincho"`, '桜狼異聞大正赤ずきん0123456789')));
+  await document.fonts.ready;
+  return document.fonts.check('800 20px "Shippori Mincho"', '桜');
+});
+if (!fontOk) { console.log('字体（Shippori Mincho）が読めない。撮るのをやめる'); await b.close(); srv.close(); process.exit(1); }
+await p.waitForTimeout(500); // 字体が読めたあと、画面の中の文字が描き直されるのを待つ
 
 await p.evaluate(({ dir, setup, night }) => {
   window.__director = eval(`(${dir})`);
