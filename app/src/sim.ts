@@ -1749,7 +1749,7 @@ export class Sim {
           if (a.hits.includes(w.id) || w.age < 0.4 || w.z > (a.giant ? 400 : 80) || (!a.giant && Math.abs(w.lane - lane) > 0.35)) continue;
           if (w.x + w.size / 2 < lo || w.x - w.size / 2 > hi) continue;
           a.hits.push(w.id);
-          const first = a.hits.length === 1 || a.giant || a.sp; // 2匹目からは弱く（必殺技の矢はそのまま）
+          const first = a.hits.length === 1 || a.giant || a.sp || this.has('pierce'); // 2匹目からは弱く（必殺技の矢・下段「貫く数+2」を覚えたらそのまま）
           this.hit(w, a.damage * (first ? 1 : RANGED.pierceMul) * (a.giant ? 1 : 1 - WOLVES[w.kind].arrowResist), { stop: 0, kb: a.giant ? 650 : 70, lift: a.giant ? 300 : 0, stun: a.giant ? 0.6 : this.has('stagger') && !a.sp ? UP.stagger : 0.3, src: a.sp ? 'sp' : 'nagare' });
           this.fx.push(this.mk({ kind: 'arrowhit', x: w.x, lane: w.lane, z: w.z, n: w.id, dir: Math.sign(a.toX - a.fromX) || 1, big: a.sp }));
           if (a.hits.length >= a.pierce) return false;

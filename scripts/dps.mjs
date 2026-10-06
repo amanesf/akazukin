@@ -15,6 +15,9 @@ const N = await import(join(dir, 'nights.js'));
 await rm(dir, { recursive: true });
 
 const SEC = 30;
+// --grown B：上段を B 回ずつ・下段を全部覚えた主人公で測る（育てきったときの強さ）
+const grownM = process.argv.join(' ').match(/--grown\s+(\d+)/);
+const GROWN = grownM ? Number(grownM[1]) : -1;
 // 的を置いて、play(s, t) を 1/60 秒ごとに呼び、SEC 秒で与えた量を数える
 function measure(name, play, opts = {}) {
   const s = new Sim(1);
@@ -25,6 +28,7 @@ function measure(name, play, opts = {}) {
   s.dogs = [];
   s.hero.x = 300;
   s.hero.lane = 0.5;
+  if (GROWN >= 0) for (const k of Object.keys(s.basic)) { s.basic[k] = GROWN; s.special[k] = 6; }
   const xs = opts.xs ?? [380];
   const lanes = opts.lanes ?? xs.map(() => 0.5);
   const ws = xs.map((x, i) => { const w = s.debugSpawn('wolf', x, lanes[i]); w.hp = w.maxHp = 1e9; return w; });
@@ -42,7 +46,7 @@ function measure(name, play, opts = {}) {
 }
 const every = (dt) => (s, t, m) => { if (t >= (m.next ?? 0)) { m.next = t + dt; return true; } return false; };
 const tapper = (dt, weapon) => { const go = every(dt); return (s, t, m) => { s.weapon = weapon; if (go(s, t, m)) s.tap(380, 0.5); }; };
-console.log(`強化なし・${SEC}秒の平均（的は主人公の前 80）`);
+console.log(`${GROWN >= 0 ? `上段 ${GROWN}回ずつ・下段ぜんぶ` : '強化なし'}・${SEC}秒の平均（的は主人公の前 80）`);
 for (const r of [4, 6, 8]) measure(`ナイフ タップ ${r}回/秒`, tapper(1 / r, 'knife'));
 measure('ナイフ 4回/秒・3匹かたまる', tapper(1 / 4, 'knife'), { xs: [380, 400, 420] });
 for (const r of [2, 4]) measure(`弓 タップ ${r}回/秒`, tapper(1 / r, 'bow'));

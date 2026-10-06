@@ -209,7 +209,7 @@ export const SPECIAL_UPS: Record<Track, { id: UpId; note: string }[]> = {
   bow: [
     { id: 'draw', note: '弓を引くのが速く' },
     { id: 'ame', note: '群れに矢の雨' },
-    { id: 'pierce', note: '矢が貫く数 +2' },
+    { id: 'pierce', note: '矢が貫く数 +2・抜けても弱まらない' },
     { id: 'longBow', note: '矢が遠くまで届く' },
     { id: 'stagger', note: '矢の当たった狼が止まる' },
     { id: 'twin', note: '矢を2本ずつ放つ' },
@@ -255,7 +255,7 @@ export const UP = {
   stagger: 0.9, // 矢の当たった狼が止まる秒（ふつう 0.3）
   dogFast: 1.25,
   dogHowl: { every: 12, r: 200, stun: 0.9 }, // 番犬が吠える間隔・届く距離・すくむ秒
-  twin: 0.6, // 2本目の矢の威力の割合
+  twin: 1, // 2本目の矢の威力の割合（2026-10-06 アマネさん「弓は中盤まで弱めだけど、マックスまで育てたらかなり強い」→ 全力）
 };
 // 前の版（v3 まで）の強化の値段。読み込むとき、使った銭を返す（作りが変わったので買い直してもらう）
 export const OLD_TRACK_COSTS = [80, 180, 340, 560, 850, 1200];
