@@ -395,8 +395,8 @@ export class HeroRig {
         else if (wind) { frame = 'charge'; shiver = Math.sin(t * 90) * 2; }
         else { frame = 'recoil'; lean = -6 * D * Math.max(0, 1 - (e - OURAN.final) * 2); }
       } else {
-        // 跳んで撃ち下ろす → 着地して引き絞る → 大きな一本
-        if (e < OURAN.rush) frame = 'idle';
+        // 跳んで撃ち下ろす → 着地して引き絞る → 大きな一本。はじめから弓を持つ（ナイフの構えの絵だと弓を持っていなかった）
+        if (e < OURAN.rush) frame = 'bowready';
         else if (rush) { frame = 'loose'; lean = 10 * D; }
         else if (wind) frame = 'aim';
         else { frame = 'loose'; lean = -6 * D * Math.max(0, 1 - (e - OURAN.final) * 2); }
@@ -435,7 +435,8 @@ export class HeroRig {
     if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && this.face) frame = this.face.name;
     else if ((frame === 'calm' || (frame === 'idle' && !m && h.charge < 0)) && low) frame = 'teary'; // 体力が少ない：涙目でがんばる
     // 宙にいるあいだ（技のあと落ちてくるところ）は跳んだ姿。立った姿のまま浮くとおかしかった
-    if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0) { frame = 'rise'; lean = h.vz < 0 ? 4 * D : -4 * D; }
+    // 必殺技のあいだは除く（桜流れ矢で跳んでいるあいだ、ナイフで斬り上げる絵になって弓を持っていなかった）
+    if (h.z > 0 && !m && h.down <= 0 && h.charge < 0 && h.stun <= 0 && h.ouran <= 0) { frame = 'rise'; lean = h.vz < 0 ? 4 * D : -4 * D; }
     // 晩の最後の1匹：スローのあいだは振り抜いたまま見せ、スローが明けてから拳を上げる（2026-10-04 アマネさん「拳あげる早すぎ」）。
     // 上げる瞬間に少し沈んで跳ねる
     // 決めポーズは晩ごとに替える（ピース・跳んで万歳・主砲を担いでどや・お辞儀）。そのあと、寄ってきた番犬をしゃがんでなでる

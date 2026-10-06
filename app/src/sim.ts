@@ -635,6 +635,8 @@ export class Sim {
     h.lungeTo = null;
     this.hero.move = null;
     this.hero.charge = -1;
+    // ひるみを消す（必殺技のあいだは減らないので、噛まれた直後に出すと最後まで >_< の絵になり、桜流れ矢で弓を持っていなかった）
+    this.hero.stun = 0;
     this.hitStop = 0.35;
     this.events.push('ouran');
     this.sounds.push('ouran');
