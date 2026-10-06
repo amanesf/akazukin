@@ -165,41 +165,61 @@ export const BASIC: Record<Track, { note: string; step: number }> = {
   dog: { note: '体力・噛む力 +5%', step: 0.05 },
 };
 export const basicCost = (n: number) => Math.round((25 * 1.35 ** n) / 5) * 5;
-// 下段：順に覚える。id で効き目を見る
+// 下段：順に覚える。id で効き目を見る（2026-10-06 アマネさん「下段は３段階しかないのは寂しい。５個以上」→ 各6つ）。
+// 列ごとの性格：体力＝倒れない・粘る／ナイフ＝前へ攻める・つなぐ／主砲＝熱と付き合う・一発を大きく／弓＝離れて手数・崩す／番犬＝仲間を増やして任せる。
+// 並びは「安い順に、効き目が分かりやすい物 → 遊び方が変わる物」。熱を軽くするもの（主砲 2・4）は、熱そのものを無くさない
+// （連射すれば 6発でオーバーヒートする）。主砲 6 はオーバーヒートを「罰」から「見せ場」に変える
 export type UpId =
-  | 'rise' | 'tough' | 'regen' // 体力：起き上がりが早い・ひるみにくい・体力が少しずつ戻る
-  | 'dashFar' | 'finBig' | 'drain' // ナイフ：突進が遠くまで・締めの威力 1.5倍・斬ると体力が戻る
-  | 'quick' | 'cool' | 'hougeki' // 主砲：溜めが速く・熱の上限 +1・4連装の撃ち込み
-  | 'draw' | 'ame' | 'pierce' // 弓：引く速さ・矢の雨・貫く数 +2
-  | 'akita' | 'tosa' | 'dogRevive'; // 番犬：秋田を仲間に・土佐を仲間に・倒れても半分の時間で戻る
+  | 'rise' | 'tough' | 'regen' | 'repel' | 'rage' | 'endure' // 体力
+  | 'dashFar' | 'finBig' | 'drain' | 'chain' | 'slashWave' | 'dash2' // ナイフ
+  | 'quick' | 'cool' | 'hougeki' | 'coolFast' | 'bigBlast' | 'vent' // 主砲
+  | 'draw' | 'ame' | 'pierce' | 'longBow' | 'stagger' | 'twin' // 弓
+  | 'akita' | 'tosa' | 'dogRevive' | 'dogFast' | 'dogHold' | 'dogHowl'; // 番犬
 export const SPECIAL_UPS: Record<Track, { id: UpId; note: string }[]> = {
   body: [
     { id: 'rise', note: '倒れても早く起きる' },
     { id: 'tough', note: '噛まれてもひるみにくい' },
     { id: 'regen', note: '体力が少しずつ戻る' },
+    { id: 'repel', note: '噛まれるとまわりを弾き返す' },
+    { id: 'rage', note: '体力が3割を切ると攻撃力1.3倍' },
+    { id: 'endure', note: '一晩に一度、倒れずに踏みとどまる' },
   ],
   knife: [
     { id: 'dashFar', note: '突進が遠くまで' },
     { id: 'finBig', note: '締めの威力 1.5倍' },
     { id: 'drain', note: '斬ると体力が戻る' },
+    { id: 'chain', note: '連撃がつながりやすい' },
+    { id: 'slashWave', note: '締めで斬撃が前へ飛ぶ' },
+    { id: 'dash2', note: '突進を2回続けて出せる' },
   ],
   cannon: [
     { id: 'quick', note: '溜めが速く' },
     { id: 'cool', note: '熱の上限 +1' },
     { id: 'hougeki', note: '満タンで4連装の砲弾' },
+    { id: 'coolFast', note: '撃ち止めると早く冷める' },
+    { id: 'bigBlast', note: '満タンの爆発が広く' },
+    { id: 'vent', note: 'オーバーヒートでまわりを吹き飛ばす' },
   ],
   bow: [
     { id: 'draw', note: '弓を引くのが速く' },
     { id: 'ame', note: '群れに矢の雨' },
     { id: 'pierce', note: '矢が貫く数 +2' },
+    { id: 'longBow', note: '矢が遠くまで届く' },
+    { id: 'stagger', note: '矢の当たった狼が止まる' },
+    { id: 'twin', note: '矢を2本ずつ放つ' },
   ],
   dog: [
     { id: 'akita', note: '秋田（白雪）が仲間に' },
     { id: 'tosa', note: '土佐（鉄丸）が仲間に' },
     { id: 'dogRevive', note: '倒れても半分の時間で戻る' },
+    { id: 'dogFast', note: '番犬が速く走る' },
+    { id: 'dogHold', note: '番犬が足止めできる数 +1' },
+    { id: 'dogHowl', note: '番犬が吠えて狼をすくませる' },
   ],
 };
-export const SPECIAL_COSTS = [300, 700, 1200];
+// 全部そろえると 1列 12,400銭（5列で 6.2万）。後ろの3つは高め：自動操作だと70晩前後でそろう
+// （3つの時は40晩でそろい、あとの目標が無くなった。300〜3000 の6つだと、60晩でそろって3つの種とも楽に99晩を越えた）
+export const SPECIAL_COSTS = [300, 600, 1000, 2000, 3500, 5000];
 // デバッグモードの「強化をその晩らしく」：自動操作（scripts/bot.mjs）がその晩の前の昼に着いていた強化。[晩, 上段の回数（5つの平均）, 下段の数（5つの平均）]
 export const GROWTH_TABLE: [number, number, number][] = [[1, 0, 0], [11, 2, 1], [21, 4, 2], [31, 7, 3], [41, 10, 3], [61, 15, 3], [81, 18, 3], [99, 20, 3]]; // 2026-10-05 計測（種1〜3）
 // 下段の効き目の数値
@@ -207,12 +227,25 @@ export const UP = {
   rise: 0.6, // 倒れている時間の倍率
   tough: 1.6, // 噛まれてひるんだあと、ひるまない秒（ふつう 0.7）
   regen: 0.01, // 1秒に体力の何割が戻る
+  repel: { cd: 5, r: 130, damage: 20, kb: 520 }, // 噛まれたとき、まわり r を弾き返す（cd 秒に1回）
+  rage: { below: 0.3, mul: 1.3 },
   dashFar: 1.5, // 突進の距離の倍率
   finBig: 1.5,
   drain: 0.01, // 斬って当てるたび、体力の何割が戻る
+  chain: 1.5, // 連撃の間（COMBO.window）の倍率
+  slashWave: { damage: 30, range: 420, speed: 1100 }, // 締めが当たると、前へ飛ぶ斬撃（通り道の狼を斬る）
+  dash2: 0.12, // 1回目の突進のあと、2回目までの待ち（秒）
   quick: 0.3, // 溜めの速さ +割合
+  coolWait: 0.7, // 冷め始めるまで（ふつう HEAT.wait）
+  bigBlast: 1.4, // 満タンの主砲の範囲の倍率
+  vent: { r: 240, damage: 70, kb: 700 }, // オーバーヒートの瞬間、まわりを吹き飛ばす
   draw: 0.3, // 弓を引く速さ +割合
   pierce: 2,
+  longBow: 1.3, // 弓の届く距離の倍率
+  stagger: 0.9, // 矢の当たった狼が止まる秒（ふつう 0.3）
+  dogFast: 1.25,
+  dogHowl: { every: 12, r: 200, stun: 0.9 }, // 番犬が吠える間隔・届く距離・すくむ秒
+  twin: 0.6, // 2本目の矢の威力の割合
 };
 // 前の版（v3 まで）の強化の値段。読み込むとき、使った銭を返す（作りが変わったので買い直してもらう）
 export const OLD_TRACK_COSTS = [80, 180, 340, 560, 850, 1200];

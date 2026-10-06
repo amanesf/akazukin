@@ -5,6 +5,7 @@ import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Te
 import { Backdrop, mix } from './backdrop';
 import { COLORS, GRAY_FUR, HOWL, KING, OURAN, SHELL, WMAN, DOG_ORDER, DOG_ROLES, DOGS, FIELD_LENGTH, HERO, HOUSE_HP, HOUSE_X, LANE_TOL, MOVES, WOLF_SPAWN_X, WOLVES, type DogKind } from './config';
 import { blossom, crescent, easeOut, glowTexture, NIGHT_PINK, Particles, PINK, place } from './fx';
+import { AdvancedBloomFilter, ShockwaveFilter } from 'pixi-filters';
 import { HeroRig, type Pose } from './heroRig';
 import { Minimap } from './minimap';
 import { night } from './nights';
@@ -86,6 +87,16 @@ export class View {
   private house = new Sprite(); // おばあさんの家の絵
   private houseOver = new Graphics(); // 家のひび（絵の上）
   private overG = new Graphics(); // 矢・砲弾・衝撃波・斬撃の弧・裂け目
+  // 光の層（2026-10-06 アマネさん「光とか土煙とか。美しく光の派手な演出」）：光る線（矢の尾・光線・砲弾の尾・刃の軌跡）と、
+  // 粒の光るもの（parts.light）を加算でまとめ、にじみ（ブルーム）を掛ける。重い端末では自動で切る（?bloom=0 でも切れる）
+  private lightLayer = new Container();
+  private lightG = new Graphics();
+  private bloom: AdvancedBloomFilter | null = null;
+  private bloomOff = new URLSearchParams(location.search).get('bloom') === '0';
+  private slowT = 0; // 重いコマが続いた秒（にじみを切る目安）
+  // 衝撃の波紋（空間がゆがむ）：大きな爆発のあいだだけ、世界に掛ける
+  private waves: { f: ShockwaveFilter; t: number; life: number; x: number; y: number }[] = [];
+  private waveOff = new URLSearchParams(location.search).get('wave') === '0';
   private ghostLayer = new Container();
   private rig = new HeroRig();
   private ghosts: { rig: HeroRig; pose: Pose | null; t: number; tint: number }[] = [];
@@ -167,7 +178,15 @@ export class View {
       this.fog.push(f);
     }
     this.rimRig.root.blendMode = 'add';
-    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.headMarks, this.overG, this.parts.root);
+    this.world.addChild(this.ground, this.lampRoot, ...this.fog, this.house, this.houseOver, this.airBack.root, this.backG, this.rimBack, this.dogBack, this.wolfBack, this.ghostLayer, this.rimRig.root, this.rig.root, this.frontG, this.rimFront, this.dogFront, this.wolfFront, this.splitLayer, this.wolfHud, this.headMarks, this.overG, this.parts.root, this.lightLayer);
+    this.lightLayer.blendMode = 'add';
+    this.lightG.blendMode = 'add';
+    this.lightLayer.addChild(this.lightG, this.parts.light); // 粒の光るものも、ここでまとめてにじませる
+    if (!this.bloomOff) {
+      this.bloom = new AdvancedBloomFilter({ threshold: 0.35, bloomScale: 0.8, brightness: 1, blur: 6, quality: 4 });
+      this.bloom.resolution = 0.5; // にじみは粗くてよい（軽くする）
+      this.lightLayer.filters = [this.bloom];
+    }
     for (let i = 0; i < 48; i++) {
       const t = new Text({ text: '', style: { fontFamily: MINCHO, fontWeight: '800', fontSize: 22, fill: 0xffffff, stroke: { color: 0x000000, width: 5 } } });
       t.anchor.set(0.5);
@@ -335,6 +354,16 @@ export class View {
     const g = this.geo;
     const dt = Math.min(0.05, dtReal);
     this.vt += dt;
+    // 重い端末：遅いコマ（25fps を切る）が3秒続いたら、にじみと波紋を切る
+    if (!this.bloomOff) {
+      this.slowT = dtReal > 1 / 25 && dtReal < 0.5 ? this.slowT + dtReal : Math.max(0, this.slowT - dtReal * 0.5);
+      if (this.slowT > 3) {
+        this.bloomOff = this.waveOff = true;
+        this.lightLayer.filters = null;
+        console.info('にじみを切った（重い）');
+      }
+    }
+    this.runRipples(dt);
     const frozen = sim.hitStop > 0;
     const pdt = frozen ? dt * 0.08 : dt; // ヒットストップのあいだは粒もほぼ止める
     const h = sim.hero;
@@ -562,6 +591,7 @@ export class View {
 
     // ── 矢・砲弾・衝撃波・斬撃の弧・数字 ──
     this.drawOver(sim, dt);
+    if (!day) this.drawGunLight(sim, dt);
     // 主砲の溜め：頭の上の丸い目盛り。撃てる所（短い印）から満タンまで溜まり、満タンで金色に脈打つ（ボタンをやめた代わり）
     if (h.charge >= 0) {
       const o = this.overG;
@@ -702,6 +732,8 @@ export class View {
         P.dust(x, y, s * 1.4, 6, 50, 60);
         for (let i = 0; i < 6; i++) P.petal(x, y - 4, s, -dir * (100 + Math.random() * 200), -120 - Math.random() * 200); // 足もとの花びらを巻き上げる
         P.glow(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 1.1, 0xff6090, 0.2, 0.5);
+        // 駆け抜けた道に光の筋が流れる
+        for (let i = 0; i < 6; i++) P.spark(x, y - this.heroH(f.lane) * (0.2 + Math.random() * 0.6), -dir * (500 + Math.random() * 500) * s, 0, s, Math.random() < 0.5 ? 0xffc0d8 : 0xffffff, 0.25, 0);
         for (let i = 0; i < 8; i++) {
           const ly = Math.random() * this.geo.Hm * 0.8 + this.geo.Hm * 0.1;
           this.screenParts.line(dir > 0 ? this.geo.W : -this.geo.W * 0.6, ly, this.geo.W * (0.3 + Math.random() * 0.4), -dir * this.geo.W * 5, 0xffffff, 0.5, 0.18, 1.5 + Math.random() * 2);
@@ -713,22 +745,30 @@ export class View {
         if (f.big) break;
         const bx = this.wx(f.x2 ?? f.x);
         const by = this.wy(f.lane2 ?? f.lane) - this.heroH(f.lane2 ?? f.lane) * 0.3;
-        P.glow(bx, by, this.heroH(f.lane) * 0.7, 0xffb050, 0.15, 1, 0.5);
+        P.glow(bx, by, this.heroH(f.lane) * 0.9, 0xffb050, 0.15, 1, 0.5);
+        P.flare(bx, by, this.heroH(f.lane) * 0.5, 0xfff0c0, 0.18);
         P.ring(bx, by, 4, this.heroH(f.lane) * 0.4, 3 * s, 0xffe0a0, 0.18);
+        for (let i = 0; i < 4; i++) P.spark(bx, by, (Math.random() - 0.5) * 800 * s, -Math.random() * 500 * s, s, 0xffd080);
         for (let i = 0; i < 3; i++) P.ember(bx, by, s);
         break;
       }
       case 'pound': {
-        P.ring(x, y, 10, (f.r ?? 80) * this.geo.K * 1.6, 6 * s, 0xffe0c0, 0.35, 0.28);
+        // 叩きつけ：地面に寝た光の輪、地面を這って広がる土煙、足もとが一瞬照らされる、空間がゆがむ
+        const R0 = (f.r ?? 80) * this.geo.K * 1.6;
+        P.ring(x, y, 10, R0, 6 * s, 0xffe0c0, 0.35, 0.28);
+        P.ring(x, y, 6, R0 * 0.6, 4 * s, 0xffffff, 0.22, 0.28);
+        P.glow(x, y - 6, R0 * 1.4, 0xffd0a0, 0.25, 0.6, 0.3);
         P.debris(x, y - 4, s, 14, y + 6);
-        P.dust(x, y, s * 1.8, 8, 90, 50);
+        P.dust(x, y, s * 1.8, 10, 110, 40);
+        for (let i = 0; i < 8; i++) P.spark(x, y - 4, (Math.random() - 0.5) * 900 * s, -Math.random() * 300 * s, s, 0xffe0c0, 0.25);
+        this.ripple(x, y - 10, R0 * 1.2, 9);
         for (let i = 0; i < 10; i++) P.petal(x + (Math.random() - 0.5) * 80, y, s, (Math.random() - 0.5) * 300, -200 - Math.random() * 300); // 地面の花びらが舞い上がる
         this.flash = Math.max(this.flash, 0.2);
         this.impact = Math.max(this.impact, 0.05);
         break;
       }
       case 'land':
-        P.dust(x, y, s * (f.big ? 1.8 : 1), f.big ? 8 : 4, f.big ? 70 : 40, 30);
+        P.dust(x, y, s * (f.big ? 1.8 : 1), f.big ? 9 : 4, f.big ? 90 : 50, 25);
         if (f.big) {
           P.debris(x, y - 4, s, 8, y + 6);
           P.ring(x, y, 8, (f.r ?? 60) * this.geo.K * 1.3, 4 * s, 0xd0c0a0, 0.3, 0.28);
@@ -737,14 +777,26 @@ export class View {
       case 'blast': {
         const r = (f.r ?? 60) * this.geo.K;
         const by = y - this.geo.Hm * 0.08;
-        P.glow(x, by, r * 2.6, f.big ? 0xffd080 : 0xffa040, 0.35, 1, 0.4);
-        P.glow(x, by, r * 1.2, 0xffffff, 0.15, 1, 0.8);
-        P.ring(x, by, r * 0.2, r * 1.3, 8 * s, 0xffc070, 0.32);
-        P.ring(x, y, r * 0.3, r * 1.5, 5 * s, 0xffe0c0, 0.4, 0.28);
-        P.debris(x, y - 6, s, f.big ? 22 : 12, y + 6);
-        P.dust(x, y, s * 2.2, 10, 120, 80);
+        // 爆発：白い芯 → ふくらむ火の玉（橙・紅の光を重ねる）→ ぼけた衝撃の輪 → 地面を這う土煙と昇る煙、舞い上がる火の粉。空間がゆがむ
+        P.glow(x, by, r * 0.9, 0xffffff, 0.12, 0.9, 0.8);
+        P.flare(x, by, r * (f.big ? 2.4 : 1.8), 0xfff0d0, 0.3);
+        P.glow(x, by, r * 2.4, f.big ? 0xffc070 : 0xffa040, 0.4, 0.7, 0.4);
+        for (let i = 0; i < (f.big ? 7 : 4); i++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = r * (0.2 + Math.random() * 0.5);
+          P.glow(x + Math.cos(a) * d, by + Math.sin(a) * d * 0.6, r * (0.7 + Math.random() * 0.6), Math.random() < 0.5 ? 0xff6a20 : 0xffa040, 0.35 + Math.random() * 0.25, 0.5, 0.6);
+        }
+        P.ring(x, by, r * 0.2, r * 1.4, 8 * s, 0xffc070, 0.32);
+        P.ring(x, y, r * 0.3, r * 1.7, 5 * s, 0xffe0c0, 0.4, 0.28);
+        P.glow(x, y, r * 3, 0xffa050, 0.4, 0.25, 0.2); // 地面が照らされる
+        for (let i = 0; i < (f.big ? 16 : 9); i++) P.spark(x, by, (Math.random() - 0.5) * 1400 * s, -(200 + Math.random() * 700) * s, s, Math.random() < 0.5 ? 0xffd080 : 0xffffff, 0.35 + Math.random() * 0.25);
+        for (let i = 0; i < (f.big ? 10 : 5); i++) P.ember(x + (Math.random() - 0.5) * r, by, s * 1.4);
+        for (let i = 0; i < 5; i++) P.puff(x + (Math.random() - 0.5) * r, by - Math.random() * r * 0.4, (Math.random() - 0.5) * 60 * s, -(30 + Math.random() * 60) * s, r * 0.35, r * 0.9, Math.random() < 0.5 ? 0x5a4a48 : 0x8a7a78, 0.55, 1 + Math.random() * 0.6);
+        P.debris(x, y - 6, s, f.big ? 18 : 10, y + 6);
+        P.dust(x, y, s * 2.2, 12, 140, 50);
+        this.ripple(x, by, r * (f.big ? 2.4 : 1.6), f.big ? 16 : 10);
         for (let i = 0; i < (f.big ? 16 : 6); i++) P.petal(x, by, s, (Math.random() - 0.5) * 700, -Math.random() * 500);
-        this.flash = Math.max(this.flash, f.big ? 0.55 : 0.3);
+        this.flash = Math.max(this.flash, f.big ? 0.4 : 0.22);
         this.flashColor = 0xfff0d0;
         this.impact = Math.max(this.impact, f.big ? 0.08 : 0.05);
         // 着いた地面に桜の紋が焼き付く（数秒で冷めて消える）
@@ -753,13 +805,26 @@ export class View {
         break;
       }
       case 'muzzle': {
+        // 発射：2本の砲口から白い閃光・十字の光・砲身の向きへ伸びる光の筋・火の玉、たなびく煙、反動の土煙、足もとが照らされる
         const dir = f.dir ?? 1;
         const hh = this.heroH(f.lane);
-        const my = y - hh * 0.62;
-        P.glow(x + dir * hh * 0.25, my, hh * (f.big ? 1.6 : 1.1), 0xffe0a0, 0.18, 1, 0.3);
-        for (let i = 0; i < 10; i++) P.line(x, my + (Math.random() - 0.5) * hh * 0.2, dir * hh * (0.6 + Math.random() * 0.8), 0, 0xfff0c0, 0.9, 0.12, 3);
+        const guns = [this.rig.cannonAxis(this.world, 0), this.rig.cannonAxis(this.world, 1)];
+        const tips = guns.some(Boolean) ? guns.filter((g): g is NonNullable<typeof g> => !!g) : [{ tip: { x: x + dir * hh * 0.25, y: y - hh * 0.62 }, ux: dir, uy: 0 }];
+        for (const gn of tips) {
+          const { tip, ux, uy } = gn;
+          P.glow(tip.x, tip.y, hh * (f.big ? 0.7 : 0.5), 0xffffff, 0.1, 0.9, 0.5);
+          P.flare(tip.x + ux * hh * 0.1, tip.y + uy * hh * 0.1, hh * (f.big ? 1.2 : 0.8), 0xfff0c0, f.big ? 0.28 : 0.2);
+          for (let i = 1; i <= 3; i++) P.glow(tip.x + ux * hh * 0.22 * i, tip.y + uy * hh * 0.22 * i, hh * (0.55 - i * 0.08) * (f.big ? 1.25 : 1), i === 1 ? 0xffc070 : 0xff7028, 0.16 + i * 0.04, 0.55, 0.5);
+          for (let i = 0; i < 6; i++) {
+            const sp = (900 + Math.random() * 900) * s;
+            const sp2 = (Math.random() - 0.5) * 0.3;
+            P.spark(tip.x, tip.y, (ux - uy * sp2) * sp, (uy + ux * sp2) * sp, s * 1.3, 0xfff0c0, 0.16, 0);
+          }
+          P.gunSmoke(tip.x, tip.y, s, dir); // 砲口からたなびく白い煙
+        }
+        P.glow(x + dir * hh * 0.5, y, hh * 2, 0xffc070, 0.25, 0.25, 0.2); // 足もとが照らされる
         P.dust(x - dir * hh * 0.3, y, s * 1.6, 6, 60, 30); // 反動の土煙
-        P.gunSmoke(x + dir * hh * 0.3, my, s, dir); // 砲口からたなびく白い煙
+        const my = y - hh * 0.62;
         P.casing(x - dir * hh * 0.1, my, s, dir, y + 4); // 金の薬莢が跳ねる
         if (f.big) P.casing(x - dir * hh * 0.15, my + 6, s, dir, y + 6);
         break;
@@ -767,6 +832,7 @@ export class View {
       case 'full':
         P.ring(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 0.9, 10, 4, 0xffe070, 0.25);
         P.glow(x, y - this.heroH(f.lane) * 0.5, this.heroH(f.lane) * 1.4, 0xffd060, 0.3, 0.9);
+        for (const gn of [this.rig.cannonAxis(this.world, 0), this.rig.cannonAxis(this.world, 1)]) if (gn) P.flare(gn.tip.x, gn.tip.y, this.heroH(f.lane) * 0.9, 0xfff0a0, 0.4, 0, 0, 30); // 砲口がきらっ
         this.flash = Math.max(this.flash, 0.15);
         this.flashColor = 0xfff0a0;
         break;
@@ -784,6 +850,8 @@ export class View {
         P.smoke(x, y - zy - this.geo.Hm * 0.06, s, 4);
         if (f.wolf) this.splitWolf(f, x, y - zy, s);
         for (let i = 0; i < 8; i++) P.ember(x + (Math.random() - 0.5) * 40 * s, y - zy - this.geo.Hm * 0.06, s);
+        // 影が解けて、光の粒になって昇っていく
+        for (let i = 0; i < 6; i++) P.mote(x + (Math.random() - 0.5) * 50 * s, y - zy - this.geo.Hm * (0.03 + Math.random() * 0.08), (Math.random() - 0.5) * 30 * s, -(60 + Math.random() * 90) * s, (10 + Math.random() * 10) * s, Math.random() < 0.5 ? 0xffd0e4 : 0xfff4e0, 1 + Math.random() * 0.8);
         for (let i = 0; i < 6; i++) P.petal(x, y - zy - this.geo.Hm * 0.05, s, (Math.random() - 0.5) * 500 + (f.dir ?? 0) * 200, -150 - Math.random() * 300);
         // 道に花びらが積もる（夜が進むほど道が桜色に）
         for (let i = 0; i < 5; i++) this.groundPetals.push({ x: f.x + (Math.random() - 0.5) * 60, lane: Math.max(0, Math.min(1, f.lane + (Math.random() - 0.5) * 0.25)), r: 2.5 + Math.random() * 3, c: PINK[Math.floor(Math.random() * 4)], rot: Math.random() * 3 });
@@ -824,12 +892,50 @@ export class View {
         const rel = w ? WOLF_REL[w.kind] : 1;
         const hd = this.wolfHead(f.x, f.lane, f.z ?? 0, rel);
         P.ring(hd.x, hd.y, 4, this.geo.Hm * 0.07 * rel, 3 * s, 0xffc0d8, 0.22);
-        P.glow(hd.x, hd.y, this.geo.Hm * 0.12, 0xff90b8, 0.15, 0.9, 0.6);
+        P.glow(hd.x, hd.y, this.geo.Hm * 0.14, 0xff90b8, 0.15, 0.9, 0.6);
+        P.flare(hd.x, hd.y, this.geo.Hm * 0.1 * (f.big ? 1.4 : 1), 0xffffff, 0.28);
+        // 当たった所から、きらめきが散る
+        for (let i = 0; i < 4; i++) P.flare(hd.x, hd.y, this.geo.Hm * (0.02 + Math.random() * 0.025), Math.random() < 0.5 ? 0xffd0e4 : 0xffffff, 0.4 + Math.random() * 0.3, (Math.random() - 0.5) * 260 * s, -(60 + Math.random() * 160) * s, 30);
         P.flower(hd.x, hd.y, this.geo.Hm * 0.03 * rel, 0.55); // 当たった所に桜がぱっと咲く
         for (let i = 0; i < 4; i++) P.petal(hd.x, hd.y, s, (Math.random() - 0.3) * 260 * (f.dir ?? 1), -120 - Math.random() * 200, 0.6);
         if (f.big) break; // 千本桜のナイフは刺さったまま残さない（数が多い）
         this.stuck.push({ id: f.n ?? 0, x: f.x, lane: f.lane, z: f.z ?? 0, rel, t: 0, dir: f.dir ?? 1 });
         if (this.stuck.length > 12) this.stuck.shift();
+        break;
+      }
+      case 'bark': {
+        // 番犬の吠え声：金色のぼけた輪が地面を広がり、まわりの狼がすくむ
+        const R0 = (f.r ?? 200) * this.geo.K;
+        for (let i = 0; i < 2; i++) P.ring(x, y - this.geo.Hm * 0.04, 8 + i * 10, R0 * (0.8 + i * 0.3), 4 * s, 0xffe0a0, 0.4 + i * 0.15, 0.5);
+        P.glow(x, y - this.geo.Hm * 0.05, this.geo.Hm * 0.18, 0xffd080, 0.3, 0.7);
+        break;
+      }
+      case 'vent': {
+        // 熱を吐き出す：主人公のまわりへ、白い蒸気と橙の熱が一気に吹き出す
+        const R0 = (f.r ?? 240) * this.geo.K;
+        const cy = y - this.heroH(f.lane) * 0.5;
+        P.glow(x, cy, R0 * 2, 0xff8040, 0.45, 0.9, 0.4);
+        P.flare(x, cy, R0 * 1.6, 0xfff0c0, 0.35);
+        P.ring(x, y, 10, R0 * 1.3, 8 * s, 0xffc080, 0.4, 0.3);
+        for (let i = 0; i < 14; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = (200 + Math.random() * 400) * s;
+          P.puff(x, cy, Math.cos(a) * sp, Math.sin(a) * sp * 0.6 - 40 * s, R0 * 0.12, R0 * 0.5, 0xf0eaf0, 0.6, 0.8 + Math.random() * 0.5, 2.5);
+        }
+        for (let i = 0; i < 16; i++) P.spark(x, cy, (Math.random() - 0.5) * 1600 * s, -(Math.random() * 800) * s, s, 0xffb060, 0.4);
+        this.ripple(x, cy, R0 * 1.6, 16);
+        this.flash = Math.max(this.flash, 0.35);
+        this.flashColor = 0xffe0c0;
+        break;
+      }
+      case 'endure': {
+        // 踏みとどまる：金の光の柱と輪、十字の光
+        const hh = this.heroH(f.lane);
+        P.flare(x, y - hh * 0.5, hh * 2.2, 0xffe080, 0.6);
+        P.ring(x, y, 10, hh * 1.2, 6 * s, 0xffe080, 0.5, 0.3);
+        for (let i = 0; i < 12; i++) P.mote(x + (Math.random() - 0.5) * hh * 0.6, y, 0, -(150 + Math.random() * 250) * s, hh * 0.08, 0xffe8a0, 0.8);
+        this.flash = Math.max(this.flash, 0.3);
+        this.flashColor = 0xfff0c0;
         break;
       }
       case 'num':
@@ -1829,6 +1935,80 @@ export class View {
 
   // 千本桜の駆け抜けた跡：細い光の線が一瞬遅れて「ズバッ」と太く光る
   private slashTrails: { x0: number; x1: number; lane: number; t: number; burst: boolean }[] = [];
+  // 主砲の光（2026-10-06 アマネさん「主砲の溜めの銃口が光ったり」）：
+  // 溜め＝光の粒が2つの砲口へ吸い込まれ、砲口の光が育つ。満タンで十字の光が瞬く。熱＝砲身が赤く灼ける。オーバーヒート＝蒸気と赤い脈
+  private gunLightT = 0;
+  private drawGunLight(sim: Sim, dt: number) {
+    const h = sim.hero;
+    if (h.down > 0) return;
+    const L = this.lightG;
+    const hh = this.heroH(h.lane);
+    const s = this.geo.Hm / 600;
+    const charging = h.charge >= 0;
+    const c = charging ? Math.min(1, h.charge / sim.chargeFull) : 0;
+    const heat = Math.min(1, h.heat / sim.heatMax);
+    if (!charging && heat <= 0.01 && h.overheat <= 0) return;
+    this.gunLightT -= dt;
+    const tick = this.gunLightT <= 0;
+    if (tick) this.gunLightT = 0.03;
+    const soft = (x: number, y: number, r: number, color: number, a: number) => {
+      for (let i = 4; i >= 1; i--) L.circle(x, y, r * (i / 4)).fill({ color, alpha: a * 0.28 });
+    };
+    for (const i of [0, 1]) {
+      const gn = this.rig.cannonAxis(this.world, i);
+      if (!gn) continue;
+      const { tip, ux, uy } = gn;
+      if (charging) {
+        const full = c >= 1;
+        const pulse = full ? 0.75 + 0.25 * Math.sin(this.vt * 22) : 1;
+        soft(tip.x, tip.y, hh * (0.08 + 0.22 * c) * pulse, full ? 0xffe080 : 0xffb060, 0.4 + 0.5 * c);
+        soft(tip.x, tip.y, hh * (0.03 + 0.06 * c), 0xffffff, 0.9);
+        if (tick && !full) {
+          // まわりから光の粒が吸い込まれる
+          const a = Math.random() * Math.PI * 2;
+          const d = hh * (0.3 + Math.random() * 0.25);
+          const life = 0.22;
+          this.parts.mote(tip.x + Math.cos(a) * d, tip.y + Math.sin(a) * d, (-Math.cos(a) * d) / life, (-Math.sin(a) * d) / life, hh * 0.05, Math.random() < 0.5 ? 0xffd090 : 0xffffff, life);
+        }
+        if (full && Math.random() < dt * 6) this.parts.flare(tip.x, tip.y, hh * (0.6 + Math.random() * 0.3), 0xfff0b0, 0.25, 0, 0, 30);
+      }
+      // 熱：砲身が根もとから先へ赤く灼ける（熱いほど広く・明るく）。オーバーヒート中は赤く脈打つ
+      const hot = h.overheat > 0 ? 0.7 + 0.3 * Math.sin(this.vt * 14) : heat;
+      if (hot > 0.01) {
+        for (let k = 0; k < 4; k++) {
+          const along = hh * 0.08 * (k + 0.5);
+          soft(tip.x - ux * along, tip.y - uy * along, hh * 0.07 * (0.6 + hot), k < 2 ? 0xff5020 : 0xff2a10, 0.25 + 0.55 * hot * (1 - k * 0.18));
+        }
+      }
+      if (h.overheat > 0 && tick && Math.random() < 0.5) {
+        this.parts.puff(tip.x, tip.y, (Math.random() - 0.5) * 30 * s, -(40 + Math.random() * 50) * s, hh * 0.05, hh * 0.25, 0xf0eef4, 0.45, 0.9);
+      }
+    }
+  }
+
+  // 衝撃の波紋：x,y（世界の座標）から空間がゆがんで広がる。大きな爆発・叩きつけ・オーバーヒートの吐き出し
+  private ripple(x: number, y: number, radius: number, amp = 18) {
+    if (this.waveOff || this.waves.length >= 3) return;
+    const p = this.world.toGlobal({ x, y });
+    const f = new ShockwaveFilter({ center: { x: p.x, y: p.y }, speed: radius * 2.2, amplitude: amp, wavelength: 90, brightness: 1.08, radius, time: 0 });
+    this.waves.push({ f, t: 0, life: 0.45, x, y });
+    this.app.stage.filterArea = this.app.screen;
+    this.app.stage.filters = this.waves.map((w) => w.f);
+  }
+  private runRipples(dt: number) {
+    if (!this.waves.length) return;
+    for (const w of this.waves) {
+      w.t += dt;
+      w.f.time = w.t;
+      const p = this.world.toGlobal({ x: w.x, y: w.y }); // カメラが動いても、爆発した所から
+      w.f.center = { x: p.x, y: p.y };
+      w.f.amplitude *= Math.max(0, 1 - dt * 3);
+    }
+    const n = this.waves.length;
+    this.waves = this.waves.filter((w) => w.t < w.life);
+    if (this.waves.length !== n) this.app.stage.filters = this.waves.length ? this.waves.map((w) => w.f) : null;
+  }
+
   private drawSlashTrails(o: Graphics, dt: number) {
     this.slashTrails = this.slashTrails.filter((st) => (st.t += dt) < 0.7);
     for (const st of this.slashTrails) {
@@ -1905,13 +2085,15 @@ export class View {
 
   private drawOver(sim: Sim, dt: number) {
     const o = this.overG.clear();
+    const L = this.lightG.clear();
     const K = this.geo.K;
-    this.drawSlashTrails(o, Math.min(0.05, dt));
-    this.drawBeams(o, sim);
-    this.drawBlade(o);
+    this.drawSlashTrails(L, Math.min(0.05, dt));
+    this.drawBeams(L, sim);
+    this.drawBlade(L);
     this.drawMarks(o, sim);
     // 矢：まっすぐ（2026-10-05 アマネさん「連続で飛ぶとき放物線みたいに跳んで気持ち悪い」）。行き先は放った瞬間の狼の頭で止めて、
     // 途中で曲げない（当たり判定だけ sim が狼を追う。前は毎コマ狼の頭へ引き直していたので、狼が弾かれると矢がぐにゃっと曲がった）
+    const LG = L;
     for (const a of sim.arrows) {
       if (a.t < 0) continue;
       const hh = this.heroH(a.fromLane);
@@ -1959,11 +2141,21 @@ export class View {
           o.poly([fx, fy, fx + p.ux * 14 - p.uy * 6 * sg, fy + p.uy * 14 + p.ux * 6 * sg, fx + p.ux * 18, fy + p.uy * 18]).fill({ color: 0xffd0e2, alpha: al });
         }
       }
-      // 光の尾（桜色）：飛んだ道に沿って長く
+      // 光の尾（桜色）：飛んだ道に沿って長く。光の層に描く（加算・にじむ）
       const tail = (a.giant ? a.t : Math.min(a.t, 0.4)) * Math.hypot(x1 - x0, y1 - y0);
-      o.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 10 * S * (a.giant ? 2.6 : 1), color: 0xff7aa8, alpha: a.giant ? 0.45 : 0.32, cap: 'round' });
-      o.moveTo(x - ux * (L + tail * 0.6), y - uy * (L + tail * 0.6)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 4 * S * (a.giant ? 2 : 1), color: 0xfff0f6, alpha: a.giant ? 0.95 : 0.75, cap: 'round' });
-      o.circle(x, y, hh * 0.05 * S).fill({ color: 0xffffff, alpha: 0.55 }); // 矢じりの光
+      LG.moveTo(x - ux * (L + tail), y - uy * (L + tail)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 14 * S * (a.giant ? 2.6 : 1), color: 0xff6a9c, alpha: a.giant ? 0.4 : 0.28, cap: 'round' });
+      LG.moveTo(x - ux * (L + tail * 0.6), y - uy * (L + tail * 0.6)).lineTo(x - ux * L * 0.3, y - uy * L * 0.3).stroke({ width: 4 * S * (a.giant ? 2 : 1), color: 0xfff0f6, alpha: a.giant ? 0.95 : 0.8, cap: 'round' });
+      LG.circle(x, y, hh * 0.07 * S).fill({ color: 0xffd0e4, alpha: 0.5 }); // 矢じりの光
+      LG.circle(x, y, hh * 0.03 * S).fill({ color: 0xffffff, alpha: 0.9 });
+      // キラキラ：通った跡に十字のきらめきが瞬きながら残る（2026-10-06 アマネさん「矢とかもキラキラキラ」）
+      const nSp = a.giant ? 3 : a.big ? 2 : 1;
+      for (let i = 0; i < nSp; i++) {
+        if (Math.random() > 0.75) continue;
+        const back = Math.random() * Math.min(tail, hh * 0.8);
+        const jx = (Math.random() - 0.5) * hh * 0.08 * S;
+        const jy = (Math.random() - 0.5) * hh * 0.08 * S;
+        this.parts.flare(x - ux * (L * 0.5 + back) + jx, y - uy * (L * 0.5 + back) + jy, hh * (0.06 + Math.random() * 0.08) * S, Math.random() < 0.5 ? 0xffffff : 0xffc8e0, 0.35 + Math.random() * 0.3, -ux * 20, -uy * 20 - 15, 25 + Math.random() * 20);
+      }
       // 矢柄・矢じり・矢羽
       o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 4.5 * S, color: 0x3a2018, cap: 'round' });
       o.moveTo(x - ux * L, y - uy * L).lineTo(x, y).stroke({ width: 2.2 * S, color: 0xc89060, cap: 'round' });
@@ -2018,12 +2210,27 @@ export class View {
       }
       const x = this.wx(sh.x) + at.dx;
       const y = this.wy(sh.lane) + at.dy;
+      if (sh.slash) {
+        // 締めから飛ぶ斬撃：縦の三日月の光（桜色のにじみ＋白い芯）。花びらと光の粒を残す
+        const r = hh * 0.42;
+        const cx = x - sh.dir * r * 0.6;
+        const cy = this.wy(sh.lane) - hh * 0.45;
+        const a0 = sh.dir > 0 ? -Math.PI * 0.42 : Math.PI * 1.42;
+        const a1 = sh.dir > 0 ? Math.PI * 0.42 : Math.PI * 0.58;
+        crescent(L, cx, cy, r, a0, a1, hh * 0.2, 0xff6a9c, 0.35);
+        crescent(L, cx, cy, r, a0, a1, hh * 0.1, 0xffc0d8, 0.6);
+        crescent(L, cx, cy, r, a0, a1, hh * 0.04, 0xffffff, 0.95);
+        if (Math.random() < 0.6) this.parts.petal(cx + sh.dir * r, cy + (Math.random() - 0.5) * r * 1.4, this.geo.Hm / 600, -sh.dir * 120, -60, 0.6);
+        if (Math.random() < 0.6) this.parts.flare(cx + sh.dir * r * 0.8, cy + (Math.random() - 0.5) * r * 1.4, hh * 0.1, 0xffd0e4, 0.3, 0, 0, 30);
+        continue;
+      }
       const tail = Math.min(hh * 2.4, sh.t * SHELL.speed * this.U(sh.lane) * 0.03);
-      o.moveTo(x - sh.dir * tail, y).lineTo(x, y).stroke({ width: hh * 0.07, color: 0xff7a30, alpha: 0.55, cap: 'round' });
-      o.moveTo(x - sh.dir * tail * 0.55, y).lineTo(x, y).stroke({ width: hh * 0.035, color: 0xfff0c0, alpha: 0.9, cap: 'round' });
-      o.circle(x, y, hh * 0.06).fill({ color: 0xffa040, alpha: 0.45 });
-      o.circle(x, y, hh * 0.032).fill(0xfffaf0);
-      if (Math.random() < 0.5) this.parts.dust(x - sh.dir * hh * 0.1, y, 0.5, 1, 10, 0);
+      L.moveTo(x - sh.dir * tail, y).lineTo(x, y).stroke({ width: hh * 0.11, color: 0xff6a20, alpha: 0.4, cap: 'round' });
+      L.moveTo(x - sh.dir * tail * 0.55, y).lineTo(x, y).stroke({ width: hh * 0.04, color: 0xfff0c0, alpha: 0.95, cap: 'round' });
+      L.circle(x, y, hh * 0.09).fill({ color: 0xff9030, alpha: 0.35 });
+      L.circle(x, y, hh * 0.035).fill(0xffffff);
+      if (Math.random() < 0.4) this.parts.puff(x - sh.dir * hh * 0.15, y, -sh.dir * 30, -20, hh * 0.05, hh * 0.15, 0xd8d0d8, 0.35, 0.6);
+      if (Math.random() < 0.5) this.parts.spark(x - sh.dir * hh * 0.1, y, -sh.dir * (150 + Math.random() * 200), (Math.random() - 0.5) * 120, this.geo.Hm / 600, 0xffb060, 0.2, 300);
     }
     // 狼王の遠吠えの波：地面を走る紅い三日月（跳べばよけられる）
     for (const v of sim.waves) {

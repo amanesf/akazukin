@@ -464,7 +464,7 @@ async function main() {
     const k = b[0] === a[0] ? 1 : Math.min(1, Math.max(0, (n - a[0]) / (b[0] - a[0])));
     const v = (j: number) => Math.round(a[j] + (b[j] - a[j]) * k);
     const each = (x: number, cap = Infinity) => Object.fromEntries(TRACK_ORDER.map((t) => [t, Math.min(cap, x)])) as Record<Track, number>;
-    return { basic: each(v(1)), special: each(v(2), 3) };
+    return { basic: each(v(1)), special: each(v(2), 6) };
   };
   function openDebug() {
     overlay.classList.remove('title');
