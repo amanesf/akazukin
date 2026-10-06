@@ -76,6 +76,9 @@ export class View {
   private stepT = 0;
   private mono = 0; // 締めの一撃の一瞬のモノクロ
   private monoFilter = new ColorMatrixFilter();
+  // 主人公の明かり（2026-10-06 アマネさん「主人公のイラストがちょっと暗い」）：画面全体の色の仕上げ（掛け算）を主人公だけ打ち消し、
+  // 夜は月明かりの分だけ少し明るくする。背景と狼は暗いまま残し、主人公を浮かせる
+  private heroLight = new ColorMatrixFilter({ resolution: 'inherit', antialias: 'inherit' }); // 既定の解像度 1 だと、高精細の画面で主人公がぼやける
   // ── 演出の追加（2026-10-04） ──
   private whiteFilter = new ColorMatrixFilter(); // 一瞬の白い影：狼を真っ白に抜く
   private impact = 0; // 白い影の残り（秒。画面の時計）
@@ -671,7 +674,8 @@ export class View {
       this.monoFilter.desaturate();
       this.monoFilter.alpha = Math.min(1, this.mono / 0.12);
     }
-    for (const c of [this.paraRoot, this.ground, this.house, this.dogBack, this.dogFront, this.wolfBack, this.wolfFront, this.rig.root, this.backdrop.sky]) c.filters = monoOn ? [this.monoFilter] : null;
+    for (const c of [this.paraRoot, this.ground, this.house, this.dogBack, this.dogFront, this.wolfBack, this.wolfFront, this.backdrop.sky]) c.filters = monoOn ? [this.monoFilter] : null;
+    this.rig.root.filters = monoOn ? [this.heroLight, this.monoFilter] : [this.heroLight];
     // 一瞬の白い影：大きな一撃の2〜4コマだけ、狼を真っ白に抜き、まわりを暗くする（打撃の重さ）
     if (sim.events.includes('finisher')) this.impact = Math.max(this.impact, 0.07);
     this.impact = Math.max(0, this.impact - dt);
@@ -681,7 +685,19 @@ export class View {
     this.watchCombo(sim);
     // 色の仕上げ：画面全体に、夜は藍・昼は暖かい色を薄く掛ける
     const gd = this.grade.clear();
-    gd.rect(0, 0, g.W, g.Hm).fill({ color: mix(0xbcb4ec, 0xfff0d8, skyK), alpha: 0.35 });
+    const gc = mix(0xbcb4ec, 0xfff0d8, skyK);
+    const GA = 0.35;
+    gd.rect(0, 0, g.W, g.Hm).fill({ color: gc, alpha: GA });
+    // 主人公：仕上げで暗くなる分を色ごとに割り戻し（くすみ・青みを取る）、夜は月明かりで 7% 明るく
+    const lift = 1 + 0.07 * (1 - skyK);
+    const back = (c: number) => lift / (1 - GA * (1 - c / 255));
+    const m = this.heroLight.matrix;
+    m.fill(0);
+    m[0] = back((gc >> 16) & 255);
+    m[6] = back((gc >> 8) & 255);
+    m[12] = back(gc & 255);
+    m[18] = 1;
+    this.heroLight.matrix = m;
     this.parts.update(pdt);
     this.parts.draw();
     this.airBack.update(dt);
