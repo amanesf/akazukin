@@ -168,18 +168,17 @@ button::after {
 
 /* 桜嵐のゲージ：ボタンの下から溜まる。満タンで光る */
 .battle { grid-template-columns: 1.15fr repeat(3, 1fr); } /* 武器の持ち替え＋必殺技3つ（千本桜・桜流れ矢・主砲乱れ撃ち） */
-/* 武器の持ち替え（ナイフ⇔弓）：丸い文字盤のまわりを2本の矢印が回る（四角い桜嵐のボタンと見分けがつくように。2026-10-06） */
-.battle .weapon { background: none; border: none; box-shadow: none; padding: 0; gap: 3px; overflow: visible; }
+/* 武器の持ち替え（ナイフ⇔弓）：丸い札に、持っている武器を大きく明るく・もう一方を小さく暗く。上の弧の矢印で入れ替わりを見せる
+   （四角い桜嵐のボタンと見分けがつくように。2026-10-06 アマネさんが3案から B を選んだ） */
+.battle .weapon { --c: var(--brass); --g: rgba(255, 220, 150, 0.35); background: linear-gradient(#2c2024, #1c1416); border: 1px solid var(--c); border-radius: 30px; box-shadow: inset 0 1px 0 rgba(255, 230, 180, 0.08); padding: 4px 6px; gap: 1px; overflow: visible; }
+.weapon[data-w="bow"] { --c: #f0a0c0; --g: rgba(255, 150, 200, 0.4); }
 .weapon::after { display: none; }
-.weapon .dial { position: relative; width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #3e3024, #1c140e 72%); box-shadow: 0 0 0 1px rgba(201, 160, 96, 0.35), 0 2px 6px rgba(0, 0, 0, 0.5); }
-.weapon .swap { position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); color: var(--brass); fill: none; stroke: currentColor; stroke-width: 4.5; stroke-linecap: round; transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1), color 0.35s; }
-.weapon[data-w="bow"] .swap { color: #ff9cc0; transform: rotate(180deg); }
-.weapon[data-w="bow"] .dial { background: radial-gradient(circle at 50% 40%, #44263a, #1e1018 72%); box-shadow: 0 0 0 1px rgba(255, 156, 192, 0.4), 0 2px 6px rgba(0, 0, 0, 0.5); }
-.weapon .cur { position: absolute; inset: 0; display: grid; place-items: center; }
-.weapon .cur .ic { width: 30px; height: 30px; }
-.weapon .pair { font-size: 11px; color: var(--dim); display: flex; gap: 3px; align-items: baseline; }
-.weapon .pair b { font-weight: 400; opacity: 0.55; }
-.weapon[data-w="knife"] .pair b[data-k="knife"], .weapon[data-w="bow"] .pair b[data-k="bow"] { opacity: 1; color: var(--text); font-weight: 700; }
+.weapon .pr { position: relative; display: flex; align-items: flex-end; gap: 2px; }
+.weapon .cur .ic { width: 36px; height: 36px; filter: drop-shadow(0 0 6px var(--g)); animation: wpin 0.3s cubic-bezier(0.3, 1.5, 0.5, 1); }
+.weapon .alt .ic { width: 20px; height: 20px; opacity: 0.45; filter: grayscale(0.5); }
+.weapon .pr svg { position: absolute; left: 50%; top: -9px; width: 46px; height: 14px; transform: translateX(-50%); fill: none; stroke: var(--c); stroke-width: 1.4; stroke-linecap: round; opacity: 0.9; }
+.weapon .nm { font: 500 12px/1 var(--mincho); color: var(--text); letter-spacing: 0.1em; }
+@keyframes wpin { from { transform: scale(0.6); } to { transform: scale(1); } }
 .ouran { font-size: 15px; padding: 4px 2px; white-space: nowrap; }
 .ouran::before {
   content: "";

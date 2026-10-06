@@ -57,13 +57,8 @@ export class Panel {
     // 武器の持ち替え：押すたびにナイフ⇔弓。いま持っている武器の絵を出す
     this.weapon = document.createElement('button');
     this.weapon.className = 'weapon';
-    // 2026-10-06 アマネさん「円形の矢印でナイフと弓が切り替わるイメージ。桜嵐と区別つきづらい」：
-    // 四角いボタンをやめ、丸い文字盤のまわりを2本の矢印が回る。持ち替えるたびに矢印が半回転し、真ん中の武器が替わる
-    this.weapon.innerHTML = `<span class="dial"><svg class="swap" viewBox="0 0 64 64" aria-hidden="true">
-        <defs><marker id="swap-ah" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="2.6" markerHeight="2.6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor" stroke="none"/></marker></defs>
-        <path d="M7.6 23.1A26 26 0 0 1 56.4 23.1" marker-end="url(#swap-ah)"/>
-        <path d="M56.4 40.9A26 26 0 0 1 7.6 40.9" marker-end="url(#swap-ah)"/>
-      </svg><span class="cur"></span></span><small class="pair"><b data-k="knife">ナイフ</b>⇄<b data-k="bow">弓</b></small>`;
+    // 2026-10-06 アマネさん「円形の矢印でナイフと弓が切り替わるイメージ。桜嵐と区別つきづらい」→ 3案から B（二枚札）：
+    // 丸い札に、いま持っている武器を大きく明るく、もう一方を小さく暗く並べ、上の細い弧の矢印で「入れ替わる」を見せる
     this.weapon.addEventListener('pointerdown', () => this.sim().switchWeapon());
     this.battle.appendChild(this.weapon);
     for (const sp of SPECIAL_ORDER) {
@@ -167,7 +162,11 @@ export class Panel {
     const wp = s.weapon;
     if (this.weapon.dataset.w !== wp) {
       this.weapon.dataset.w = wp;
-      this.weapon.querySelector('.cur')!.innerHTML = ICON(wp);
+      const other = wp === 'knife' ? 'bow' : 'knife';
+      const cur = `<span class="cur">${ICON(wp)}</span>`;
+      const alt = `<span class="alt">${ICON(other)}</span>`;
+      // 持っている武器は、ナイフなら左・弓なら右（持ち替えると左右が入れ替わる）
+      this.weapon.innerHTML = `<span class="pr">${wp === 'knife' ? cur + alt : alt + cur}<svg viewBox="0 0 46 14" aria-hidden="true"><path d="M4 12Q23 -2 42 12"/><path d="${wp === 'knife' ? 'M36 8.5L42 12L38 5.5' : 'M10 8.5L4 12L8 5.5'}"/></svg></span><span class="nm">${wp === 'knife' ? 'ナイフ' : '弓'}</span>`;
     }
     for (const [sp, b] of this.specials) {
       const g = s.gauges[sp];
