@@ -699,6 +699,10 @@ export class Sim {
     this.houseHp = HOUSE_HP;
     for (const k of SPECIAL_ORDER) this.gauges[k] = 0;
     const h = this.hero;
+    // 主砲の熱も毎晩0から（2026-10-06 アマネさん「加熱状態もクリアでリセット」）
+    h.heat = 0;
+    h.overheat = 0;
+    h.heatWait = 99;
     h.hp = this.maxHp; // 昼のあいだに傷は癒える（案）
     h.down = 0;
     h.x = GIRL_X + 60;
@@ -902,6 +906,8 @@ export class Sim {
     this.hero.move = null;
     this.hero.charge = -1;
     this.hero.order = null;
+    this.hero.heat = 0; // 夜が明けたら主砲も冷める
+    this.hero.overheat = 0;
     // 跳んでいるうちに晩が終わると、昼は体が動かないので宙に浮いたままになった
     this.hero.z = 0;
     this.hero.vz = 0;

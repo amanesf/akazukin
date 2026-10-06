@@ -614,24 +614,21 @@ export class View {
       const o = this.overG;
       const hh = this.heroH(h.lane);
       const n = sim.heatMax;
-      const bw = hh * 0.06;
-      const bh = hh * 0.28;
-      const cx = hx - h.facing * hh * 0.3;
-      const by = top + hh * 0.5; // 目盛りの下の端（球の上）。頭の後ろの横
-      const r = bw * 1.05;
+      const bw = Math.max(3, hh * 0.022); // 細い棒だけ（球は付けない。2026-10-06 アマネさん「温度計ださい。もうちょい細く。下が丸くなくていい」）
+      const bh = hh * 0.26;
+      const cx = hx - h.facing * hh * 0.28;
+      const by = top + hh * 0.5; // 棒の下の端。頭の後ろの横
       const k = Math.min(1, h.heat / n);
       const over = h.overheat > 0;
       const blink = over && Math.sin(this.vt * 18) > 0;
       const col = over ? (blink ? 0xffffff : 0xff3020) : mix(0xffc040, 0xff3020, k);
-      o.roundRect(cx - bw / 2 - 2, by - bh - 2, bw + 4, bh + 4, bw / 2 + 2).fill({ color: 0x000000, alpha: 0.55 });
-      o.circle(cx, by + r * 0.6, r + 2).fill({ color: 0x000000, alpha: 0.55 });
-      o.roundRect(cx - bw / 2, by - bh * k, bw, bh * k, bw / 2).fill({ color: col, alpha: 0.95 });
-      o.circle(cx, by + r * 0.6, r).fill({ color: col, alpha: 0.95 });
+      o.rect(cx - bw / 2 - 1.5, by - bh - 1.5, bw + 3, bh + 3).fill({ color: 0x000000, alpha: 0.5 });
+      o.rect(cx - bw / 2, by - bh * k, bw, bh * k).fill({ color: col, alpha: 0.95 });
       for (let i = 1; i < n; i++) {
         const y = by - (bh * i) / n;
-        o.moveTo(cx - bw / 2 - 3, y).lineTo(cx - bw / 2 + 2, y).stroke({ width: 1.5, color: 0xffffff, alpha: 0.6 });
+        o.moveTo(cx - bw / 2 - 1.5, y).lineTo(cx + bw / 2 + 1.5, y).stroke({ width: 1, color: 0x000000, alpha: 0.7 });
       }
-      if (over && Math.random() < 0.5) this.parts.dust(cx, by - bh, 0.6, 1, 8, 0);
+      if (over && Math.random() < 0.3) this.parts.puff(cx, by - bh, 0, -30, hh * 0.03, hh * 0.1, 0xf0eef4, 0.4, 0.6);
     }
     // 弓を持っているとき：頭の横に小さな弓の印（ナイフ⇔弓の持ち替えが見て分かるように）
     if (!day && h.down <= 0 && sim.weapon === 'bow') {
