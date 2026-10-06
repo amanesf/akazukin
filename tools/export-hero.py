@@ -86,13 +86,19 @@ for sheet, ref, names in (('relax', 'calm', ('calm', 'happy', 'wink', 'cry')), (
                           # 2026-10-06 弓を持った絵（hero-bow-run-v1）：弓を持って走る2コマ・弓を下げて待つ・矢をつがえて構える。まっすぐ立った bowcalm の背を構えにそろえる
                           ('bowrun', 'bowcalm', ('bowrun1', 'bowrun2', 'bowcalm', 'bowready')),
                           # 2026-10-06 ナイフの動きの絵（hero-knife-action-v1）：突き下ろし・一閃の振り抜き・宙の斜め斬り・回転斬り。立った人がいないので待機と同じ倍率
-                          ('knifeact', None, ('plunge', 'finish', 'aircut', 'spin'))):
-    k = height(p1) / (height(cv2.imread(f'assets/game/parts/{sheet}/{ref}.png', cv2.IMREAD_UNCHANGED)) if ref else calm_h)
+                          ('knifeact', None, ('plunge', 'finish', 'aircut', 'spin')),
+                          # 2026-10-06 主砲の構え撃ち・反動・弓を持った突進・空へ射る（hero-gun-bow-v2）。この1枚は人が小さめに描かれた。
+                          # まっすぐ立った bowsky の背（頭巾の上 242行目〜ブーツの下 1153行目＝911画素。上に出た弓は除く）を構えにそろえる
+                          ('gunbow', 911, ('fire', 'recoil', 'bowdash', 'bowsky'))):
+    if isinstance(ref, int):
+        k = height(p1) / ref
+    else:
+        k = height(p1) / (height(cv2.imread(f'assets/game/parts/{sheet}/{ref}.png', cv2.IMREAD_UNCHANGED)) if ref else calm_h)
     for name in names:
         img = cv2.imread(f'assets/game/parts/{sheet}/{name}.png', cv2.IMREAD_UNCHANGED)
         img = cv2.resize(img, (int(img.shape[1] * k), int(img.shape[0] * k)), interpolation=cv2.INTER_AREA)
         f = feet(img)
-        if sheet in ('motion', 'knifeact') or name in ('dash', 'rise', 'knock', 'cheer', 'bowrun1', 'bowrun2'):
+        if sheet in ('motion', 'knifeact') or name in ('recoil', 'bowdash') or name in ('dash', 'rise', 'knock', 'cheer', 'bowrun1', 'bowrun2'):
             # 足が前後に開いた絵は、足の真ん中ではなくスカートの真ん中（背の高さの62〜72%の行の、不透明な所の端と端の真ん中）を基準にする。
             # 腰の高さはしっぽとナイフが横に出ていてずれる。
             # 一番下の足を基準にすると、走りの2コマで体が左右へ跳んだ

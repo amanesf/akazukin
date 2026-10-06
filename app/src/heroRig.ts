@@ -11,7 +11,8 @@ import type { Sim } from './sim';
 // stretch・petal・toss・hood＝待機のしぐさ（伸び・花びら・ナイフ投げ・頭巾直し）／shoulder・cheer・curtsy・pet＝晩の終わり
 type FrameName = 'idle' | 'up' | 'strike' | 'down' | 'back' | 'calm' | 'happy' | 'wink' | 'cry' | 'run1' | 'run2' | 'sweep' | 'victory' | 'dash' | 'rise' | 'charge' | 'aim' | 'loose' | 'knock'
   | 'smug' | 'teary' | 'yawn' | 'surprised' | 'stretch' | 'petal' | 'toss' | 'hood' | 'shoulder' | 'cheer' | 'curtsy' | 'pet'
-  | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready' | 'plunge' | 'finish' | 'aircut' | 'spin';
+  | 'bowrun1' | 'bowrun2' | 'bowcalm' | 'bowready' | 'plunge' | 'finish' | 'aircut' | 'spin'
+  | 'fire' | 'recoil' | 'bowdash' | 'bowsky';
 type Gesture = 'stretch' | 'petal' | 'toss' | 'hood';
 // しぐさの長さ（秒）。伸びのあとは、あくびの顔で少し待つ
 const GESTURE: Record<Gesture, number> = { stretch: 2.2, petal: 1.9, toss: 1.5, hood: 1.5 };
@@ -62,7 +63,7 @@ const MESH_STEP = 12; // 網目の細かさ（画素）
 const BASE = `${import.meta.env.BASE_URL}hero/`;
 const D = Math.PI / 180;
 const NAMES: FrameName[] = ['idle', 'up', 'strike', 'down', 'back', 'calm', 'happy', 'wink', 'cry', 'run1', 'run2', 'sweep', 'victory', 'dash', 'rise', 'charge', 'aim', 'loose', 'knock',
-  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin'];
+  'smug', 'teary', 'yawn', 'surprised', 'stretch', 'petal', 'toss', 'hood', 'shoulder', 'cheer', 'curtsy', 'pet', 'bowrun1', 'bowrun2', 'bowcalm', 'bowready', 'plunge', 'finish', 'aircut', 'spin', 'fire', 'recoil', 'bowdash', 'bowsky'];
 // しぐさの小道具（書き出した絵の画素）。宙のナイフと手のひらの花びらは切り抜きで落ちたので描く
 const TOSS_HAND: [number, number] = [528, 236]; // ナイフを投げ上げた手のひら
 const TOSS_TOP = 40; // ナイフのいちばん高い所
@@ -327,19 +328,24 @@ export class HeroRig {
       }
       if (m === 'tosshin') {
         // 突進：低く長い踏み込みの絵（2026-10-04 生成）。絵そのものが前のめりなので、傾けすぎない
-        frame = p < 0.12 ? 'idle' : 'dash';
+        // 弓を持っているときは、弓を持って駆け抜ける絵（2026-10-06 生成）
+        const bowDash = sim.weapon === 'bow' && h.fin !== 'tsuki';
+        frame = p < 0.12 ? (bowDash ? 'bowready' : 'idle') : bowDash ? 'bowdash' : 'dash';
         lean = p < 0.12 ? -10 * D : 4 * D * (1 - after);
         sx = p < 0.12 ? 0.85 : 1.16 - 0.16 * after;
         sy = p < 0.12 ? 1.08 : 0.9 + 0.1 * after;
       }
       if (m === 'shiki' || m === 'hougeki') {
         // 主砲：撃った反動で後ろへのけぞる
-        frame = p < 0.3 ? 'idle' : 'strike';
-        lean = p < 0.3 ? 4 * D : -(10 * (1 - after) + 2) * D;
+        // 足を踏ん張って構え → 撃った反動でのけぞる（2026-10-06 生成 hero-gun-bow-v2。前はナイフで突く絵を借りていた）
+        frame = p < 0.5 ? 'fire' : 'recoil';
+        lean = p < 0.5 ? 2 * D : -(4 * (1 - after) + 1) * D;
         if (p >= 0.3) { sx = 1 - 0.06 * over; sy = 1 + 0.05 * over; }
       }
       // 弓：引き絞る絵 → 半ばで放った絵（2026-10-04 生成。前は突きの絵に弓を重ね、弦を線で描いていた）
       if (m === 'bow' || m === 'ame') { frame = p < 0.5 ? 'aim' : 'loose'; lean = p < 0.5 ? -2 * D : -4 * D * (1 - after); }
+      // 矢の雨は空へ向けて引く（2026-10-06 生成）
+      if (m === 'ame') { frame = p < 0.6 ? 'bowsky' : 'loose'; lean = p < 0.6 ? -3 * D : 0; }
       if (m === 'kaiten') {
         // 回転：横幅を縮めて背中の絵へ、また縮めて正面へ
         const a = p * Math.PI * 2;
@@ -382,9 +388,9 @@ export class HeroRig {
       } else if (h.special === 'midare') {
         // 足を踏ん張って撃ちまくる（撃つたびに少しのけぞる）→ 溜める → ズドン
         if (e < OURAN.rush) frame = 'idle';
-        else if (rush) { frame = 'strike'; lean = -(3 + 5 * this.recoil) * D; }
+        else if (rush) { frame = this.recoil > 0.3 ? 'recoil' : 'fire'; lean = -(1 + 3 * this.recoil) * D; } // 乱れ撃ち：構え撃ちと反動を交互に
         else if (wind) { frame = 'charge'; shiver = Math.sin(t * 90) * 2; }
-        else { frame = 'strike'; lean = -14 * D * Math.max(0, 1 - (e - OURAN.final) * 2); }
+        else { frame = 'recoil'; lean = -6 * D * Math.max(0, 1 - (e - OURAN.final) * 2); }
       } else {
         // 跳んで撃ち下ろす → 着地して引き絞る → 大きな一本
         if (e < OURAN.rush) frame = 'idle';
