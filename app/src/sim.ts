@@ -1663,8 +1663,8 @@ export class Sim {
       if (n !== h.spShot) {
         h.spShot = n;
         const list = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= B.reach).sort((a, b) => a.x - b.x);
-        const t = list.length ? list[(n * 7) % list.length] : undefined;
-        const tx = t ? t.x : h.x + h.facing * (120 + this.rand() * 300);
+        const t = list.length ? list[zigzag(n, list.length)] : undefined;
+        const tx = t ? t.x : h.x + (n % 2 ? -1 : 1) * (120 + this.rand() * 300); // 狙える狼がいないときは左右交互（前は向いている側にばかり撃ち、片側に偏った）
         const tl = t ? t.lane : this.rand();
         if (Math.abs(tx - h.x) > 20) h.facing = tx > h.x ? 1 : -1;
         h.aimX = tx;
@@ -1721,9 +1721,9 @@ export class Sim {
       if (n !== h.spShot) {
         h.spShot = n;
         const list = this.wolves.filter((w) => w.age >= 0.4 && Math.abs(w.x - h.x) <= R.reach).sort((a, b) => a.x - b.x);
-        const t = list.length ? list[(n * 5) % list.length] : undefined;
-        if (t && Math.abs(t.x - h.x) > 20) h.facing = t.x > h.x ? 1 : -1;
-        const tx = t ? t.x : h.x + h.facing * (80 + this.rand() * 300);
+        const t = list.length ? list[zigzag(n, list.length)] : undefined;
+        const tx = t ? t.x : h.x + (n % 2 ? -1 : 1) * (80 + this.rand() * 300); // 狙える狼がいないときは左右交互
+        if (Math.abs(tx - h.x) > 20) h.facing = tx > h.x ? 1 : -1;
         this.loose(tx, t ? t.lane : this.rand(), R.damage * this.bowPower, 0, false, t?.id ?? 0, 2, true);
         this.arrows[this.arrows.length - 1].fromZ = h.z;
         this.arrows[this.arrows.length - 1].big = true;
@@ -1766,9 +1766,12 @@ export class Sim {
           a.toX = t.x;
           a.lane = t.lane;
         }
-        // 通り道の狼を貫く：前のコマから今のコマまでに矢が通った所にいる狼
-        const x0 = a.fromX + (a.toX - a.fromX) * Math.max(0, before);
-        const x1 = a.fromX + (a.toX - a.fromX) * Math.min(1, a.t);
+        // 通り道の狼を貫く：前のコマから今のコマまでに矢が通った所にいる狼。
+        // 空から撃ち下ろす矢（桜流れ矢）は、宙を飛んでいるあいだは当てず、届いた所の狼にだけ当てる
+        // （前は足もとに吸い寄せた狼に放った最初のコマで当たって消え、矢も光の尾も見えなかった）
+        if (a.fromZ && a.t < 1) return true;
+        const x0 = a.fromZ ? a.toX : a.fromX + (a.toX - a.fromX) * Math.max(0, before);
+        const x1 = a.fromZ ? a.toX : a.fromX + (a.toX - a.fromX) * Math.min(1, a.t);
         const lane = a.fromLane + (a.lane - a.fromLane) * Math.min(1, a.t);
         const lo = Math.min(x0, x1);
         const hi = Math.max(x0, x1);
@@ -2400,6 +2403,13 @@ export class Sim {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
+}
+
+// 左から並べた n 番目の狙い：左端・右端・左から2番目・右から2番目…と左右交互に（必殺技の連射）。
+// 前は (n * 7) % 数 で、狼が7匹・14匹だと毎回いちばん左だけを撃ち、片側に偏った
+function zigzag(n: number, len: number) {
+  const k = n % len;
+  return k % 2 ? len - 1 - (k >> 1) : k >> 1;
 }
 
 function clamp(v: number, lo: number, hi: number) {
